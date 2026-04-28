@@ -1,0 +1,3098 @@
+You are assisting with Moose House Climate, an experimental Home Assistant HVAC orchestration platform.
+
+IMPORTANT:
+This is NOT a normal thermostat setup.
+This is an evidence-driven environmental control research system built around telemetry, regression tracking, and iterative experimentation.
+
+You are being given a production automations.yaml file.
+DO NOT rewrite the entire file unless explicitly requested.
+Preserve all unrelated systems and sections.
+
+Architecture Summary:
+
+* Multi-zone Samsung mini-split system
+* Home Assistant OS
+* ESPHome + Matter + Bluetooth + Netatmo sensors
+* Truth-sensor fusion architecture
+* Telemetry-first experimentation workflow
+* Google Sheets logging pipeline
+* Dynamic seasonal logic
+* Safety watchdogs independent from comfort logic
+* Manual override protection
+* Occupancy-aware airflow experiments
+* Regression-aware engineering process
+
+Core Philosophy:
+
+* Evidence over assumptions
+* Observability over hidden logic
+* Stability over aggressiveness
+* Graceful degradation over brittle optimization
+* Maintainability over cleverness
+
+Critical Rules:
+
+* NEVER remove unrelated automations
+* NEVER rename entities unless explicitly instructed
+* NEVER collapse sections together
+* NEVER simplify away telemetry or safety systems
+* Preserve comments and architectural documentation
+* Explain WHY changes are being made
+* Flag possible regression risks
+* Prefer incremental refactors over rewrites
+
+This file contains multiple independent systems:
+
+1. Data telemetry pipeline
+2. Main HVAC supervisor
+3. Safety watchdogs
+4. Ghost automation suppression
+5. Auto season switching
+6. Airflow destratification
+7. Solar shade logic
+8. Samsung auto-mode guardrails
+9. Sensor health monitoring
+10. Experimental legacy/orphaned systems
+11. HVAC transition logging
+
+Key Architectural Notes:
+
+* VTherm has been deprecated.
+* The current architecture uses custom orchestration logic.
+* The system intentionally separates:
+
+  * comfort logic
+  * safety logic
+  * telemetry
+  * diagnostics
+  * experimental branches
+* Safety gates operate independently from comfort logic.
+* Google Sheets telemetry collection is mission-critical and must not break.
+* The HVAC system is treated as a partially observable thermal system, not a simple thermostat.
+
+Current Engineering Goals:
+
+* Reduce compressor short-cycling
+* Improve thermal stability
+* Reduce stack-effect overheating
+* Improve observability
+* Improve transition-based logic
+* Reduce command spam
+* Build evidence before introducing complexity
+* Improve telemetry quality for future experiments
+
+When reviewing or modifying automations:
+
+1. Explain the current behavior
+2. Identify strengths and weaknesses
+3. Identify hidden assumptions
+4. Identify telemetry gaps
+5. Identify regression risks
+6. Suggest incremental improvements
+7. Generate ONLY the changed sections unless asked otherwise
+
+Special Attention Areas:
+
+* Section 2 Main Supervisor
+* Section 3 Safety Gates
+* Section 6 Shoulder Season Fan Destratification
+* Section 11 HVAC Transition Logger
+
+Known Future Goals:
+
+* Transition-based HVAC control instead of tick-based
+* Explicit controller-state latches
+* Evidence-based capacity arbitration
+* Better runtime observability
+* More granular telemetry
+* Dynamic thermal modeling
+* Better occupancy weighting
+
+Attached below is the production automations.yaml file.
+
+Analyze the architecture before making changes.
+Do not hallucinate missing entities.
+If assumptions are unclear, explicitly state uncertainty instead of inventing behavior.
+
+FILE STARTS BELOW:
+
+# =============================================================================
+# MOOSE HOUSE CLIMATE — COMPLETE AUTOMATIONS.YAML
+# Last Updated: April 25, 2026
+# Architecture: V8.3 — Comfort-First Hotfix with Stack-Effect Mitigation
+# =============================================================================
+#
+# ⚠️  LLM INSTRUCTION: This file contains MULTIPLE independent systems.
+#     If you are editing ONE section, DO NOT delete or modify other sections.
+#     Each section is marked with a block header. Preserve all blocks intact.
+#     If you are rewriting this file, include ALL sections below or you will
+#     break data collection, safety systems, or climate control.
+#
+# SECTIONS IN THIS FILE:
+#   1.  DATA COLLECTION (v5 tracker — Semantic Heritage Schema)
+#   2.  MAIN SUPERVISOR (V8.2 Deadband + V8.3 LR Heating Deadband)
+#   3.  SAFETY GATES (runaway cutoff, emergency floor, ceiling, override)
+#   3B. PRE-COOL LATCH (ORPHANED — helper retained, nothing reads it)
+#   4.  GHOST ASSASSIN (Lincoln phantom heat kill)
+#   5.  AUTO SEASON MODE (deck temp → season switching)
+#   6.  SHOULDER SEASON FAN DESTRATIFICATION (Priority 2 Airflow Mixing)
+#   7.  SOLAR SHADE PROTECTION (Privacy, Morning, Solar Rejection)
+#   7B. SOLAR HARVEST (Shoulder/Heating Passive Gain)
+#   8.  SAMSUNG AUTO GUARDRAIL (Anti-rogue auto mode logic)
+#   9.  TRUTH SENSOR HEALTH ALERT
+#   10. MASTER PRE-COOL (DISABLED — superseded by V8.1/V8.2 cooling branch)
+#   11. HVAC TRANSITION LOGGER (V8.3 — audit trail for heating/cooling behavior)
+#
+# DEPENDENCIES (helpers that must exist):
+#   - input_select.hvac_season_mode (heating / shoulder / cooling)
+#   - input_boolean.night_mode_lr_primary (on = Claude night mode)
+#   - input_boolean.precool_active (orphaned in V8.2 but still toggled by 3B)
+#   - timer.manual_hvac_override (1 hour default)
+#   - timer.shade_manual_override (2 hour default)
+#   - input_boolean.away_mode (away/vacation — relaxes all targets)
+#
+# =============================================================================
+# V8.2 DOCTRINE NOTE — HONEST FRAMING
+# =============================================================================
+#
+# What V8.2 is:
+#   A comfort-first hotfix for the April 15 cooling complaint. Replaces the
+#   waterfall target ladder with a simple 68/72 deadband across all rooms,
+#   adds a master sleep mode at 63/62/66 from 6pm-6am, and reintroduces two
+#   explicit safety backstops: a master runaway emergency floor at 58°F and
+#   a renamed LR runaway cutoff at 60°F.
+#
+# What V8.2 is NOT:
+#   The final control architecture. It uses HVAC mode as deadband memory,
+#   which is a known-imperfect shortcut (degrades gracefully when device
+#   and controller intent diverge). It issues commands on every supervisor
+#   tick rather than on transitions. It has no explicit multi-head capacity
+#   arbitration.
+#
+# Capacity arbitration is NOT removed as a concept — it is DEFERRED until
+# there is measured evidence of real multi-head starvation under load. The
+# old saturation_block_lr logic was misapplied (it suppressed LR comfort to
+# protect upstairs rooms that weren't actually starving). If real starvation
+# symptoms appear on a 95°F day with all four heads calling, that's a real
+# signal worth designing for — but preemptive LR lockout is not the answer.
+#
+# V9 architecture pass should address:
+#   - Explicit input_boolean latches for cooling_engaged per room
+#   - Command-on-transition instead of command-on-every-tick
+#   - Measured-evidence capacity arbitration (only kicks in under pressure)
+#   - Separation of comfort logic from runaway protection (already started)
+#
+# =============================================================================
+# V8.3 CHANGELOG (April 25, 2026):
+#
+#   CHANGES FROM V8.2:
+#     • SECTION 2: Added LR heating deadband (target at top of band) and bedtime 
+#       LR setpoint reduction (target 64°F, deadband 62-64°F, 18:00-22:00) to 
+#       prevent compressor short-cycling and passively reduce stack-effect heating.
+#     • SECTION 6: Added explicit fan_mode: auto commands to engage branches
+#       to prevent manual turbo overrides from sticking for 10+ hours.
+#     • Branch 1.5 (Bedtime Master Cooling) prototyped and removed in favor 
+#       of the passive LR-source approach above.
+#     • SECTION 11: Expanded logger to capture heating hysteresis transitions.
+#
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 1: DATA COLLECTION (V5 Semantic Heritage Schema)
+# =============================================================================
+# ⚠️  DO NOT DELETE — This is the telemetry pipeline to Google Sheets.
+#     Without this, no experiment data is captured.
+#     Worksheet: VTherm_Launch_Data_v5
+# =============================================================================
+
+- id: vtherm_mega_tracker_v5
+  alias: 'Experiment Data: Export to Google Sheets v5'
+  description: >
+    V5 — Semantic Heritage Schema. Clean headers mapping lineage to entities.
+  trigger:
+  - minutes: /15
+    trigger: time_pattern
+  condition: []
+  action:
+  - action: google_sheets.append_sheet
+    data:
+      config_entry: 01KK2B80DRS1S94GERW6XRRM1E
+      worksheet: VTherm_Launch_Data_v5
+      data:
+        # 1. Timestamp / Global Context
+        Timestamp: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+        Season_Mode: "{% set v = states('input_select.hvac_season_mode') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Night_Mode_Toggle: "{% set v = states('input_boolean.night_mode_lr_primary') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Away_Mode: "{% set v = states('input_boolean.away_mode') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 2. Outdoor / Deck
+        Deck_Temp_Truth: "{% set v = states('sensor.deck_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Hum_Truth: "{% set v = states('sensor.deck_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Temp_RoomProbe_BT: "{% set v = states('sensor.deck_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Hum_RoomProbe_BT: "{% set v = states('sensor.deck_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Temp_RoomProbe_ST: "{% set v = states('sensor.deck_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Hum_RoomProbe_ST: "{% set v = states('sensor.deck_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Temp_RoomProbe_Matter: "{% set v = states('sensor.deck_temp_temperature_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Hum_RoomProbe_Matter: "{% set v = states('sensor.deck_temp_humidity_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 3. Living Room
+        LR_Temp_Truth: "{% set v = states('sensor.living_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_Truth: "{% set v = states('sensor.living_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Temp_RoomProbe_BT_Primary: "{% set v = states('sensor.hub_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_RoomProbe_BT_Primary: "{% set v = states('sensor.hub_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Temp_RoomProbe_ST: "{% set v = states('sensor.hub_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_RoomProbe_ST: "{% set v = states('sensor.hub_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Temp_RoomProbe_BT_Secondary: "{% set v = states('sensor.hub_2_tempsensor_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_RoomProbe_BT_Secondary: "{% set v = states('sensor.hub_2_humisensor_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Temp_HVAC_Samsung: "{% set v = states('sensor.living_room_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_HVAC_Samsung: "{% set v = states('sensor.living_room_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_CO2_Diag_MSR: "{% set v = states('sensor.living_room_msr_co2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 4. Master Bedroom
+        Master_Temp_Truth: "{% set v = states('sensor.master_bedroom_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_Truth: "{% set v = states('sensor.master_bedroom_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Temp_RoomProbe_BT: "{% set v = states('sensor.master_bedroom_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_RoomProbe_BT: "{% set v = states('sensor.master_bedroom_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Temp_RoomProbe_ST: "{% set v = states('sensor.master_bedroom_temperature_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_RoomProbe_ST: "{% set v = states('sensor.master_bedroom_temperature_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Temp_RoomProbe_Matter: "{% set v = states('sensor.master_bedroom_temp_temperature_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_RoomProbe_Matter: "{% set v = states('sensor.master_bedroom_temp_humidity_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Temp_HVAC_Samsung: "{% set v = states('sensor.master_bedroom_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_HVAC_Samsung: "{% set v = states('sensor.master_bedroom_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 5. Lincoln's Room
+        Lincoln_Temp_Truth: "{% set v = states('sensor.lincoln_s_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_Truth: "{% set v = states('sensor.lincoln_s_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_RoomProbe_BT: "{% set v = states('sensor.lincoln_s_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_RoomProbe_BT: "{% set v = states('sensor.lincoln_s_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_RoomProbe_ST: "{% set v = states('sensor.lincoln_s_room_temperature_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_RoomProbe_ST: "{% set v = states('sensor.lincoln_s_room_temperature_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_RoomProbe_Matter: "{% set v = states('sensor.lincoln_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_RoomProbe_Matter: "{% set v = states('sensor.lincoln_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_HVAC_Samsung: "{% set v = states('sensor.lincoln_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_HVAC_Samsung: "{% set v = states('sensor.lincoln_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_Diag_MSR: "{% set v = states('sensor.lincoln_msr_dps310_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Pressure_Diag_MSR: "{% set v = states('sensor.lincoln_msr_dps310_pressure') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_ESPTemp_Diag_MSR: "{% set v = states('sensor.lincoln_msr_esp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 6. Lilly's Room
+        Lilly_Temp_Truth: "{% set v = states('sensor.lilly_s_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_Truth: "{% set v = states('sensor.lilly_s_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Temp_RoomProbe_BT: "{% set v = states('sensor.lilly_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_RoomProbe_BT: "{% set v = states('sensor.lilly_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Temp_RoomProbe_ST: "{% set v = states('sensor.lilly_room_temperature_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_RoomProbe_ST: "{% set v = states('sensor.lilly_room_temperature_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Temp_RoomProbe_Matter: "{% set v = states('sensor.lilly_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_RoomProbe_Matter: "{% set v = states('sensor.lilly_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Temp_HVAC_Samsung: "{% set v = states('sensor.lilly_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_HVAC_Samsung: "{% set v = states('sensor.lilly_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 7. Laundry
+        Laundry_Temp_Truth: "{% set v = states('sensor.laundry_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Hum_Truth: "{% set v = states('sensor.laundry_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Temp_RoomProbe_BT: "{% set v = states('sensor.laundry_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Hum_RoomProbe_BT: "{% set v = states('sensor.laundry_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Temp_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Hum_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Temp_RoomProbe_Matter: "{% set v = states('sensor.laundry_room_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Hum_RoomProbe_Matter: "{% set v = states('sensor.laundry_room_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 8. Office
+        Office_Temp_Truth: "{% set v = states('sensor.office_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_Truth: "{% set v = states('sensor.office_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Temp_Anchor_Netatmo: "{% set v = states('sensor.indoor_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_Anchor_Netatmo: "{% set v = states('sensor.indoor_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_CO2_Anchor_Netatmo: "{% set v = states('sensor.indoor_carbon_dioxide') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Pressure_Anchor_Netatmo: "{% set v = states('sensor.indoor_atmospheric_pressure') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Noise_Anchor_Netatmo: "{% set v = states('sensor.indoor_noise') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Temp_RoomProbe_BT: "{% set v = states('sensor.office_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_RoomProbe_BT: "{% set v = states('sensor.office_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Temp_RoomProbe_ST: "{% set v = states('sensor.office_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_RoomProbe_ST: "{% set v = states('sensor.office_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Temp_RoomProbe_Matter: "{% set v = states('sensor.office_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_RoomProbe_Matter: "{% set v = states('sensor.office_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 9. Dining / Nest / Boiler
+        Dining_Temp_Anchor_Nest: "{% set v = states('sensor.dining_room_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Dining_Hum_Anchor_Nest: "{% set v = states('sensor.dining_room_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Dining_Mode_Nest: "{% set v = states('climate.dining_room') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Dining_Action_Nest: "{% set v = state_attr('climate.dining_room', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Dining_Setpoint_Nest: "{% set v = state_attr('climate.dining_room', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Boiler_Runtime_Today_Hrs: "{% set v = states('sensor.boiler_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 10. HVAC Runtime / State
+        LR_Air_Mode: "{% set v = states('climate.living_room_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Air_Action: "{% set v = state_attr('climate.living_room_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        LR_Air_Setpoint: "{% set v = state_attr('climate.living_room_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        LR_Air_Fan_Mode: "{% set v = state_attr('climate.living_room_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        LR_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lr_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        Master_Air_Mode: "{% set v = states('climate.master_bedroom_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Air_Action: "{% set v = state_attr('climate.master_bedroom_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Master_Air_Setpoint: "{% set v = state_attr('climate.master_bedroom_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Master_Air_Fan_Mode: "{% set v = state_attr('climate.master_bedroom_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Master_HP_Runtime_Today_Hrs: "{% set v = states('sensor.master_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        Lincoln_Air_Mode: "{% set v = states('climate.lincoln_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Air_Action: "{% set v = state_attr('climate.lincoln_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lincoln_Air_Setpoint: "{% set v = state_attr('climate.lincoln_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lincoln_Air_Fan_Mode: "{% set v = state_attr('climate.lincoln_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lincoln_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lincoln_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        Lilly_Air_Mode: "{% set v = states('climate.lilly_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Air_Action: "{% set v = state_attr('climate.lilly_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lilly_Air_Setpoint: "{% set v = state_attr('climate.lilly_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lilly_Air_Fan_Mode: "{% set v = state_attr('climate.lilly_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lilly_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lilly_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 11. Presence
+        LR_Presence_MSR: "{% set v = states('binary_sensor.living_room_msr_radar_zone_3_occupancy') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Presence_MSR: "{% set v = states('binary_sensor.lincoln_msr_radar_zone_3_occupancy') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Presence_Today_Hrs: "{% set v = states('sensor.lr_presence_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Presence_Today_Hrs: "{% set v = states('sensor.lincoln_presence_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 12. Shades / Solar
+        Shade_1_State: "{% set v = states('cover.shade_1') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Shade_2_State: "{% set v = states('cover.shade_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Shade_1_Tilt: "{% set v = state_attr('cover.shade_1', 'current_tilt_position') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Shade_2_Tilt: "{% set v = state_attr('cover.shade_2', 'current_tilt_position') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Shade_1_Light: "{% set v = states('sensor.shade_1_light_level') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Shade_2_Light: "{% set v = states('sensor.shade_2_light_level') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 13. Diagnostics
+        LR_Truth_Count: "{% set v = states('sensor.living_room_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Truth_Count: "{% set v = states('sensor.lincoln_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+
+# =============================================================================
+# SECTION 2: MAIN SUPERVISOR (V8.2 Deadband Cooling + V8.3 LR Heating Deadband)
+# =============================================================================
+# ⚠️  DO NOT DELETE — This is the central climate brain. It runs every 15 min
+#     and controls ALL mini-split heads + Nest based on truth sensors, season
+#     mode, time of day, and outdoor temperature.
+#
+#     V8.2 COOLING DOCTRINE:
+#       All rooms, all hours: setpoint 68, off ≤68, on >72 (4°F deadband)
+#       Master 6pm-6am override: setpoint 63, off ≤62, on >66 (sleep cold)
+#       Away: setpoint 74, off ≤74, on >76 (relaxed)
+#       Deadband = maintain current HVAC mode (imperfect but graceful)
+#
+#     V8.3 HEATING DOCTRINE (NEW):
+#       Heating/Shoulder daytime: top-anchored deadband (target 68, off ≥68, on <64)
+#       to prevent short-cycling.
+#       Bedtime (18:00-22:00, non-away): LR target drops to 64, deadband 62-64°F,
+#       to passively reduce stack-effect upstairs heating.
+#       Overnight (22:00-06:00) paths unchanged from V8.2 (deferred to V8.4).
+#
+#     KNOWN IMPERFECTIONS (deferred to V9):
+#       - Deadband uses HVAC mode as memory; controller intent, not true
+#         compressor call-for-cooling. Fails gracefully if device and intent
+#         diverge between 15-min ticks.
+#       - Commands issued every tick rather than on transitions. Harmless
+#         but noisy. Section 11 logger exists to make behavior observable.
+#       - No multi-head capacity arbitration. Deferred until there is
+#         measured evidence of real starvation under load.
+# =============================================================================
+
+- id: v7_5_main_supervisor
+  alias: "V8.3: Main Supervisor (Deadband Cooling + Heating)"
+  mode: single
+  trigger:
+    - platform: time_pattern
+      minutes: "/15"
+    - platform: state
+      entity_id: input_select.hvac_season_mode
+  condition:
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+  action:
+    - variables:
+        outdoor: "{{ states('sensor.deck_temperature_truth') | float(50) }}"
+        lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
+        master_temp: "{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}"
+        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
+        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}"
+        is_night: "{{ now().hour >= 22 or now().hour < 6 }}"
+        season: "{{ states('input_select.hvac_season_mode') }}"
+        lr_night_primary: "{{ is_state('input_boolean.night_mode_lr_primary', 'on') }}"
+        away: "{{ is_state('input_boolean.away_mode', 'on') }}"
+
+    - choose:
+        # =============================================
+        # BRANCH 1: COOLING SEASON (V8.2 Deadband)
+        # =============================================
+        #
+        # LOGIC PER ROOM:
+        #   temp > on_at  → cool (engage)
+        #   temp ≤ off_at → off  (disengage)
+        #   in between    → hold current state (deadband via HVAC mode)
+        #
+        # The Samsung setpoint does the fine-grained work.
+        # The supervisor just decides ON vs OFF with hysteresis.
+        # Safety backstops live in Section 3 (runaway cutoff, emergency
+        # floor, ceiling gates). They operate independently of this logic.
+        # =============================================
+        - conditions:
+            - condition: template
+              value_template: "{{ season == 'cooling' }}"
+          sequence:
+            # Nest always off during cooling
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.dining_room }
+              data: { hvac_mode: "off" }
+
+            # ---------------------------------------------------------
+            # MASTER BEDROOM
+            # 6pm-6am: Sleep mode (63°F set / off ≤62 / on >66)
+            # 6am-6pm: Normal    (68°F set / off ≤68 / on >72)
+            # Away:    Relaxed   (74°F set / off ≤74 / on >76)
+            # Runaway floor at 58°F lives in Section 3 (independent).
+            # ---------------------------------------------------------
+            - variables:
+                is_master_sleep: "{{ now().hour >= 18 or now().hour < 6 }}"
+                m_setpoint: "{{ 74 if away else (63 if is_master_sleep else 68) }}"
+                m_off_at: "{{ 74 if away else (62 if is_master_sleep else 68) }}"
+                m_on_at: "{{ 76 if away else (66 if is_master_sleep else 72) }}"
+                m_current: "{{ states('climate.master_bedroom_air') }}"
+            - action: climate.set_temperature
+              target: { entity_id: climate.master_bedroom_air }
+              data:
+                hvac_mode: >-
+                  {% if master_temp > m_on_at %}cool
+                  {% elif master_temp <= m_off_at %}off
+                  {% elif m_current == 'cool' %}cool
+                  {% else %}off{% endif %}
+                temperature: "{{ m_setpoint }}"
+
+            # ---------------------------------------------------------
+            # LINCOLN'S ROOM
+            # All hours: 68°F set / off ≤68 / on >72
+            # Away:      74°F set / off ≤74 / on >76
+            # ---------------------------------------------------------
+            - variables:
+                l_setpoint: "{{ 74 if away else 68 }}"
+                l_off_at: "{{ 74 if away else 68 }}"
+                l_on_at: "{{ 76 if away else 72 }}"
+                l_current: "{{ states('climate.lincoln_air') }}"
+            - action: climate.set_temperature
+              target: { entity_id: climate.lincoln_air }
+              data:
+                hvac_mode: >-
+                  {% if lincoln_temp > l_on_at %}cool
+                  {% elif lincoln_temp <= l_off_at %}off
+                  {% elif l_current == 'cool' %}cool
+                  {% else %}off{% endif %}
+                temperature: "{{ l_setpoint }}"
+
+            # ---------------------------------------------------------
+            # LILLY'S ROOM
+            # All hours: 68°F set / off ≤68 / on >72
+            # Away:      74°F set / off ≤74 / on >76
+            # ---------------------------------------------------------
+            - variables:
+                ly_setpoint: "{{ 74 if away else 68 }}"
+                ly_off_at: "{{ 74 if away else 68 }}"
+                ly_on_at: "{{ 76 if away else 72 }}"
+                ly_current: "{{ states('climate.lilly_air') }}"
+            - action: climate.set_temperature
+              target: { entity_id: climate.lilly_air }
+              data:
+                hvac_mode: >-
+                  {% if lilly_temp > ly_on_at %}cool
+                  {% elif lilly_temp <= ly_off_at %}off
+                  {% elif ly_current == 'cool' %}cool
+                  {% else %}off{% endif %}
+                temperature: "{{ ly_setpoint }}"
+
+            # ---------------------------------------------------------
+            # LIVING ROOM (V8.2: around-the-clock 68/72)
+            # All hours: 68°F set / off ≤68 / on >72
+            # Away:      74°F set / off ≤74 / on >76
+            # Runaway cutoff at 60°F lives in Section 3 (independent).
+            # ---------------------------------------------------------
+            - variables:
+                lr_setpoint: "{{ 74 if away else 68 }}"
+                lr_off_at: "{{ 74 if away else 68 }}"
+                lr_on_at: "{{ 76 if away else 72 }}"
+                lr_current: "{{ states('climate.living_room_air') }}"
+            - action: climate.set_temperature
+              target: { entity_id: climate.living_room_air }
+              data:
+                hvac_mode: >-
+                  {% if lr_temp > lr_on_at %}cool
+                  {% elif lr_temp <= lr_off_at %}off
+                  {% elif lr_current == 'cool' %}cool
+                  {% else %}off{% endif %}
+                temperature: "{{ lr_setpoint }}"
+
+        # =============================================
+        # BRANCH 2: SHOULDER SEASON (Mixed Logic)
+        # =============================================
+        - conditions:
+            - condition: template
+              value_template: "{{ season == 'shoulder' }}"
+          sequence:
+            - choose:
+                - conditions:
+                    - condition: template
+                      value_template: "{{ is_night }}"
+                  sequence:
+                    - action: climate.set_temperature
+                      target: { entity_id: climate.living_room_air }
+                      data:
+                        hvac_mode: "{{ 'heat' if lr_temp < (58 if away else 65) else 'off' }}"
+                        temperature: "{{ 58 if away else 65 }}"
+                    - action: climate.set_hvac_mode
+                      target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                      data: { hvac_mode: "off" }
+              default:
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ outdoor > 70 or lr_temp > 71 }}"
+                      sequence:
+                        - action: climate.set_temperature
+                          target: { entity_id: climate.master_bedroom_air }
+                          data: { hvac_mode: "{{ 'cool' if master_temp > 70 else 'off' }}", temperature: 70 }
+                        - action: climate.set_temperature
+                          target: { entity_id: climate.lincoln_air }
+                          data: { hvac_mode: "{{ 'cool' if lincoln_temp > 70 else 'off' }}", temperature: 70 }
+                        - action: climate.set_temperature
+                          target: { entity_id: climate.lilly_air }
+                          data: { hvac_mode: "{{ 'cool' if lilly_temp > 70 else 'off' }}", temperature: 70 }
+                        - action: climate.set_hvac_mode
+                          target: { entity_id: [climate.living_room_air, climate.dining_room] }
+                          data: { hvac_mode: "off" }
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ outdoor < 55 }}"
+                      sequence:
+                        - variables:
+                            is_bedtime: "{{ now().hour >= 18 and now().hour < 22 }}"
+                            target_lr: >-
+                              {% if is_bedtime and not away %}64{% elif away %}{{ 62 }}{% else %}68{% endif %}
+                            lr_on_at: >-
+                              {% if is_bedtime and not away %}62{% elif away %}{{ 58 }}{% else %}64{% endif %}
+                            lr_off_at: "{{ target_lr }}"
+                            lr_current: "{{ states('climate.living_room_air') }}"
+                        - action: climate.set_temperature
+                          target: { entity_id: climate.living_room_air }
+                          data:
+                            hvac_mode: >-
+                              {% if lr_temp < (lr_on_at | int) %}heat
+                              {% elif lr_temp >= (lr_off_at | int) %}off
+                              {% elif lr_current == 'heat' %}heat
+                              {% else %}off{% endif %}
+                            temperature: "{{ target_lr }}"
+                        - action: climate.set_hvac_mode
+                          target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                          data: { hvac_mode: "off" }
+                  default:
+                    - action: climate.set_hvac_mode
+                      target: { entity_id: [climate.living_room_air, climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                      data: { hvac_mode: "off" }
+
+        # =============================================
+        # BRANCH 3: HEATING SEASON (Winter Continuity)
+        # =============================================
+        - conditions:
+            - condition: template
+              value_template: "{{ season == 'heating' }}"
+          sequence:
+            - choose:
+                - conditions:
+                    - condition: template
+                      value_template: "{{ is_night }}"
+                  sequence:
+                    - choose:
+                        - conditions:
+                            - condition: template
+                              value_template: "{{ outdoor < 38 }}"
+                          sequence:
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.living_room_air }
+                              data:
+                                hvac_mode: "{{ 'heat' if lr_temp < (65 if away else 71) else 'off' }}"
+                                temperature: "{{ 65 if away else 71 }}"
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.master_bedroom_air }
+                              data: { hvac_mode: "{{ 'heat' if master_temp < 62 else 'off' }}", temperature: 62 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lincoln_air }
+                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 62 else 'off' }}", temperature: 62 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lilly_air }
+                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 62 else 'off' }}", temperature: 62 }
+                            - action: climate.set_hvac_mode
+                              target: { entity_id: climate.dining_room }
+                              data: { hvac_mode: "{{ 'heat' if lr_temp < 68 else 'off' }}" }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.dining_room }
+                              data: { temperature: 68 }
+                      default:
+                        - choose:
+                            - conditions:
+                                - condition: template
+                                  value_template: "{{ lr_night_primary }}"
+                              sequence:
+                                - action: climate.set_temperature
+                                  target: { entity_id: climate.living_room_air }
+                                  data:
+                                    hvac_mode: "{{ 'heat' if lr_temp < (58 if away else 65) else 'off' }}"
+                                    temperature: "{{ 58 if away else 65 }}"
+                                - action: climate.set_hvac_mode
+                                  target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                                  data: { hvac_mode: "off" }
+                          default:
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.master_bedroom_air }
+                              data: { hvac_mode: "{{ 'heat' if master_temp < 67 else 'off' }}", temperature: 67 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lincoln_air }
+                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 67 else 'off' }}", temperature: 67 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lilly_air }
+                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 67 else 'off' }}", temperature: 67 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.living_room_air }
+                              data: { hvac_mode: "{{ 'heat' if lr_temp < 60 else 'off' }}", temperature: 60 }
+                            - action: climate.set_hvac_mode
+                              target: { entity_id: climate.dining_room }
+                              data: { hvac_mode: "off" }
+              default:
+                - variables:
+                    is_bedtime: "{{ now().hour >= 18 and now().hour < 22 }}"
+                    target_lr: >-
+                      {% if is_bedtime and not away %}64{% elif away %}{{ 65 if outdoor < 45 else 62 }}{% else %}{{ 71 if outdoor < 45 else 68 }}{% endif %}
+                    lr_on_at: >-
+                      {% if is_bedtime and not away %}62{% elif away %}{{ 61 if outdoor < 45 else 58 }}{% else %}{{ 67 if outdoor < 45 else 64 }}{% endif %}
+                    lr_off_at: "{{ target_lr }}"
+                    lr_current: "{{ states('climate.living_room_air') }}"
+                - action: climate.set_temperature
+                  target: { entity_id: climate.living_room_air }
+                  data:
+                    hvac_mode: >-
+                      {% if lr_temp < (lr_on_at | int) %}heat
+                      {% elif lr_temp >= (lr_off_at | int) %}off
+                      {% elif lr_current == 'heat' %}heat
+                      {% else %}off{% endif %}
+                    temperature: "{{ target_lr }}"
+                - action: climate.set_hvac_mode
+                  target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                  data: { hvac_mode: "off" }
+
+# =============================================================================
+# SECTION 3: SAFETY GATES & WATCHDOGS
+# =============================================================================
+# ⚠️  DO NOT DELETE — These are non-negotiable safety systems. They operate
+#     INDEPENDENTLY of the supervisor's comfort logic. If these fire often,
+#     something is wrong with the controller, sensors, or equipment — not
+#     with the gate thresholds.
+#
+# V8.2 GATES:
+#   - Runaway Cooling Cutoff (LR): 60°F — pure equipment protection
+#   - Master Emergency Cooling Floor: 58°F — pure equipment protection
+#   - Safety Ceiling Gates: 76°F rooms — overheating protection
+#   - Manual Override Watcher: WAF — respects human intervention
+#
+# Design rule: comfort policy lives in Section 2. Runaway protection lives
+# here. The two should not overlap. If they do, the controller is broken.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# RUNAWAY COOLING CUTOFF (LR) — V8.2
+# -----------------------------------------------------------------------------
+# This is NOT a comfort gate. Normal Section 2 control turns LR off at 68°F.
+# If LR truth ever reaches 60°F while the unit is actively cooling, something
+# is broken: sensor drift, stuck compressor, failed setpoint command, runaway
+# Samsung auto mode, or cloud command lag. This is pure runaway protection.
+#
+# Under normal operation this automation should NEVER fire. If it fires,
+# investigate the controller, do not tune this threshold.
+# -----------------------------------------------------------------------------
+- id: v8_2_runaway_cooling_cutoff_lr
+  alias: "V8.2: Runaway Cooling Cutoff (LR Equipment Protection)"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      below: 60
+  condition:
+    - condition: template
+      value_template: "{{ is_state('input_select.hvac_season_mode', 'cooling') or (is_state('input_select.hvac_season_mode', 'shoulder') and states('sensor.deck_temperature_truth') | float > 70) }}"
+    - condition: state
+      entity_id: climate.living_room_air
+      state: "cool"
+  action:
+    - action: climate.set_hvac_mode
+      target: { entity_id: climate.living_room_air }
+      data: { hvac_mode: "off" }
+    - action: notify.notify
+      data:
+        title: "🧊 LR Runaway Cutoff Fired"
+        message: >
+          Living Room truth dropped below 60°F
+          ({{ states('sensor.living_room_temperature_truth') }}°F)
+          while actively cooling. Normal control stops at 68°F — this should
+          never happen. Forced off. Investigate sensor, controller, and
+          equipment before re-engaging.
+
+# -----------------------------------------------------------------------------
+# MASTER EMERGENCY COOLING FLOOR — V8.2 (NEW)
+# -----------------------------------------------------------------------------
+# Runaway protection for master bedroom. Operates regardless of time of day,
+# season, or sleep-mode state. Fills the safety gap created when master was
+# excluded from the Section 3 ceiling gate during sleep hours.
+#
+# Sleep mode allows cooling to 62°F. 58°F is 4°F below that — it means
+# sensor drift, stuck compressor, or controller failure. This is not a
+# comfort dial; it is a hardware floor.
+#
+# Under normal operation this automation should NEVER fire. If it fires,
+# investigate the controller, do not tune this threshold.
+# -----------------------------------------------------------------------------
+- id: v8_2_master_emergency_floor
+  alias: "V8.2: Master Emergency Cooling Floor"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.master_bedroom_temperature_truth
+      below: 58
+  condition:
+    - condition: state
+      entity_id: climate.master_bedroom_air
+      state: "cool"
+  action:
+    - action: climate.set_hvac_mode
+      target: { entity_id: climate.master_bedroom_air }
+      data: { hvac_mode: "off" }
+    - action: notify.notify
+      data:
+        title: "🧊 Master Emergency Floor Fired"
+        message: >
+          Master bedroom truth dropped below 58°F
+          ({{ states('sensor.master_bedroom_temperature_truth') }}°F)
+          while actively cooling. Sleep mode allows 62°F minimum — this
+          should never happen. Forced off. Investigate sensor, controller,
+          and equipment before re-engaging.
+
+# -----------------------------------------------------------------------------
+# SAFETY CEILING GATES (All-Season)
+# -----------------------------------------------------------------------------
+# During cooling season, forces aggressive cool at 68°F for 45 min. During
+# heating/shoulder, uses fan_only for 45 min (original destratification
+# behavior).
+# -----------------------------------------------------------------------------
+- id: v7_5_safety_ceiling_gates
+  alias: "V7.5: Safety Ceiling Gates (All-Season)"
+  description: >
+    V3.1 FIX: Now active in ALL seasons including cooling. During cooling
+    season, forces aggressive cool at 68°F for 45 min. During heating/shoulder,
+    uses fan_only for 45 min (original destratification behavior).
+  mode: parallel
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.master_bedroom_temperature_truth
+      above: 76
+      id: climate.master_bedroom_air
+    - platform: numeric_state
+      entity_id: sensor.lincoln_s_room_temperature_truth
+      above: 76
+      id: climate.lincoln_air
+    - platform: numeric_state
+      entity_id: sensor.lilly_s_room_temperature_truth
+      above: 76
+      id: climate.lilly_air
+  condition:
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+  action:
+    - variables:
+        season: "{{ states('input_select.hvac_season_mode') }}"
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ season == 'cooling' }}"
+          sequence:
+            - action: climate.set_temperature
+              target: { entity_id: "{{ trigger.id }}" }
+              data: { hvac_mode: "cool", temperature: 68 }
+            - delay: "00:45:00"
+            - action: climate.set_hvac_mode
+              target: { entity_id: "{{ trigger.id }}" }
+              data: { hvac_mode: "off" }
+      default:
+        - action: climate.set_hvac_mode
+          target: { entity_id: "{{ trigger.id }}" }
+          data: { hvac_mode: "fan_only" }
+        - delay: "00:45:00"
+        - action: climate.set_hvac_mode
+          target: { entity_id: "{{ trigger.id }}" }
+          data: { hvac_mode: "off" }
+
+- id: v7_5_waf_manual_override
+  alias: "V7.5: Manual Override Watcher (WAF)"
+  mode: restart
+  trigger:
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      attribute: temperature
+  condition:
+    - condition: template
+      value_template: "{{ trigger.context.parent_id is none }}"
+  action:
+    - action: timer.start
+      target: { entity_id: timer.manual_hvac_override }
+
+# =============================================================================
+# SECTION 3B: PRE-COOL LATCH (ORPHANED)
+# =============================================================================
+# ⚠️  NOTE: V8.1 and V8.2 cooling branches do not reference precool_active.
+#     This section is ORPHANED but HARMLESS — it toggles a boolean that
+#     nothing reads. Kept intact to avoid breaking the helper entity.
+#     Can be disabled in the HA UI if desired.
+# =============================================================================
+
+- id: v8_precool_latch
+  alias: "V8: Pre-Cool Latch (ORPHANED — not read by V8.2)"
+  mode: single
+  trigger:
+    - platform: time
+      at: "13:00:00"
+      id: start_window
+    - platform: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      above: 78
+      id: start_window
+    - platform: time
+      at: "17:00:00"
+      id: end_window
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      below: 68
+      id: house_too_cold
+  condition: []
+  action:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: start_window
+            - condition: state
+              entity_id: input_select.hvac_season_mode
+              state: "cooling"
+            - condition: state
+              entity_id: timer.manual_hvac_override
+              state: "idle"
+            - condition: state
+              entity_id: input_boolean.away_mode
+              state: "off"
+            - condition: time
+              after: "12:59:59"
+              before: "17:00:00"
+            - condition: numeric_state
+              entity_id: sensor.deck_temperature_truth
+              above: 78
+          sequence:
+            - action: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.precool_active
+
+        - conditions:
+            - condition: trigger
+              id: end_window
+          sequence:
+            - action: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.precool_active
+
+        - conditions:
+            - condition: trigger
+              id: house_too_cold
+            - condition: state
+              entity_id: input_select.hvac_season_mode
+              state: "cooling"
+            - condition: state
+              entity_id: input_boolean.precool_active
+              state: "on"
+          sequence:
+            - action: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.precool_active
+
+
+# =============================================================================
+# SECTION 4: GHOST ASSASSIN
+# =============================================================================
+# ⚠️  DO NOT DELETE — Kills phantom heat activation on Lincoln's Samsung head
+#     unit at 1:20 AM. This is a known SmartThings/Samsung ghost automation
+#     that cannot be disabled on the device side.
+# =============================================================================
+
+- id: v7_5_ghost_assassin
+  alias: "V7.5: Ghost Assassin (Active Monitor)"
+  mode: single
+  trigger:
+    - platform: time
+      at: "01:20:00"
+  condition:
+    - condition: state
+      entity_id: climate.lincoln_air
+      state: "heat"
+    - condition: template
+      value_template: "{{ states('input_select.hvac_season_mode') != 'heating' }}"
+  action:
+    - action: climate.set_hvac_mode
+      target: { entity_id: climate.lincoln_air }
+      data: { hvac_mode: "off" }
+    - action: notify.notify
+      data:
+        title: "👻 Ghost Blocked"
+        message: "Lincoln head unit attempted heat activation during non-heating season."
+
+
+# =============================================================================
+# SECTION 5: AUTO SEASON MODE
+# =============================================================================
+# ⚠️  DO NOT DELETE — Automatically switches input_select.hvac_season_mode
+#     based on sustained deck temperature.
+# =============================================================================
+
+- id: v7_5_auto_season_mode
+  alias: "V7.5: Auto Season Mode (Deck Truth)"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      above: 72
+      for: "02:00:00"
+      id: to_cooling
+    - platform: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      below: 45
+      for: "02:00:00"
+      id: to_heating
+    - platform: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      above: 50
+      below: 68
+      for: "02:00:00"
+      id: to_shoulder
+  action:
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.hvac_season_mode
+      data:
+        option: >
+          {% if trigger.id == 'to_cooling' %}cooling
+          {% elif trigger.id == 'to_heating' %}heating
+          {% else %}shoulder{% endif %}
+    - action: notify.notify
+      data:
+        title: "🌡️ Season Mode Changed"
+        message: "Auto-switched to {{ states('input_select.hvac_season_mode') }} (Deck: {{ states('sensor.deck_temperature_truth') }}°F)"
+
+
+# =============================================================================
+# SECTION 6: SHOULDER SEASON FAN DESTRATIFICATION
+# =============================================================================
+# ⚠️  DO NOT DELETE — V8 Priority 2: Airflow Mixing.
+# =============================================================================
+
+- id: v8_comfort_fan_destratification
+  alias: "V8: Shoulder Season Fan Destratification"
+  mode: single
+  trigger:
+    - platform: time_pattern
+      minutes: "7"
+    - platform: time_pattern
+      minutes: "22"
+    - platform: time_pattern
+      minutes: "37"
+    - platform: time_pattern
+      minutes: "52"
+  condition:
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+    - condition: template
+      value_template: "{{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}"
+  action:
+    - variables:
+        lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
+        master_temp: "{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}"
+        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
+        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}"
+        lincoln_fan_allowed: "{{ is_state('binary_sensor.lincoln_presence_debounced_v3', 'off') }}"
+        is_daytime: "{{ now().hour >= 8 and now().hour < 20 }}"
+        master_fan_allowed: "{{ is_daytime }}"
+        lilly_fan_allowed: "{{ is_daytime }}"
+        master_delta: "{{ master_temp - lr_temp }}"
+        lincoln_delta: "{{ lincoln_temp - lr_temp }}"
+        lilly_delta: "{{ lilly_temp - lr_temp }}"
+
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: >
+                {{ is_state('climate.master_bedroom_air', 'off')
+                   and master_delta >= 3.0
+                   and master_fan_allowed }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.master_bedroom_air }
+              data: { hvac_mode: "fan_only" }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.master_bedroom_air }
+              data: { fan_mode: "auto" }
+        - conditions:
+            - condition: template
+              value_template: >
+                {% set runtime = (now() - states.climate.master_bedroom_air.last_changed).total_seconds() %}
+                {{ is_state('climate.master_bedroom_air', 'fan_only')
+                   and (
+                     (master_delta <= 1.0 and runtime >= 2700)
+                     or
+                     (not master_fan_allowed and master_temp < 76)
+                   )
+                }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.master_bedroom_air }
+              data: { hvac_mode: "off" }
+
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: >
+                {{ is_state('climate.lincoln_air', 'off')
+                   and lincoln_delta >= 3.0
+                   and lincoln_fan_allowed }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lincoln_air }
+              data: { hvac_mode: "fan_only" }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.lincoln_air }
+              data: { fan_mode: "auto" }
+        - conditions:
+            - condition: template
+              value_template: >
+                {% set runtime = (now() - states.climate.lincoln_air.last_changed).total_seconds() %}
+                {{ is_state('climate.lincoln_air', 'fan_only')
+                   and (
+                     (lincoln_delta <= 1.0 and runtime >= 2700)
+                     or
+                     (not lincoln_fan_allowed and lincoln_temp < 76)
+                   )
+                }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lincoln_air }
+              data: { hvac_mode: "off" }
+
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: >
+                {{ is_state('climate.lilly_air', 'off')
+                   and lilly_delta >= 3.0
+                   and lilly_fan_allowed }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lilly_air }
+              data: { hvac_mode: "fan_only" }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.lilly_air }
+              data: { fan_mode: "auto" }
+        - conditions:
+            - condition: template
+              value_template: >
+                {% set runtime = (now() - states.climate.lilly_air.last_changed).total_seconds() %}
+                {{ is_state('climate.lilly_air', 'fan_only')
+                   and (
+                     (lilly_delta <= 1.0 and runtime >= 2700)
+                     or
+                     (not lilly_fan_allowed and lilly_temp < 76)
+                   )
+                }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lilly_air }
+              data: { hvac_mode: "off" }
+
+
+# =============================================================================
+# SECTION 7: SOLAR SHADE PROTECTION
+# =============================================================================
+# ⚠️  DO NOT DELETE — Controls LR west-facing blinds.
+# =============================================================================
+
+- id: v8_shade_night_privacy
+  alias: "V8: Shade Night Privacy (Sunset)"
+  mode: single
+  trigger:
+    - platform: sun
+      event: sunset
+  condition:
+    - condition: state
+      entity_id: timer.shade_manual_override
+      state: "idle"
+  action:
+    - variables:
+        shade_entities:
+          - cover.shade_1
+          - cover.shade_2
+        privacy_tilt: 0
+    - action: cover.set_cover_tilt_position
+      target:
+        entity_id: "{{ shade_entities }}"
+      data:
+        tilt_position: "{{ privacy_tilt }}"
+
+- id: v8_shade_morning_open
+  alias: "V8: Shade Morning Daylight (Sunrise +30)"
+  mode: single
+  trigger:
+    - platform: sun
+      event: sunrise
+      offset: "00:30:00"
+  condition:
+    - condition: state
+      entity_id: timer.shade_manual_override
+      state: "idle"
+  action:
+    - variables:
+        shade_entities:
+          - cover.shade_1
+          - cover.shade_2
+        morning_tilt: 50
+    - action: cover.set_cover_tilt_position
+      target:
+        entity_id: "{{ shade_entities }}"
+      data:
+        tilt_position: "{{ morning_tilt }}"
+
+- id: v8_shade_manual_override
+  alias: "V8: Shade Manual Override Watcher"
+  mode: restart
+  trigger:
+    - platform: state
+      entity_id:
+        - cover.shade_1
+        - cover.shade_2
+      attribute: current_tilt_position
+    - platform: state
+      entity_id:
+        - cover.shade_1
+        - cover.shade_2
+  condition:
+    - condition: template
+      value_template: "{{ trigger.context.parent_id is none }}"
+  action:
+    - action: timer.start
+      target:
+        entity_id: timer.shade_manual_override
+
+- id: v8_shade_afternoon_solar_rejection
+  alias: "V8: Shade Afternoon Solar Rejection"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.shade_1_light_level
+      above: 7000
+      for: "00:10:00"
+    - platform: numeric_state
+      entity_id: sensor.shade_2_light_level
+      above: 7000
+      for: "00:10:00"
+    - platform: time_pattern
+      minutes: "/10"
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      above: 71
+      for: "00:10:00"
+  condition:
+    - condition: state
+      entity_id: timer.shade_manual_override
+      state: "idle"
+    - condition: template
+      value_template: >
+        {{ states('input_select.hvac_season_mode') in ['cooling', 'shoulder'] }}
+    - condition: time
+      after: "13:30:00"
+      before: "18:00:00"
+    - condition: template
+      value_template: >
+        {{
+          (
+            states('sensor.shade_1_light_level') | float(0) > 7000
+            or
+            states('sensor.shade_2_light_level') | float(0) > 7000
+          )
+          and
+          (states('sensor.living_room_temperature_truth') | float(0) > 71.0)
+        }}
+    - condition: template
+      value_template: >
+        {{
+          (state_attr('cover.shade_1', 'current_tilt_position') | int(50) > 10)
+          or
+          (state_attr('cover.shade_2', 'current_tilt_position') | int(50) > 10)
+        }}
+  action:
+    - variables:
+        shade_entities:
+          - cover.shade_1
+          - cover.shade_2
+        solar_rejection_tilt: 10
+    - action: cover.set_cover_tilt_position
+      target:
+        entity_id: "{{ shade_entities }}"
+      data:
+        tilt_position: "{{ solar_rejection_tilt }}"
+
+# =============================================================================
+# SECTION 7B: SOLAR HARVEST (Shoulder/Heating Passive Gain)
+# =============================================================================
+# ⚠️  DO NOT DELETE — Complements Section 7's solar rejection.
+# =============================================================================
+
+- id: v8_shade_solar_harvest
+  alias: "V8: Solar Harvest (Free Heat)"
+  mode: single
+  trigger:
+    - platform: time_pattern
+      minutes: "/15"
+    - platform: numeric_state
+      entity_id: sensor.shade_1_light_level
+      above: 5000
+      for: "00:05:00"
+    - platform: numeric_state
+      entity_id: sensor.shade_2_light_level
+      above: 5000
+      for: "00:05:00"
+  condition:
+    - condition: state
+      entity_id: timer.shade_manual_override
+      state: "idle"
+    - condition: template
+      value_template: >
+        {{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}
+    - condition: time
+      after: "08:00:00"
+      before: "13:30:00"
+    - condition: template
+      value_template: >
+        {{
+          states('sensor.shade_1_light_level') | float(0) > 5000
+          or
+          states('sensor.shade_2_light_level') | float(0) > 5000
+        }}
+    - condition: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      below: 69
+    - condition: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      above: 35
+    - condition: template
+      value_template: >
+        {{
+          (state_attr('cover.shade_1', 'current_tilt_position') | int(100) < 100)
+          or
+          (state_attr('cover.shade_2', 'current_tilt_position') | int(100) < 100)
+        }}
+  action:
+    - action: cover.set_cover_tilt_position
+      target:
+        entity_id:
+          - cover.shade_1
+          - cover.shade_2
+      data:
+        tilt_position: 100
+
+
+# =============================================================================
+# SECTION 8: SAMSUNG AUTO GUARDRAIL
+# =============================================================================
+# ⚠️  DO NOT DELETE — Watches all Samsung heads for unwanted Auto-mode behavior.
+# =============================================================================
+
+- id: v8_samsung_auto_guardrail
+  alias: "V8: Samsung Auto Guardrail"
+  mode: parallel
+  trigger:
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      attribute: hvac_action
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      to: "auto"
+    - platform: time_pattern
+      minutes: "/10"
+  condition:
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+  action:
+    - repeat:
+        for_each:
+          - climate_entity: climate.living_room_air
+            temp_entity: sensor.living_room_temperature_truth
+            room_name: Living Room
+          - climate_entity: climate.master_bedroom_air
+            temp_entity: sensor.master_bedroom_temperature_truth
+            room_name: Master
+          - climate_entity: climate.lincoln_air
+            temp_entity: sensor.lincoln_s_room_temperature_truth
+            room_name: Lincoln
+          - climate_entity: climate.lilly_air
+            temp_entity: sensor.lilly_s_room_temperature_truth
+            room_name: Lilly
+        sequence:
+          - variables:
+              climate_entity: "{{ repeat.item.climate_entity }}"
+              temp_entity: "{{ repeat.item.temp_entity }}"
+              room_name: "{{ repeat.item.room_name }}"
+              room_temp: "{{ states(temp_entity) | float(70) }}"
+              mode: "{{ states(climate_entity) }}"
+              action_now: "{{ state_attr(climate_entity, 'hvac_action') | default('unknown') }}"
+              setpoint: "{{ state_attr(climate_entity, 'temperature') | float(0) }}"
+              season: "{{ states('input_select.hvac_season_mode') }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'heating'
+                         and season != 'heating' }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto Heat Blocked"
+                      message: >
+                        {{ room_name }} entered auto heating during {{ season }}
+                        season. Room {{ room_temp }}°F, setpoint {{ setpoint }}.
+                        Forced off.
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'heating'
+                         and room_temp >= 68 }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto Comfort Override"
+                      message: >
+                        {{ room_name }} tried heating in auto at {{ room_temp }}°F
+                        (setpoint {{ setpoint }}). Forced off to prevent overheating.
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'heating'
+                         and setpoint >= 72 }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto High-Setpoint Blocked"
+                      message: >
+                        {{ room_name }} auto mode attempted heat with setpoint
+                        {{ setpoint }}. Forced off.
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'cooling'
+                         and season == 'heating' }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto Cool Blocked"
+                      message: >
+                        {{ room_name }} entered auto cooling during heating
+                        season. Room {{ room_temp }}°F, setpoint {{ setpoint }}.
+                        Forced off.
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'cooling'
+                         and setpoint <= 58 }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto Overcool Blocked"
+                      message: >
+                        {{ room_name }} auto mode attempted cool with setpoint
+                        {{ setpoint }}°F. Forced off.
+
+# =============================================================================
+# SECTION 9: TRUTH SENSOR HEALTH ALERT
+# =============================================================================
+# ⚠️  DO NOT DELETE — Alerts when truth sensor contributor count drops below 2.
+# =============================================================================
+
+- id: v8_truth_count_alert
+  alias: "V8: Truth Sensor Health Alert"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth_active_count
+      below: 2
+      for: "00:30:00"
+      id: lr_low
+    - platform: numeric_state
+      entity_id: sensor.lincoln_temperature_truth_active_count
+      below: 2
+      for: "00:30:00"
+      id: lincoln_low
+  action:
+    - action: notify.notify
+      data:
+        title: "⚠️ Truth Sensor Degraded"
+        message: >
+          {{ 'Living Room' if trigger.id == 'lr_low' else "Lincoln's Room" }}
+          truth is running on {{ states(trigger.entity_id) }} contributor(s)
+          for 30+ minutes. Check sensor health.
+
+# =============================================================================
+# SECTION 10: MASTER BEDROOM PRE-COOL (DISABLED)
+# =============================================================================
+# ⚠️  DISABLED as of V8.1 and still disabled in V8.2. The new cooling branch
+#     maintains master at 68/72 during the day and switches to 63/62/66 sleep
+#     mode at 6pm. Section 10's 4pm-10pm pre-cool to 68°F would fight the
+#     sleep target in the 6pm-10pm window.
+# =============================================================================
+
+- id: v8_master_precool_nightly
+  alias: "V8: Master Pre-Cool (DISABLED — superseded by V8.1/V8.2)"
+  mode: single
+  trigger:
+    - platform: time_pattern
+      minutes: "/15"
+  condition:
+    # Always-false gate — this automation never fires
+    - condition: template
+      value_template: "{{ false }}"
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+    - condition: state
+      entity_id: input_boolean.away_mode
+      state: "off"
+    - condition: time
+      after: "16:00:00"
+      before: "22:00:00"
+    - condition: numeric_state
+      entity_id: sensor.master_bedroom_temperature_truth
+      above: 68
+  action:
+    - action: climate.set_temperature
+      target:
+        entity_id: climate.master_bedroom_air
+      data:
+        hvac_mode: "cool"
+        temperature: 68
+
+
+# =============================================================================
+# SECTION 11: HVAC TRANSITION LOGGER (V8.3)
+# =============================================================================
+# ⚠️  Lightweight audit trail for V8.3 HVAC behavior.
+#     Writes to the HA Logbook on every cool⇄off and heat⇄off transition 
+#     per head with room temp and setpoint context. Lets you see exactly when 
+#     each unit engaged and disengaged during hysteresis tracking.
+#
+#     View in: Home Assistant → Logbook panel, filter by climate entity.
+#
+#     This is diagnostic, not control. Safe to delete once V8.3 behavior
+#     is trusted. Does NOT affect climate decisions in any way.
+# =============================================================================
+
+- id: v8_3_hvac_transition_log
+  alias: "V8.3: HVAC Transition Logger"
+  mode: parallel
+  max: 20
+  trigger:
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      from: "off"
+      to:
+        - "cool"
+        - "heat"
+      id: engage
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      from:
+        - "cool"
+        - "heat"
+      to: "off"
+      id: disengage
+  action:
+    - variables:
+        entity: "{{ trigger.entity_id }}"
+        room_name: >-
+          {% if 'living_room' in entity %}Living Room
+          {% elif 'master' in entity %}Master
+          {% elif 'lincoln' in entity %}Lincoln
+          {% elif 'lilly' in entity %}Lilly
+          {% else %}Unknown{% endif %}
+        truth_entity: >-
+          {% if 'living_room' in entity %}sensor.living_room_temperature_truth
+          {% elif 'master' in entity %}sensor.master_bedroom_temperature_truth
+          {% elif 'lincoln' in entity %}sensor.lincoln_s_room_temperature_truth
+          {% elif 'lilly' in entity %}sensor.lilly_s_room_temperature_truth
+          {% else %}none{% endif %}
+        room_temp: "{{ states(truth_entity | trim) }}"
+        setpoint: "{{ state_attr(entity, 'temperature') }}"
+        action_verb: "{{ 'ENGAGED' if trigger.id == 'engage' else 'DISENGAGED' }}"
+        mode_str: "{{ trigger.to_state.state if trigger.id == 'engage' else trigger.from_state.state }}"
+    - action: logbook.log
+      data:
+        name: "V8.3 HVAC"
+        message: >-
+          {{ room_name | trim }} {{ action_verb }} {{ mode_str }} at {{ room_temp }}°F
+          (setpoint {{ setpoint }}°F, outdoor
+          {{ states('sensor.deck_temperature_truth') }}°F)
+        entity_id: "{{ entity }}"# =============================================================================
+# MOOSE HOUSE CLIMATE — COMPLETE AUTOMATIONS.YAML
+# Last Updated: April 25, 2026
+# Architecture: V8.3 — Comfort-First Hotfix with Stack-Effect Mitigation
+# =============================================================================
+#
+# ⚠️  LLM INSTRUCTION: This file contains MULTIPLE independent systems.
+#     If you are editing ONE section, DO NOT delete or modify other sections.
+#     Each section is marked with a block header. Preserve all blocks intact.
+#     If you are rewriting this file, include ALL sections below or you will
+#     break data collection, safety systems, or climate control.
+#
+# SECTIONS IN THIS FILE:
+#   1.  DATA COLLECTION (v5 tracker — Semantic Heritage Schema)
+#   2.  MAIN SUPERVISOR (V8.2 Deadband + V8.3 LR Heating Deadband)
+#   3.  SAFETY GATES (runaway cutoff, emergency floor, ceiling, override)
+#   3B. PRE-COOL LATCH (ORPHANED — helper retained, nothing reads it)
+#   4.  GHOST ASSASSIN (Lincoln phantom heat kill)
+#   5.  AUTO SEASON MODE (deck temp → season switching)
+#   6.  SHOULDER SEASON FAN DESTRATIFICATION (Priority 2 Airflow Mixing)
+#   7.  SOLAR SHADE PROTECTION (Privacy, Morning, Solar Rejection)
+#   7B. SOLAR HARVEST (Shoulder/Heating Passive Gain)
+#   8.  SAMSUNG AUTO GUARDRAIL (Anti-rogue auto mode logic)
+#   9.  TRUTH SENSOR HEALTH ALERT
+#   10. MASTER PRE-COOL (DISABLED — superseded by V8.1/V8.2 cooling branch)
+#   11. HVAC TRANSITION LOGGER (V8.3 — audit trail for heating/cooling behavior)
+#
+# DEPENDENCIES (helpers that must exist):
+#   - input_select.hvac_season_mode (heating / shoulder / cooling)
+#   - input_boolean.night_mode_lr_primary (on = Claude night mode)
+#   - input_boolean.precool_active (orphaned in V8.2 but still toggled by 3B)
+#   - timer.manual_hvac_override (1 hour default)
+#   - timer.shade_manual_override (2 hour default)
+#   - input_boolean.away_mode (away/vacation — relaxes all targets)
+#
+# =============================================================================
+# V8.2 DOCTRINE NOTE — HONEST FRAMING
+# =============================================================================
+#
+# What V8.2 is:
+#   A comfort-first hotfix for the April 15 cooling complaint. Replaces the
+#   waterfall target ladder with a simple 68/72 deadband across all rooms,
+#   adds a master sleep mode at 63/62/66 from 6pm-6am, and reintroduces two
+#   explicit safety backstops: a master runaway emergency floor at 58°F and
+#   a renamed LR runaway cutoff at 60°F.
+#
+# What V8.2 is NOT:
+#   The final control architecture. It uses HVAC mode as deadband memory,
+#   which is a known-imperfect shortcut (degrades gracefully when device
+#   and controller intent diverge). It issues commands on every supervisor
+#   tick rather than on transitions. It has no explicit multi-head capacity
+#   arbitration.
+#
+# Capacity arbitration is NOT removed as a concept — it is DEFERRED until
+# there is measured evidence of real multi-head starvation under load. The
+# old saturation_block_lr logic was misapplied (it suppressed LR comfort to
+# protect upstairs rooms that weren't actually starving). If real starvation
+# symptoms appear on a 95°F day with all four heads calling, that's a real
+# signal worth designing for — but preemptive LR lockout is not the answer.
+#
+# V9 architecture pass should address:
+#   - Explicit input_boolean latches for cooling_engaged per room
+#   - Command-on-transition instead of command-on-every-tick
+#   - Measured-evidence capacity arbitration (only kicks in under pressure)
+#   - Separation of comfort logic from runaway protection (already started)
+#
+# =============================================================================
+# V8.3 CHANGELOG (April 25, 2026):
+#
+#   CHANGES FROM V8.2:
+#     • SECTION 2: Added LR heating deadband (target at top of band) and bedtime 
+#       LR setpoint reduction (target 64°F, deadband 62-64°F, 18:00-22:00) to 
+#       prevent compressor short-cycling and passively reduce stack-effect heating.
+#     • SECTION 6: Added explicit fan_mode: auto commands to engage branches
+#       to prevent manual turbo overrides from sticking for 10+ hours.
+#     • Branch 1.5 (Bedtime Master Cooling) prototyped and removed in favor 
+#       of the passive LR-source approach above.
+#     • SECTION 11: Expanded logger to capture heating hysteresis transitions.
+#
+# =============================================================================
+
+
+# =============================================================================
+# SECTION 1: DATA COLLECTION (V5 Semantic Heritage Schema)
+# =============================================================================
+# ⚠️  DO NOT DELETE — This is the telemetry pipeline to Google Sheets.
+#     Without this, no experiment data is captured.
+#     Worksheet: VTherm_Launch_Data_v5
+# =============================================================================
+
+- id: vtherm_mega_tracker_v5
+  alias: 'Experiment Data: Export to Google Sheets v5'
+  description: >
+    V5 — Semantic Heritage Schema. Clean headers mapping lineage to entities.
+  trigger:
+  - minutes: /15
+    trigger: time_pattern
+  condition: []
+  action:
+  - action: google_sheets.append_sheet
+    data:
+      config_entry: 01KK2B80DRS1S94GERW6XRRM1E
+      worksheet: VTherm_Launch_Data_v5
+      data:
+        # 1. Timestamp / Global Context
+        Timestamp: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+        Season_Mode: "{% set v = states('input_select.hvac_season_mode') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Night_Mode_Toggle: "{% set v = states('input_boolean.night_mode_lr_primary') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Away_Mode: "{% set v = states('input_boolean.away_mode') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 2. Outdoor / Deck
+        Deck_Temp_Truth: "{% set v = states('sensor.deck_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Hum_Truth: "{% set v = states('sensor.deck_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Temp_RoomProbe_BT: "{% set v = states('sensor.deck_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Hum_RoomProbe_BT: "{% set v = states('sensor.deck_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Temp_RoomProbe_ST: "{% set v = states('sensor.deck_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Hum_RoomProbe_ST: "{% set v = states('sensor.deck_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Temp_RoomProbe_Matter: "{% set v = states('sensor.deck_temp_temperature_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Deck_Hum_RoomProbe_Matter: "{% set v = states('sensor.deck_temp_humidity_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 3. Living Room
+        LR_Temp_Truth: "{% set v = states('sensor.living_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_Truth: "{% set v = states('sensor.living_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Temp_RoomProbe_BT_Primary: "{% set v = states('sensor.hub_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_RoomProbe_BT_Primary: "{% set v = states('sensor.hub_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Temp_RoomProbe_ST: "{% set v = states('sensor.hub_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_RoomProbe_ST: "{% set v = states('sensor.hub_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Temp_RoomProbe_BT_Secondary: "{% set v = states('sensor.hub_2_tempsensor_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_RoomProbe_BT_Secondary: "{% set v = states('sensor.hub_2_humisensor_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Temp_HVAC_Samsung: "{% set v = states('sensor.living_room_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Hum_HVAC_Samsung: "{% set v = states('sensor.living_room_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_CO2_Diag_MSR: "{% set v = states('sensor.living_room_msr_co2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 4. Master Bedroom
+        Master_Temp_Truth: "{% set v = states('sensor.master_bedroom_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_Truth: "{% set v = states('sensor.master_bedroom_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Temp_RoomProbe_BT: "{% set v = states('sensor.master_bedroom_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_RoomProbe_BT: "{% set v = states('sensor.master_bedroom_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Temp_RoomProbe_ST: "{% set v = states('sensor.master_bedroom_temperature_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_RoomProbe_ST: "{% set v = states('sensor.master_bedroom_temperature_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Temp_RoomProbe_Matter: "{% set v = states('sensor.master_bedroom_temp_temperature_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_RoomProbe_Matter: "{% set v = states('sensor.master_bedroom_temp_humidity_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Temp_HVAC_Samsung: "{% set v = states('sensor.master_bedroom_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Hum_HVAC_Samsung: "{% set v = states('sensor.master_bedroom_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 5. Lincoln's Room
+        Lincoln_Temp_Truth: "{% set v = states('sensor.lincoln_s_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_Truth: "{% set v = states('sensor.lincoln_s_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_RoomProbe_BT: "{% set v = states('sensor.lincoln_s_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_RoomProbe_BT: "{% set v = states('sensor.lincoln_s_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_RoomProbe_ST: "{% set v = states('sensor.lincoln_s_room_temperature_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_RoomProbe_ST: "{% set v = states('sensor.lincoln_s_room_temperature_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_RoomProbe_Matter: "{% set v = states('sensor.lincoln_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_RoomProbe_Matter: "{% set v = states('sensor.lincoln_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_HVAC_Samsung: "{% set v = states('sensor.lincoln_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Hum_HVAC_Samsung: "{% set v = states('sensor.lincoln_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Temp_Diag_MSR: "{% set v = states('sensor.lincoln_msr_dps310_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Pressure_Diag_MSR: "{% set v = states('sensor.lincoln_msr_dps310_pressure') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_ESPTemp_Diag_MSR: "{% set v = states('sensor.lincoln_msr_esp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 6. Lilly's Room
+        Lilly_Temp_Truth: "{% set v = states('sensor.lilly_s_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_Truth: "{% set v = states('sensor.lilly_s_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Temp_RoomProbe_BT: "{% set v = states('sensor.lilly_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_RoomProbe_BT: "{% set v = states('sensor.lilly_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Temp_RoomProbe_ST: "{% set v = states('sensor.lilly_room_temperature_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_RoomProbe_ST: "{% set v = states('sensor.lilly_room_temperature_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Temp_RoomProbe_Matter: "{% set v = states('sensor.lilly_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_RoomProbe_Matter: "{% set v = states('sensor.lilly_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Temp_HVAC_Samsung: "{% set v = states('sensor.lilly_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Hum_HVAC_Samsung: "{% set v = states('sensor.lilly_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 7. Laundry
+        Laundry_Temp_Truth: "{% set v = states('sensor.laundry_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Hum_Truth: "{% set v = states('sensor.laundry_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Temp_RoomProbe_BT: "{% set v = states('sensor.laundry_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Hum_RoomProbe_BT: "{% set v = states('sensor.laundry_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Temp_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Hum_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Temp_RoomProbe_Matter: "{% set v = states('sensor.laundry_room_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Laundry_Hum_RoomProbe_Matter: "{% set v = states('sensor.laundry_room_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 8. Office
+        Office_Temp_Truth: "{% set v = states('sensor.office_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_Truth: "{% set v = states('sensor.office_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Temp_Anchor_Netatmo: "{% set v = states('sensor.indoor_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_Anchor_Netatmo: "{% set v = states('sensor.indoor_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_CO2_Anchor_Netatmo: "{% set v = states('sensor.indoor_carbon_dioxide') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Pressure_Anchor_Netatmo: "{% set v = states('sensor.indoor_atmospheric_pressure') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Noise_Anchor_Netatmo: "{% set v = states('sensor.indoor_noise') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Temp_RoomProbe_BT: "{% set v = states('sensor.office_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_RoomProbe_BT: "{% set v = states('sensor.office_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Temp_RoomProbe_ST: "{% set v = states('sensor.office_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_RoomProbe_ST: "{% set v = states('sensor.office_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Temp_RoomProbe_Matter: "{% set v = states('sensor.office_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Office_Hum_RoomProbe_Matter: "{% set v = states('sensor.office_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 9. Dining / Nest / Boiler
+        Dining_Temp_Anchor_Nest: "{% set v = states('sensor.dining_room_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Dining_Hum_Anchor_Nest: "{% set v = states('sensor.dining_room_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Dining_Mode_Nest: "{% set v = states('climate.dining_room') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Dining_Action_Nest: "{% set v = state_attr('climate.dining_room', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Dining_Setpoint_Nest: "{% set v = state_attr('climate.dining_room', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Boiler_Runtime_Today_Hrs: "{% set v = states('sensor.boiler_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 10. HVAC Runtime / State
+        LR_Air_Mode: "{% set v = states('climate.living_room_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Air_Action: "{% set v = state_attr('climate.living_room_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        LR_Air_Setpoint: "{% set v = state_attr('climate.living_room_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        LR_Air_Fan_Mode: "{% set v = state_attr('climate.living_room_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        LR_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lr_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        Master_Air_Mode: "{% set v = states('climate.master_bedroom_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Master_Air_Action: "{% set v = state_attr('climate.master_bedroom_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Master_Air_Setpoint: "{% set v = state_attr('climate.master_bedroom_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Master_Air_Fan_Mode: "{% set v = state_attr('climate.master_bedroom_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Master_HP_Runtime_Today_Hrs: "{% set v = states('sensor.master_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        Lincoln_Air_Mode: "{% set v = states('climate.lincoln_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Air_Action: "{% set v = state_attr('climate.lincoln_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lincoln_Air_Setpoint: "{% set v = state_attr('climate.lincoln_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lincoln_Air_Fan_Mode: "{% set v = state_attr('climate.lincoln_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lincoln_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lincoln_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        Lilly_Air_Mode: "{% set v = states('climate.lilly_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lilly_Air_Action: "{% set v = state_attr('climate.lilly_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lilly_Air_Setpoint: "{% set v = state_attr('climate.lilly_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lilly_Air_Fan_Mode: "{% set v = state_attr('climate.lilly_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Lilly_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lilly_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 11. Presence
+        LR_Presence_MSR: "{% set v = states('binary_sensor.living_room_msr_radar_zone_3_occupancy') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Presence_MSR: "{% set v = states('binary_sensor.lincoln_msr_radar_zone_3_occupancy') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        LR_Presence_Today_Hrs: "{% set v = states('sensor.lr_presence_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Presence_Today_Hrs: "{% set v = states('sensor.lincoln_presence_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 12. Shades / Solar
+        Shade_1_State: "{% set v = states('cover.shade_1') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Shade_2_State: "{% set v = states('cover.shade_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Shade_1_Tilt: "{% set v = state_attr('cover.shade_1', 'current_tilt_position') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Shade_2_Tilt: "{% set v = state_attr('cover.shade_2', 'current_tilt_position') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+        Shade_1_Light: "{% set v = states('sensor.shade_1_light_level') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Shade_2_Light: "{% set v = states('sensor.shade_2_light_level') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 13. Diagnostics
+        LR_Truth_Count: "{% set v = states('sensor.living_room_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Lincoln_Truth_Count: "{% set v = states('sensor.lincoln_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+
+# =============================================================================
+# SECTION 2: MAIN SUPERVISOR (V8.2 Deadband Cooling + V8.3 LR Heating Deadband)
+# =============================================================================
+# ⚠️  DO NOT DELETE — This is the central climate brain. It runs every 15 min
+#     and controls ALL mini-split heads + Nest based on truth sensors, season
+#     mode, time of day, and outdoor temperature.
+#
+#     V8.2 COOLING DOCTRINE:
+#       All rooms, all hours: setpoint 68, off ≤68, on >72 (4°F deadband)
+#       Master 6pm-6am override: setpoint 63, off ≤62, on >66 (sleep cold)
+#       Away: setpoint 74, off ≤74, on >76 (relaxed)
+#       Deadband = maintain current HVAC mode (imperfect but graceful)
+#
+#     V8.3 HEATING DOCTRINE (NEW):
+#       Heating/Shoulder daytime: top-anchored deadband (target 68, off ≥68, on <64)
+#       to prevent short-cycling.
+#       Bedtime (18:00-22:00, non-away): LR target drops to 64, deadband 62-64°F,
+#       to passively reduce stack-effect upstairs heating.
+#       Overnight (22:00-06:00) paths unchanged from V8.2 (deferred to V8.4).
+#
+#     KNOWN IMPERFECTIONS (deferred to V9):
+#       - Deadband uses HVAC mode as memory; controller intent, not true
+#         compressor call-for-cooling. Fails gracefully if device and intent
+#         diverge between 15-min ticks.
+#       - Commands issued every tick rather than on transitions. Harmless
+#         but noisy. Section 11 logger exists to make behavior observable.
+#       - No multi-head capacity arbitration. Deferred until there is
+#         measured evidence of real starvation under load.
+# =============================================================================
+
+- id: v7_5_main_supervisor
+  alias: "V8.3: Main Supervisor (Deadband Cooling + Heating)"
+  mode: single
+  trigger:
+    - platform: time_pattern
+      minutes: "/15"
+    - platform: state
+      entity_id: input_select.hvac_season_mode
+  condition:
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+  action:
+    - variables:
+        outdoor: "{{ states('sensor.deck_temperature_truth') | float(50) }}"
+        lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
+        master_temp: "{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}"
+        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
+        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}"
+        is_night: "{{ now().hour >= 22 or now().hour < 6 }}"
+        season: "{{ states('input_select.hvac_season_mode') }}"
+        lr_night_primary: "{{ is_state('input_boolean.night_mode_lr_primary', 'on') }}"
+        away: "{{ is_state('input_boolean.away_mode', 'on') }}"
+
+    - choose:
+        # =============================================
+        # BRANCH 1: COOLING SEASON (V8.2 Deadband)
+        # =============================================
+        #
+        # LOGIC PER ROOM:
+        #   temp > on_at  → cool (engage)
+        #   temp ≤ off_at → off  (disengage)
+        #   in between    → hold current state (deadband via HVAC mode)
+        #
+        # The Samsung setpoint does the fine-grained work.
+        # The supervisor just decides ON vs OFF with hysteresis.
+        # Safety backstops live in Section 3 (runaway cutoff, emergency
+        # floor, ceiling gates). They operate independently of this logic.
+        # =============================================
+        - conditions:
+            - condition: template
+              value_template: "{{ season == 'cooling' }}"
+          sequence:
+            # Nest always off during cooling
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.dining_room }
+              data: { hvac_mode: "off" }
+
+            # ---------------------------------------------------------
+            # MASTER BEDROOM
+            # 6pm-6am: Sleep mode (63°F set / off ≤62 / on >66)
+            # 6am-6pm: Normal    (68°F set / off ≤68 / on >72)
+            # Away:    Relaxed   (74°F set / off ≤74 / on >76)
+            # Runaway floor at 58°F lives in Section 3 (independent).
+            # ---------------------------------------------------------
+            - variables:
+                is_master_sleep: "{{ now().hour >= 18 or now().hour < 6 }}"
+                m_setpoint: "{{ 74 if away else (63 if is_master_sleep else 68) }}"
+                m_off_at: "{{ 74 if away else (62 if is_master_sleep else 68) }}"
+                m_on_at: "{{ 76 if away else (66 if is_master_sleep else 72) }}"
+                m_current: "{{ states('climate.master_bedroom_air') }}"
+            - action: climate.set_temperature
+              target: { entity_id: climate.master_bedroom_air }
+              data:
+                hvac_mode: >-
+                  {% if master_temp > m_on_at %}cool
+                  {% elif master_temp <= m_off_at %}off
+                  {% elif m_current == 'cool' %}cool
+                  {% else %}off{% endif %}
+                temperature: "{{ m_setpoint }}"
+
+            # ---------------------------------------------------------
+            # LINCOLN'S ROOM
+            # All hours: 68°F set / off ≤68 / on >72
+            # Away:      74°F set / off ≤74 / on >76
+            # ---------------------------------------------------------
+            - variables:
+                l_setpoint: "{{ 74 if away else 68 }}"
+                l_off_at: "{{ 74 if away else 68 }}"
+                l_on_at: "{{ 76 if away else 72 }}"
+                l_current: "{{ states('climate.lincoln_air') }}"
+            - action: climate.set_temperature
+              target: { entity_id: climate.lincoln_air }
+              data:
+                hvac_mode: >-
+                  {% if lincoln_temp > l_on_at %}cool
+                  {% elif lincoln_temp <= l_off_at %}off
+                  {% elif l_current == 'cool' %}cool
+                  {% else %}off{% endif %}
+                temperature: "{{ l_setpoint }}"
+
+            # ---------------------------------------------------------
+            # LILLY'S ROOM
+            # All hours: 68°F set / off ≤68 / on >72
+            # Away:      74°F set / off ≤74 / on >76
+            # ---------------------------------------------------------
+            - variables:
+                ly_setpoint: "{{ 74 if away else 68 }}"
+                ly_off_at: "{{ 74 if away else 68 }}"
+                ly_on_at: "{{ 76 if away else 72 }}"
+                ly_current: "{{ states('climate.lilly_air') }}"
+            - action: climate.set_temperature
+              target: { entity_id: climate.lilly_air }
+              data:
+                hvac_mode: >-
+                  {% if lilly_temp > ly_on_at %}cool
+                  {% elif lilly_temp <= ly_off_at %}off
+                  {% elif ly_current == 'cool' %}cool
+                  {% else %}off{% endif %}
+                temperature: "{{ ly_setpoint }}"
+
+            # ---------------------------------------------------------
+            # LIVING ROOM (V8.2: around-the-clock 68/72)
+            # All hours: 68°F set / off ≤68 / on >72
+            # Away:      74°F set / off ≤74 / on >76
+            # Runaway cutoff at 60°F lives in Section 3 (independent).
+            # ---------------------------------------------------------
+            - variables:
+                lr_setpoint: "{{ 74 if away else 68 }}"
+                lr_off_at: "{{ 74 if away else 68 }}"
+                lr_on_at: "{{ 76 if away else 72 }}"
+                lr_current: "{{ states('climate.living_room_air') }}"
+            - action: climate.set_temperature
+              target: { entity_id: climate.living_room_air }
+              data:
+                hvac_mode: >-
+                  {% if lr_temp > lr_on_at %}cool
+                  {% elif lr_temp <= lr_off_at %}off
+                  {% elif lr_current == 'cool' %}cool
+                  {% else %}off{% endif %}
+                temperature: "{{ lr_setpoint }}"
+
+        # =============================================
+        # BRANCH 2: SHOULDER SEASON (Mixed Logic)
+        # =============================================
+        - conditions:
+            - condition: template
+              value_template: "{{ season == 'shoulder' }}"
+          sequence:
+            - choose:
+                - conditions:
+                    - condition: template
+                      value_template: "{{ is_night }}"
+                  sequence:
+                    - action: climate.set_temperature
+                      target: { entity_id: climate.living_room_air }
+                      data:
+                        hvac_mode: "{{ 'heat' if lr_temp < (58 if away else 65) else 'off' }}"
+                        temperature: "{{ 58 if away else 65 }}"
+                    - action: climate.set_hvac_mode
+                      target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                      data: { hvac_mode: "off" }
+              default:
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ outdoor > 70 or lr_temp > 71 }}"
+                      sequence:
+                        - action: climate.set_temperature
+                          target: { entity_id: climate.master_bedroom_air }
+                          data: { hvac_mode: "{{ 'cool' if master_temp > 70 else 'off' }}", temperature: 70 }
+                        - action: climate.set_temperature
+                          target: { entity_id: climate.lincoln_air }
+                          data: { hvac_mode: "{{ 'cool' if lincoln_temp > 70 else 'off' }}", temperature: 70 }
+                        - action: climate.set_temperature
+                          target: { entity_id: climate.lilly_air }
+                          data: { hvac_mode: "{{ 'cool' if lilly_temp > 70 else 'off' }}", temperature: 70 }
+                        - action: climate.set_hvac_mode
+                          target: { entity_id: [climate.living_room_air, climate.dining_room] }
+                          data: { hvac_mode: "off" }
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ outdoor < 55 }}"
+                      sequence:
+                        - variables:
+                            is_bedtime: "{{ now().hour >= 18 and now().hour < 22 }}"
+                            target_lr: >-
+                              {% if is_bedtime and not away %}64{% elif away %}{{ 62 }}{% else %}68{% endif %}
+                            lr_on_at: >-
+                              {% if is_bedtime and not away %}62{% elif away %}{{ 58 }}{% else %}64{% endif %}
+                            lr_off_at: "{{ target_lr }}"
+                            lr_current: "{{ states('climate.living_room_air') }}"
+                        - action: climate.set_temperature
+                          target: { entity_id: climate.living_room_air }
+                          data:
+                            hvac_mode: >-
+                              {% if lr_temp < (lr_on_at | int) %}heat
+                              {% elif lr_temp >= (lr_off_at | int) %}off
+                              {% elif lr_current == 'heat' %}heat
+                              {% else %}off{% endif %}
+                            temperature: "{{ target_lr }}"
+                        - action: climate.set_hvac_mode
+                          target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                          data: { hvac_mode: "off" }
+                  default:
+                    - action: climate.set_hvac_mode
+                      target: { entity_id: [climate.living_room_air, climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                      data: { hvac_mode: "off" }
+
+        # =============================================
+        # BRANCH 3: HEATING SEASON (Winter Continuity)
+        # =============================================
+        - conditions:
+            - condition: template
+              value_template: "{{ season == 'heating' }}"
+          sequence:
+            - choose:
+                - conditions:
+                    - condition: template
+                      value_template: "{{ is_night }}"
+                  sequence:
+                    - choose:
+                        - conditions:
+                            - condition: template
+                              value_template: "{{ outdoor < 38 }}"
+                          sequence:
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.living_room_air }
+                              data:
+                                hvac_mode: "{{ 'heat' if lr_temp < (65 if away else 71) else 'off' }}"
+                                temperature: "{{ 65 if away else 71 }}"
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.master_bedroom_air }
+                              data: { hvac_mode: "{{ 'heat' if master_temp < 62 else 'off' }}", temperature: 62 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lincoln_air }
+                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 62 else 'off' }}", temperature: 62 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lilly_air }
+                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 62 else 'off' }}", temperature: 62 }
+                            - action: climate.set_hvac_mode
+                              target: { entity_id: climate.dining_room }
+                              data: { hvac_mode: "{{ 'heat' if lr_temp < 68 else 'off' }}" }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.dining_room }
+                              data: { temperature: 68 }
+                      default:
+                        - choose:
+                            - conditions:
+                                - condition: template
+                                  value_template: "{{ lr_night_primary }}"
+                              sequence:
+                                - action: climate.set_temperature
+                                  target: { entity_id: climate.living_room_air }
+                                  data:
+                                    hvac_mode: "{{ 'heat' if lr_temp < (58 if away else 65) else 'off' }}"
+                                    temperature: "{{ 58 if away else 65 }}"
+                                - action: climate.set_hvac_mode
+                                  target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                                  data: { hvac_mode: "off" }
+                          default:
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.master_bedroom_air }
+                              data: { hvac_mode: "{{ 'heat' if master_temp < 67 else 'off' }}", temperature: 67 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lincoln_air }
+                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 67 else 'off' }}", temperature: 67 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lilly_air }
+                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 67 else 'off' }}", temperature: 67 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.living_room_air }
+                              data: { hvac_mode: "{{ 'heat' if lr_temp < 60 else 'off' }}", temperature: 60 }
+                            - action: climate.set_hvac_mode
+                              target: { entity_id: climate.dining_room }
+                              data: { hvac_mode: "off" }
+              default:
+                - variables:
+                    is_bedtime: "{{ now().hour >= 18 and now().hour < 22 }}"
+                    target_lr: >-
+                      {% if is_bedtime and not away %}64{% elif away %}{{ 65 if outdoor < 45 else 62 }}{% else %}{{ 71 if outdoor < 45 else 68 }}{% endif %}
+                    lr_on_at: >-
+                      {% if is_bedtime and not away %}62{% elif away %}{{ 61 if outdoor < 45 else 58 }}{% else %}{{ 67 if outdoor < 45 else 64 }}{% endif %}
+                    lr_off_at: "{{ target_lr }}"
+                    lr_current: "{{ states('climate.living_room_air') }}"
+                - action: climate.set_temperature
+                  target: { entity_id: climate.living_room_air }
+                  data:
+                    hvac_mode: >-
+                      {% if lr_temp < (lr_on_at | int) %}heat
+                      {% elif lr_temp >= (lr_off_at | int) %}off
+                      {% elif lr_current == 'heat' %}heat
+                      {% else %}off{% endif %}
+                    temperature: "{{ target_lr }}"
+                - action: climate.set_hvac_mode
+                  target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                  data: { hvac_mode: "off" }
+
+# =============================================================================
+# SECTION 3: SAFETY GATES & WATCHDOGS
+# =============================================================================
+# ⚠️  DO NOT DELETE — These are non-negotiable safety systems. They operate
+#     INDEPENDENTLY of the supervisor's comfort logic. If these fire often,
+#     something is wrong with the controller, sensors, or equipment — not
+#     with the gate thresholds.
+#
+# V8.2 GATES:
+#   - Runaway Cooling Cutoff (LR): 60°F — pure equipment protection
+#   - Master Emergency Cooling Floor: 58°F — pure equipment protection
+#   - Safety Ceiling Gates: 76°F rooms — overheating protection
+#   - Manual Override Watcher: WAF — respects human intervention
+#
+# Design rule: comfort policy lives in Section 2. Runaway protection lives
+# here. The two should not overlap. If they do, the controller is broken.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# RUNAWAY COOLING CUTOFF (LR) — V8.2
+# -----------------------------------------------------------------------------
+# This is NOT a comfort gate. Normal Section 2 control turns LR off at 68°F.
+# If LR truth ever reaches 60°F while the unit is actively cooling, something
+# is broken: sensor drift, stuck compressor, failed setpoint command, runaway
+# Samsung auto mode, or cloud command lag. This is pure runaway protection.
+#
+# Under normal operation this automation should NEVER fire. If it fires,
+# investigate the controller, do not tune this threshold.
+# -----------------------------------------------------------------------------
+- id: v8_2_runaway_cooling_cutoff_lr
+  alias: "V8.2: Runaway Cooling Cutoff (LR Equipment Protection)"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      below: 60
+  condition:
+    - condition: template
+      value_template: "{{ is_state('input_select.hvac_season_mode', 'cooling') or (is_state('input_select.hvac_season_mode', 'shoulder') and states('sensor.deck_temperature_truth') | float > 70) }}"
+    - condition: state
+      entity_id: climate.living_room_air
+      state: "cool"
+  action:
+    - action: climate.set_hvac_mode
+      target: { entity_id: climate.living_room_air }
+      data: { hvac_mode: "off" }
+    - action: notify.notify
+      data:
+        title: "🧊 LR Runaway Cutoff Fired"
+        message: >
+          Living Room truth dropped below 60°F
+          ({{ states('sensor.living_room_temperature_truth') }}°F)
+          while actively cooling. Normal control stops at 68°F — this should
+          never happen. Forced off. Investigate sensor, controller, and
+          equipment before re-engaging.
+
+# -----------------------------------------------------------------------------
+# MASTER EMERGENCY COOLING FLOOR — V8.2 (NEW)
+# -----------------------------------------------------------------------------
+# Runaway protection for master bedroom. Operates regardless of time of day,
+# season, or sleep-mode state. Fills the safety gap created when master was
+# excluded from the Section 3 ceiling gate during sleep hours.
+#
+# Sleep mode allows cooling to 62°F. 58°F is 4°F below that — it means
+# sensor drift, stuck compressor, or controller failure. This is not a
+# comfort dial; it is a hardware floor.
+#
+# Under normal operation this automation should NEVER fire. If it fires,
+# investigate the controller, do not tune this threshold.
+# -----------------------------------------------------------------------------
+- id: v8_2_master_emergency_floor
+  alias: "V8.2: Master Emergency Cooling Floor"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.master_bedroom_temperature_truth
+      below: 58
+  condition:
+    - condition: state
+      entity_id: climate.master_bedroom_air
+      state: "cool"
+  action:
+    - action: climate.set_hvac_mode
+      target: { entity_id: climate.master_bedroom_air }
+      data: { hvac_mode: "off" }
+    - action: notify.notify
+      data:
+        title: "🧊 Master Emergency Floor Fired"
+        message: >
+          Master bedroom truth dropped below 58°F
+          ({{ states('sensor.master_bedroom_temperature_truth') }}°F)
+          while actively cooling. Sleep mode allows 62°F minimum — this
+          should never happen. Forced off. Investigate sensor, controller,
+          and equipment before re-engaging.
+
+# -----------------------------------------------------------------------------
+# SAFETY CEILING GATES (All-Season)
+# -----------------------------------------------------------------------------
+# During cooling season, forces aggressive cool at 68°F for 45 min. During
+# heating/shoulder, uses fan_only for 45 min (original destratification
+# behavior).
+# -----------------------------------------------------------------------------
+- id: v7_5_safety_ceiling_gates
+  alias: "V7.5: Safety Ceiling Gates (All-Season)"
+  description: >
+    V3.1 FIX: Now active in ALL seasons including cooling. During cooling
+    season, forces aggressive cool at 68°F for 45 min. During heating/shoulder,
+    uses fan_only for 45 min (original destratification behavior).
+  mode: parallel
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.master_bedroom_temperature_truth
+      above: 76
+      id: climate.master_bedroom_air
+    - platform: numeric_state
+      entity_id: sensor.lincoln_s_room_temperature_truth
+      above: 76
+      id: climate.lincoln_air
+    - platform: numeric_state
+      entity_id: sensor.lilly_s_room_temperature_truth
+      above: 76
+      id: climate.lilly_air
+  condition:
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+  action:
+    - variables:
+        season: "{{ states('input_select.hvac_season_mode') }}"
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ season == 'cooling' }}"
+          sequence:
+            - action: climate.set_temperature
+              target: { entity_id: "{{ trigger.id }}" }
+              data: { hvac_mode: "cool", temperature: 68 }
+            - delay: "00:45:00"
+            - action: climate.set_hvac_mode
+              target: { entity_id: "{{ trigger.id }}" }
+              data: { hvac_mode: "off" }
+      default:
+        - action: climate.set_hvac_mode
+          target: { entity_id: "{{ trigger.id }}" }
+          data: { hvac_mode: "fan_only" }
+        - delay: "00:45:00"
+        - action: climate.set_hvac_mode
+          target: { entity_id: "{{ trigger.id }}" }
+          data: { hvac_mode: "off" }
+
+- id: v7_5_waf_manual_override
+  alias: "V7.5: Manual Override Watcher (WAF)"
+  mode: restart
+  trigger:
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      attribute: temperature
+  condition:
+    - condition: template
+      value_template: "{{ trigger.context.parent_id is none }}"
+  action:
+    - action: timer.start
+      target: { entity_id: timer.manual_hvac_override }
+
+# =============================================================================
+# SECTION 3B: PRE-COOL LATCH (ORPHANED)
+# =============================================================================
+# ⚠️  NOTE: V8.1 and V8.2 cooling branches do not reference precool_active.
+#     This section is ORPHANED but HARMLESS — it toggles a boolean that
+#     nothing reads. Kept intact to avoid breaking the helper entity.
+#     Can be disabled in the HA UI if desired.
+# =============================================================================
+
+- id: v8_precool_latch
+  alias: "V8: Pre-Cool Latch (ORPHANED — not read by V8.2)"
+  mode: single
+  trigger:
+    - platform: time
+      at: "13:00:00"
+      id: start_window
+    - platform: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      above: 78
+      id: start_window
+    - platform: time
+      at: "17:00:00"
+      id: end_window
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      below: 68
+      id: house_too_cold
+  condition: []
+  action:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: start_window
+            - condition: state
+              entity_id: input_select.hvac_season_mode
+              state: "cooling"
+            - condition: state
+              entity_id: timer.manual_hvac_override
+              state: "idle"
+            - condition: state
+              entity_id: input_boolean.away_mode
+              state: "off"
+            - condition: time
+              after: "12:59:59"
+              before: "17:00:00"
+            - condition: numeric_state
+              entity_id: sensor.deck_temperature_truth
+              above: 78
+          sequence:
+            - action: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.precool_active
+
+        - conditions:
+            - condition: trigger
+              id: end_window
+          sequence:
+            - action: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.precool_active
+
+        - conditions:
+            - condition: trigger
+              id: house_too_cold
+            - condition: state
+              entity_id: input_select.hvac_season_mode
+              state: "cooling"
+            - condition: state
+              entity_id: input_boolean.precool_active
+              state: "on"
+          sequence:
+            - action: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.precool_active
+
+
+# =============================================================================
+# SECTION 4: GHOST ASSASSIN
+# =============================================================================
+# ⚠️  DO NOT DELETE — Kills phantom heat activation on Lincoln's Samsung head
+#     unit at 1:20 AM. This is a known SmartThings/Samsung ghost automation
+#     that cannot be disabled on the device side.
+# =============================================================================
+
+- id: v7_5_ghost_assassin
+  alias: "V7.5: Ghost Assassin (Active Monitor)"
+  mode: single
+  trigger:
+    - platform: time
+      at: "01:20:00"
+  condition:
+    - condition: state
+      entity_id: climate.lincoln_air
+      state: "heat"
+    - condition: template
+      value_template: "{{ states('input_select.hvac_season_mode') != 'heating' }}"
+  action:
+    - action: climate.set_hvac_mode
+      target: { entity_id: climate.lincoln_air }
+      data: { hvac_mode: "off" }
+    - action: notify.notify
+      data:
+        title: "👻 Ghost Blocked"
+        message: "Lincoln head unit attempted heat activation during non-heating season."
+
+
+# =============================================================================
+# SECTION 5: AUTO SEASON MODE
+# =============================================================================
+# ⚠️  DO NOT DELETE — Automatically switches input_select.hvac_season_mode
+#     based on sustained deck temperature.
+# =============================================================================
+
+- id: v7_5_auto_season_mode
+  alias: "V7.5: Auto Season Mode (Deck Truth)"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      above: 72
+      for: "02:00:00"
+      id: to_cooling
+    - platform: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      below: 45
+      for: "02:00:00"
+      id: to_heating
+    - platform: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      above: 50
+      below: 68
+      for: "02:00:00"
+      id: to_shoulder
+  action:
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.hvac_season_mode
+      data:
+        option: >
+          {% if trigger.id == 'to_cooling' %}cooling
+          {% elif trigger.id == 'to_heating' %}heating
+          {% else %}shoulder{% endif %}
+    - action: notify.notify
+      data:
+        title: "🌡️ Season Mode Changed"
+        message: "Auto-switched to {{ states('input_select.hvac_season_mode') }} (Deck: {{ states('sensor.deck_temperature_truth') }}°F)"
+
+
+# =============================================================================
+# SECTION 6: SHOULDER SEASON FAN DESTRATIFICATION
+# =============================================================================
+# ⚠️  DO NOT DELETE — V8 Priority 2: Airflow Mixing.
+# =============================================================================
+
+- id: v8_comfort_fan_destratification
+  alias: "V8: Shoulder Season Fan Destratification"
+  mode: single
+  trigger:
+    - platform: time_pattern
+      minutes: "7"
+    - platform: time_pattern
+      minutes: "22"
+    - platform: time_pattern
+      minutes: "37"
+    - platform: time_pattern
+      minutes: "52"
+  condition:
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+    - condition: template
+      value_template: "{{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}"
+  action:
+    - variables:
+        lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
+        master_temp: "{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}"
+        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
+        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}"
+        lincoln_fan_allowed: "{{ is_state('binary_sensor.lincoln_presence_debounced_v3', 'off') }}"
+        is_daytime: "{{ now().hour >= 8 and now().hour < 20 }}"
+        master_fan_allowed: "{{ is_daytime }}"
+        lilly_fan_allowed: "{{ is_daytime }}"
+        master_delta: "{{ master_temp - lr_temp }}"
+        lincoln_delta: "{{ lincoln_temp - lr_temp }}"
+        lilly_delta: "{{ lilly_temp - lr_temp }}"
+
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: >
+                {{ is_state('climate.master_bedroom_air', 'off')
+                   and master_delta >= 3.0
+                   and master_fan_allowed }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.master_bedroom_air }
+              data: { hvac_mode: "fan_only" }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.master_bedroom_air }
+              data: { fan_mode: "auto" }
+        - conditions:
+            - condition: template
+              value_template: >
+                {% set runtime = (now() - states.climate.master_bedroom_air.last_changed).total_seconds() %}
+                {{ is_state('climate.master_bedroom_air', 'fan_only')
+                   and (
+                     (master_delta <= 1.0 and runtime >= 2700)
+                     or
+                     (not master_fan_allowed and master_temp < 76)
+                   )
+                }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.master_bedroom_air }
+              data: { hvac_mode: "off" }
+
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: >
+                {{ is_state('climate.lincoln_air', 'off')
+                   and lincoln_delta >= 3.0
+                   and lincoln_fan_allowed }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lincoln_air }
+              data: { hvac_mode: "fan_only" }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.lincoln_air }
+              data: { fan_mode: "auto" }
+        - conditions:
+            - condition: template
+              value_template: >
+                {% set runtime = (now() - states.climate.lincoln_air.last_changed).total_seconds() %}
+                {{ is_state('climate.lincoln_air', 'fan_only')
+                   and (
+                     (lincoln_delta <= 1.0 and runtime >= 2700)
+                     or
+                     (not lincoln_fan_allowed and lincoln_temp < 76)
+                   )
+                }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lincoln_air }
+              data: { hvac_mode: "off" }
+
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: >
+                {{ is_state('climate.lilly_air', 'off')
+                   and lilly_delta >= 3.0
+                   and lilly_fan_allowed }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lilly_air }
+              data: { hvac_mode: "fan_only" }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.lilly_air }
+              data: { fan_mode: "auto" }
+        - conditions:
+            - condition: template
+              value_template: >
+                {% set runtime = (now() - states.climate.lilly_air.last_changed).total_seconds() %}
+                {{ is_state('climate.lilly_air', 'fan_only')
+                   and (
+                     (lilly_delta <= 1.0 and runtime >= 2700)
+                     or
+                     (not lilly_fan_allowed and lilly_temp < 76)
+                   )
+                }}
+          sequence:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lilly_air }
+              data: { hvac_mode: "off" }
+
+
+# =============================================================================
+# SECTION 7: SOLAR SHADE PROTECTION
+# =============================================================================
+# ⚠️  DO NOT DELETE — Controls LR west-facing blinds.
+# =============================================================================
+
+- id: v8_shade_night_privacy
+  alias: "V8: Shade Night Privacy (Sunset)"
+  mode: single
+  trigger:
+    - platform: sun
+      event: sunset
+  condition:
+    - condition: state
+      entity_id: timer.shade_manual_override
+      state: "idle"
+  action:
+    - variables:
+        shade_entities:
+          - cover.shade_1
+          - cover.shade_2
+        privacy_tilt: 0
+    - action: cover.set_cover_tilt_position
+      target:
+        entity_id: "{{ shade_entities }}"
+      data:
+        tilt_position: "{{ privacy_tilt }}"
+
+- id: v8_shade_morning_open
+  alias: "V8: Shade Morning Daylight (Sunrise +30)"
+  mode: single
+  trigger:
+    - platform: sun
+      event: sunrise
+      offset: "00:30:00"
+  condition:
+    - condition: state
+      entity_id: timer.shade_manual_override
+      state: "idle"
+  action:
+    - variables:
+        shade_entities:
+          - cover.shade_1
+          - cover.shade_2
+        morning_tilt: 50
+    - action: cover.set_cover_tilt_position
+      target:
+        entity_id: "{{ shade_entities }}"
+      data:
+        tilt_position: "{{ morning_tilt }}"
+
+- id: v8_shade_manual_override
+  alias: "V8: Shade Manual Override Watcher"
+  mode: restart
+  trigger:
+    - platform: state
+      entity_id:
+        - cover.shade_1
+        - cover.shade_2
+      attribute: current_tilt_position
+    - platform: state
+      entity_id:
+        - cover.shade_1
+        - cover.shade_2
+  condition:
+    - condition: template
+      value_template: "{{ trigger.context.parent_id is none }}"
+  action:
+    - action: timer.start
+      target:
+        entity_id: timer.shade_manual_override
+
+- id: v8_shade_afternoon_solar_rejection
+  alias: "V8: Shade Afternoon Solar Rejection"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.shade_1_light_level
+      above: 7000
+      for: "00:10:00"
+    - platform: numeric_state
+      entity_id: sensor.shade_2_light_level
+      above: 7000
+      for: "00:10:00"
+    - platform: time_pattern
+      minutes: "/10"
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      above: 71
+      for: "00:10:00"
+  condition:
+    - condition: state
+      entity_id: timer.shade_manual_override
+      state: "idle"
+    - condition: template
+      value_template: >
+        {{ states('input_select.hvac_season_mode') in ['cooling', 'shoulder'] }}
+    - condition: time
+      after: "13:30:00"
+      before: "18:00:00"
+    - condition: template
+      value_template: >
+        {{
+          (
+            states('sensor.shade_1_light_level') | float(0) > 7000
+            or
+            states('sensor.shade_2_light_level') | float(0) > 7000
+          )
+          and
+          (states('sensor.living_room_temperature_truth') | float(0) > 71.0)
+        }}
+    - condition: template
+      value_template: >
+        {{
+          (state_attr('cover.shade_1', 'current_tilt_position') | int(50) > 10)
+          or
+          (state_attr('cover.shade_2', 'current_tilt_position') | int(50) > 10)
+        }}
+  action:
+    - variables:
+        shade_entities:
+          - cover.shade_1
+          - cover.shade_2
+        solar_rejection_tilt: 10
+    - action: cover.set_cover_tilt_position
+      target:
+        entity_id: "{{ shade_entities }}"
+      data:
+        tilt_position: "{{ solar_rejection_tilt }}"
+
+# =============================================================================
+# SECTION 7B: SOLAR HARVEST (Shoulder/Heating Passive Gain)
+# =============================================================================
+# ⚠️  DO NOT DELETE — Complements Section 7's solar rejection.
+# =============================================================================
+
+- id: v8_shade_solar_harvest
+  alias: "V8: Solar Harvest (Free Heat)"
+  mode: single
+  trigger:
+    - platform: time_pattern
+      minutes: "/15"
+    - platform: numeric_state
+      entity_id: sensor.shade_1_light_level
+      above: 5000
+      for: "00:05:00"
+    - platform: numeric_state
+      entity_id: sensor.shade_2_light_level
+      above: 5000
+      for: "00:05:00"
+  condition:
+    - condition: state
+      entity_id: timer.shade_manual_override
+      state: "idle"
+    - condition: template
+      value_template: >
+        {{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}
+    - condition: time
+      after: "08:00:00"
+      before: "13:30:00"
+    - condition: template
+      value_template: >
+        {{
+          states('sensor.shade_1_light_level') | float(0) > 5000
+          or
+          states('sensor.shade_2_light_level') | float(0) > 5000
+        }}
+    - condition: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      below: 69
+    - condition: numeric_state
+      entity_id: sensor.deck_temperature_truth
+      above: 35
+    - condition: template
+      value_template: >
+        {{
+          (state_attr('cover.shade_1', 'current_tilt_position') | int(100) < 100)
+          or
+          (state_attr('cover.shade_2', 'current_tilt_position') | int(100) < 100)
+        }}
+  action:
+    - action: cover.set_cover_tilt_position
+      target:
+        entity_id:
+          - cover.shade_1
+          - cover.shade_2
+      data:
+        tilt_position: 100
+
+
+# =============================================================================
+# SECTION 8: SAMSUNG AUTO GUARDRAIL
+# =============================================================================
+# ⚠️  DO NOT DELETE — Watches all Samsung heads for unwanted Auto-mode behavior.
+# =============================================================================
+
+- id: v8_samsung_auto_guardrail
+  alias: "V8: Samsung Auto Guardrail"
+  mode: parallel
+  trigger:
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      attribute: hvac_action
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      to: "auto"
+    - platform: time_pattern
+      minutes: "/10"
+  condition:
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+  action:
+    - repeat:
+        for_each:
+          - climate_entity: climate.living_room_air
+            temp_entity: sensor.living_room_temperature_truth
+            room_name: Living Room
+          - climate_entity: climate.master_bedroom_air
+            temp_entity: sensor.master_bedroom_temperature_truth
+            room_name: Master
+          - climate_entity: climate.lincoln_air
+            temp_entity: sensor.lincoln_s_room_temperature_truth
+            room_name: Lincoln
+          - climate_entity: climate.lilly_air
+            temp_entity: sensor.lilly_s_room_temperature_truth
+            room_name: Lilly
+        sequence:
+          - variables:
+              climate_entity: "{{ repeat.item.climate_entity }}"
+              temp_entity: "{{ repeat.item.temp_entity }}"
+              room_name: "{{ repeat.item.room_name }}"
+              room_temp: "{{ states(temp_entity) | float(70) }}"
+              mode: "{{ states(climate_entity) }}"
+              action_now: "{{ state_attr(climate_entity, 'hvac_action') | default('unknown') }}"
+              setpoint: "{{ state_attr(climate_entity, 'temperature') | float(0) }}"
+              season: "{{ states('input_select.hvac_season_mode') }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'heating'
+                         and season != 'heating' }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto Heat Blocked"
+                      message: >
+                        {{ room_name }} entered auto heating during {{ season }}
+                        season. Room {{ room_temp }}°F, setpoint {{ setpoint }}.
+                        Forced off.
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'heating'
+                         and room_temp >= 68 }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto Comfort Override"
+                      message: >
+                        {{ room_name }} tried heating in auto at {{ room_temp }}°F
+                        (setpoint {{ setpoint }}). Forced off to prevent overheating.
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'heating'
+                         and setpoint >= 72 }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto High-Setpoint Blocked"
+                      message: >
+                        {{ room_name }} auto mode attempted heat with setpoint
+                        {{ setpoint }}. Forced off.
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'cooling'
+                         and season == 'heating' }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto Cool Blocked"
+                      message: >
+                        {{ room_name }} entered auto cooling during heating
+                        season. Room {{ room_temp }}°F, setpoint {{ setpoint }}.
+                        Forced off.
+
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mode == 'auto'
+                         and action_now == 'cooling'
+                         and setpoint <= 58 }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+                  - action: notify.notify
+                    data:
+                      title: "🚫 Samsung Auto Overcool Blocked"
+                      message: >
+                        {{ room_name }} auto mode attempted cool with setpoint
+                        {{ setpoint }}°F. Forced off.
+
+# =============================================================================
+# SECTION 9: TRUTH SENSOR HEALTH ALERT
+# =============================================================================
+# ⚠️  DO NOT DELETE — Alerts when truth sensor contributor count drops below 2.
+# =============================================================================
+
+- id: v8_truth_count_alert
+  alias: "V8: Truth Sensor Health Alert"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth_active_count
+      below: 2
+      for: "00:30:00"
+      id: lr_low
+    - platform: numeric_state
+      entity_id: sensor.lincoln_temperature_truth_active_count
+      below: 2
+      for: "00:30:00"
+      id: lincoln_low
+  action:
+    - action: notify.notify
+      data:
+        title: "⚠️ Truth Sensor Degraded"
+        message: >
+          {{ 'Living Room' if trigger.id == 'lr_low' else "Lincoln's Room" }}
+          truth is running on {{ states(trigger.entity_id) }} contributor(s)
+          for 30+ minutes. Check sensor health.
+
+# =============================================================================
+# SECTION 10: MASTER BEDROOM PRE-COOL (DISABLED)
+# =============================================================================
+# ⚠️  DISABLED as of V8.1 and still disabled in V8.2. The new cooling branch
+#     maintains master at 68/72 during the day and switches to 63/62/66 sleep
+#     mode at 6pm. Section 10's 4pm-10pm pre-cool to 68°F would fight the
+#     sleep target in the 6pm-10pm window.
+# =============================================================================
+
+- id: v8_master_precool_nightly
+  alias: "V8: Master Pre-Cool (DISABLED — superseded by V8.1/V8.2)"
+  mode: single
+  trigger:
+    - platform: time_pattern
+      minutes: "/15"
+  condition:
+    # Always-false gate — this automation never fires
+    - condition: template
+      value_template: "{{ false }}"
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+    - condition: state
+      entity_id: input_boolean.away_mode
+      state: "off"
+    - condition: time
+      after: "16:00:00"
+      before: "22:00:00"
+    - condition: numeric_state
+      entity_id: sensor.master_bedroom_temperature_truth
+      above: 68
+  action:
+    - action: climate.set_temperature
+      target:
+        entity_id: climate.master_bedroom_air
+      data:
+        hvac_mode: "cool"
+        temperature: 68
+
+
+# =============================================================================
+# SECTION 11: HVAC TRANSITION LOGGER (V8.3)
+# =============================================================================
+# ⚠️  Lightweight audit trail for V8.3 HVAC behavior.
+#     Writes to the HA Logbook on every cool⇄off and heat⇄off transition 
+#     per head with room temp and setpoint context. Lets you see exactly when 
+#     each unit engaged and disengaged during hysteresis tracking.
+#
+#     View in: Home Assistant → Logbook panel, filter by climate entity.
+#
+#     This is diagnostic, not control. Safe to delete once V8.3 behavior
+#     is trusted. Does NOT affect climate decisions in any way.
+# =============================================================================
+
+- id: v8_3_hvac_transition_log
+  alias: "V8.3: HVAC Transition Logger"
+  mode: parallel
+  max: 20
+  trigger:
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      from: "off"
+      to:
+        - "cool"
+        - "heat"
+      id: engage
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      from:
+        - "cool"
+        - "heat"
+      to: "off"
+      id: disengage
+  action:
+    - variables:
+        entity: "{{ trigger.entity_id }}"
+        room_name: >-
+          {% if 'living_room' in entity %}Living Room
+          {% elif 'master' in entity %}Master
+          {% elif 'lincoln' in entity %}Lincoln
+          {% elif 'lilly' in entity %}Lilly
+          {% else %}Unknown{% endif %}
+        truth_entity: >-
+          {% if 'living_room' in entity %}sensor.living_room_temperature_truth
+          {% elif 'master' in entity %}sensor.master_bedroom_temperature_truth
+          {% elif 'lincoln' in entity %}sensor.lincoln_s_room_temperature_truth
+          {% elif 'lilly' in entity %}sensor.lilly_s_room_temperature_truth
+          {% else %}none{% endif %}
+        room_temp: "{{ states(truth_entity | trim) }}"
+        setpoint: "{{ state_attr(entity, 'temperature') }}"
+        action_verb: "{{ 'ENGAGED' if trigger.id == 'engage' else 'DISENGAGED' }}"
+        mode_str: "{{ trigger.to_state.state if trigger.id == 'engage' else trigger.from_state.state }}"
+    - action: logbook.log
+      data:
+        name: "V8.3 HVAC"
+        message: >-
+          {{ room_name | trim }} {{ action_verb }} {{ mode_str }} at {{ room_temp }}°F
+          (setpoint {{ setpoint }}°F, outdoor
+          {{ states('sensor.deck_temperature_truth') }}°F)
+        entity_id: "{{ entity }}" 
+
