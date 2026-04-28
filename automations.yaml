@@ -22,7 +22,6 @@
 #   7B. SOLAR HARVEST (Shoulder/Heating Passive Gain)
 #   8.  SAMSUNG AUTO GUARDRAIL (Anti-rogue auto mode logic)
 #   9.  TRUTH SENSOR HEALTH ALERT
-#   10. MASTER PRE-COOL (DISABLED — superseded by V8.1/V8.2 cooling branch)
 #   11. HVAC TRANSITION LOGGER (V8.3 — audit trail for heating/cooling behavior)
 #
 # DEPENDENCIES (helpers that must exist):
@@ -1380,47 +1379,6 @@
           truth is running on {{ states(trigger.entity_id) }} contributor(s)
           for 30+ minutes. Check sensor health.
 
-# =============================================================================
-# SECTION 10: MASTER BEDROOM PRE-COOL (DISABLED)
-# =============================================================================
-# ⚠️  DISABLED as of V8.1 and still disabled in V8.2. The new cooling branch
-#     maintains master at 68/72 during the day and switches to 63/62/66 sleep
-#     mode at 6pm. Section 10's 4pm-10pm pre-cool to 68°F would fight the
-#     sleep target in the 6pm-10pm window.
-# =============================================================================
-
-- id: v8_master_precool_nightly
-  alias: "V8: Master Pre-Cool (DISABLED — superseded by V8.1/V8.2)"
-  mode: single
-  trigger:
-    - platform: time_pattern
-      minutes: "/15"
-  condition:
-    # Always-false gate — this automation never fires
-    - condition: template
-      value_template: "{{ false }}"
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
-    - condition: state
-      entity_id: input_boolean.away_mode
-      state: "off"
-    - condition: time
-      after: "16:00:00"
-      before: "22:00:00"
-    - condition: numeric_state
-      entity_id: sensor.master_bedroom_temperature_truth
-      above: 68
-  action:
-    - action: climate.set_temperature
-      target:
-        entity_id: climate.master_bedroom_air
-      data:
-        hvac_mode: "cool"
-        temperature: 68
-
-
-# =============================================================================
 # SECTION 11: HVAC TRANSITION LOGGER (V8.3)
 # =============================================================================
 # ⚠️  Lightweight audit trail for V8.3 HVAC behavior.
@@ -1511,7 +1469,6 @@
 #   7B. SOLAR HARVEST (Shoulder/Heating Passive Gain)
 #   8.  SAMSUNG AUTO GUARDRAIL (Anti-rogue auto mode logic)
 #   9.  TRUTH SENSOR HEALTH ALERT
-#   10. MASTER PRE-COOL (DISABLED — superseded by V8.1/V8.2 cooling branch)
 #   11. HVAC TRANSITION LOGGER (V8.3 — audit trail for heating/cooling behavior)
 #
 # DEPENDENCIES (helpers that must exist):
@@ -2869,47 +2826,6 @@
           truth is running on {{ states(trigger.entity_id) }} contributor(s)
           for 30+ minutes. Check sensor health.
 
-# =============================================================================
-# SECTION 10: MASTER BEDROOM PRE-COOL (DISABLED)
-# =============================================================================
-# ⚠️  DISABLED as of V8.1 and still disabled in V8.2. The new cooling branch
-#     maintains master at 68/72 during the day and switches to 63/62/66 sleep
-#     mode at 6pm. Section 10's 4pm-10pm pre-cool to 68°F would fight the
-#     sleep target in the 6pm-10pm window.
-# =============================================================================
-
-- id: v8_master_precool_nightly
-  alias: "V8: Master Pre-Cool (DISABLED — superseded by V8.1/V8.2)"
-  mode: single
-  trigger:
-    - platform: time_pattern
-      minutes: "/15"
-  condition:
-    # Always-false gate — this automation never fires
-    - condition: template
-      value_template: "{{ false }}"
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
-    - condition: state
-      entity_id: input_boolean.away_mode
-      state: "off"
-    - condition: time
-      after: "16:00:00"
-      before: "22:00:00"
-    - condition: numeric_state
-      entity_id: sensor.master_bedroom_temperature_truth
-      above: 68
-  action:
-    - action: climate.set_temperature
-      target:
-        entity_id: climate.master_bedroom_air
-      data:
-        hvac_mode: "cool"
-        temperature: 68
-
-
-# =============================================================================
 # SECTION 11: HVAC TRANSITION LOGGER (V8.3)
 # =============================================================================
 # ⚠️  Lightweight audit trail for V8.3 HVAC behavior.
