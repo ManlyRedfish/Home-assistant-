@@ -99,7 +99,7 @@
   action:
   - action: google_sheets.append_sheet
     data:
-      config_entry: 01KK2B80DRS1S94GERW6XRRM1E
+      config_entry: !secret google_sheets_config_entry
       worksheet: VTherm_Launch_Data_v5
       data:
         # 1. Timestamp / Global Context
@@ -1588,7 +1588,7 @@
   action:
   - action: google_sheets.append_sheet
     data:
-      config_entry: 01KK2B80DRS1S94GERW6XRRM1E
+      config_entry: !secret google_sheets_config_entry
       worksheet: VTherm_Launch_Data_v5
       data:
         # 1. Timestamp / Global Context
