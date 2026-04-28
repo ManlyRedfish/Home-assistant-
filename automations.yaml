@@ -14,7 +14,6 @@
 #   1.  DATA COLLECTION (v5 tracker — Semantic Heritage Schema)
 #   2.  MAIN SUPERVISOR (V8.2 Deadband + V8.3 LR Heating Deadband)
 #   3.  SAFETY GATES (runaway cutoff, emergency floor, ceiling, override)
-#   3B. PRE-COOL LATCH (ORPHANED — helper retained, nothing reads it)
 #   4.  GHOST ASSASSIN (Lincoln phantom heat kill)
 #   5.  AUTO SEASON MODE (deck temp → season switching)
 #   6.  SHOULDER SEASON FAN DESTRATIFICATION (Priority 2 Airflow Mixing)
@@ -730,82 +729,6 @@
   action:
     - action: timer.start
       target: { entity_id: timer.manual_hvac_override }
-
-# =============================================================================
-# SECTION 3B: PRE-COOL LATCH (ORPHANED)
-# =============================================================================
-# ⚠️  NOTE: V8.1 and V8.2 cooling branches do not reference precool_active.
-#     This section is ORPHANED but HARMLESS — it toggles a boolean that
-#     nothing reads. Kept intact to avoid breaking the helper entity.
-#     Can be disabled in the HA UI if desired.
-# =============================================================================
-
-- id: v8_precool_latch
-  alias: "V8: Pre-Cool Latch (ORPHANED — not read by V8.2)"
-  mode: single
-  trigger:
-    - platform: time
-      at: "13:00:00"
-      id: start_window
-    - platform: numeric_state
-      entity_id: sensor.deck_temperature_truth
-      above: 78
-      id: start_window
-    - platform: time
-      at: "17:00:00"
-      id: end_window
-    - platform: numeric_state
-      entity_id: sensor.living_room_temperature_truth
-      below: 68
-      id: house_too_cold
-  condition: []
-  action:
-    - choose:
-        - conditions:
-            - condition: trigger
-              id: start_window
-            - condition: state
-              entity_id: input_select.hvac_season_mode
-              state: "cooling"
-            - condition: state
-              entity_id: timer.manual_hvac_override
-              state: "idle"
-            - condition: state
-              entity_id: input_boolean.away_mode
-              state: "off"
-            - condition: time
-              after: "12:59:59"
-              before: "17:00:00"
-            - condition: numeric_state
-              entity_id: sensor.deck_temperature_truth
-              above: 78
-          sequence:
-            - action: input_boolean.turn_on
-              target:
-                entity_id: input_boolean.precool_active
-
-        - conditions:
-            - condition: trigger
-              id: end_window
-          sequence:
-            - action: input_boolean.turn_off
-              target:
-                entity_id: input_boolean.precool_active
-
-        - conditions:
-            - condition: trigger
-              id: house_too_cold
-            - condition: state
-              entity_id: input_select.hvac_season_mode
-              state: "cooling"
-            - condition: state
-              entity_id: input_boolean.precool_active
-              state: "on"
-          sequence:
-            - action: input_boolean.turn_off
-              target:
-                entity_id: input_boolean.precool_active
-
 
 # =============================================================================
 # SECTION 4: GHOST ASSASSIN
@@ -1503,7 +1426,6 @@
 #   1.  DATA COLLECTION (v5 tracker — Semantic Heritage Schema)
 #   2.  MAIN SUPERVISOR (V8.2 Deadband + V8.3 LR Heating Deadband)
 #   3.  SAFETY GATES (runaway cutoff, emergency floor, ceiling, override)
-#   3B. PRE-COOL LATCH (ORPHANED — helper retained, nothing reads it)
 #   4.  GHOST ASSASSIN (Lincoln phantom heat kill)
 #   5.  AUTO SEASON MODE (deck temp → season switching)
 #   6.  SHOULDER SEASON FAN DESTRATIFICATION (Priority 2 Airflow Mixing)
@@ -2219,82 +2141,6 @@
   action:
     - action: timer.start
       target: { entity_id: timer.manual_hvac_override }
-
-# =============================================================================
-# SECTION 3B: PRE-COOL LATCH (ORPHANED)
-# =============================================================================
-# ⚠️  NOTE: V8.1 and V8.2 cooling branches do not reference precool_active.
-#     This section is ORPHANED but HARMLESS — it toggles a boolean that
-#     nothing reads. Kept intact to avoid breaking the helper entity.
-#     Can be disabled in the HA UI if desired.
-# =============================================================================
-
-- id: v8_precool_latch
-  alias: "V8: Pre-Cool Latch (ORPHANED — not read by V8.2)"
-  mode: single
-  trigger:
-    - platform: time
-      at: "13:00:00"
-      id: start_window
-    - platform: numeric_state
-      entity_id: sensor.deck_temperature_truth
-      above: 78
-      id: start_window
-    - platform: time
-      at: "17:00:00"
-      id: end_window
-    - platform: numeric_state
-      entity_id: sensor.living_room_temperature_truth
-      below: 68
-      id: house_too_cold
-  condition: []
-  action:
-    - choose:
-        - conditions:
-            - condition: trigger
-              id: start_window
-            - condition: state
-              entity_id: input_select.hvac_season_mode
-              state: "cooling"
-            - condition: state
-              entity_id: timer.manual_hvac_override
-              state: "idle"
-            - condition: state
-              entity_id: input_boolean.away_mode
-              state: "off"
-            - condition: time
-              after: "12:59:59"
-              before: "17:00:00"
-            - condition: numeric_state
-              entity_id: sensor.deck_temperature_truth
-              above: 78
-          sequence:
-            - action: input_boolean.turn_on
-              target:
-                entity_id: input_boolean.precool_active
-
-        - conditions:
-            - condition: trigger
-              id: end_window
-          sequence:
-            - action: input_boolean.turn_off
-              target:
-                entity_id: input_boolean.precool_active
-
-        - conditions:
-            - condition: trigger
-              id: house_too_cold
-            - condition: state
-              entity_id: input_select.hvac_season_mode
-              state: "cooling"
-            - condition: state
-              entity_id: input_boolean.precool_active
-              state: "on"
-          sequence:
-            - action: input_boolean.turn_off
-              target:
-                entity_id: input_boolean.precool_active
-
 
 # =============================================================================
 # SECTION 4: GHOST ASSASSIN
