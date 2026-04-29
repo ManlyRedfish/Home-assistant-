@@ -81,6 +81,25 @@
 # Loads default set of integrations. Do not remove.
 default_config:
 
+timer:
+  lr_compressor_cooldown:
+    name: "Living Room Compressor Cooldown"
+    duration: "00:15:00"
+    icon: mdi:timer-sand
+  master_compressor_cooldown:
+    name: "Master Bedroom Compressor Cooldown"
+    duration: "00:15:00"
+    icon: mdi:timer-sand
+  lincoln_compressor_cooldown:
+    name: "Lincoln Compressor Cooldown"
+    duration: "00:15:00"
+    icon: mdi:timer-sand
+  lilly_compressor_cooldown:
+    name: "Lilly Compressor Cooldown"
+    duration: "00:15:00"
+    icon: mdi:timer-sand
+
+
 recorder:
   purge_keep_days: 30
   commit_interval: 5
