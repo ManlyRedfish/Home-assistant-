@@ -32,6 +32,7 @@ Core Philosophy:
 
 Critical Rules:
 
+* Before suggesting any code changes, silently read the Markdown files in the docs/ folder to understand the Moose House thermal constraints and V9 architecture.
 * NEVER remove unrelated automations
 * NEVER rename entities unless explicitly instructed
 * NEVER collapse sections together
