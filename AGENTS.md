@@ -117,3 +117,9 @@ If assumptions are unclear, explicitly state uncertainty instead of inventing be
 FILE STARTS BELOW:
 
 (Production automations moved to `automations.yaml`. Keep AGENTS.md doctrine-only.)
+
+---
+
+## AI Context Instruction
+
+**Before suggesting any code changes, silently read the Markdown files in the `docs/` folder to understand the Moose House thermal constraints and V9 architecture.**
