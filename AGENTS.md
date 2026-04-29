@@ -81,6 +81,8 @@ Current Engineering Goals:
 * Build evidence before introducing complexity
 * Improve telemetry quality for future experiments
 
+**Before suggesting any code changes, silently read the Markdown files in the `docs/` folder to understand the Moose House thermal constraints and V9 architecture.**
+
 When reviewing or modifying automations:
 
 1. Explain the current behavior
