@@ -1,0 +1,107 @@
+Doc 1 / Moose House Startup Canon (V2)
+Canon Date: April 25, 2026
+Document Role: Startup Canon
+Status: Living canon. Update only when settled truths, active doctrine, or the sensor foundation materially change.
+1. Purpose of This Document
+This is the authoritative startup context for new LLM sessions and new human review sessions.
+Its purpose is to preserve the current system identity, active doctrine, major guardrails, and known realities without forcing a full reread of historical archives.
+This document is for startup context only. It is not the full topology map (Doc 2), not the regression archive (Doc 3), not the performance tracker (Doc 4), and not the runtime codebase (Doc 5).
+2. What Moose House Is
+Moose House is an older thermally coupled home, not a clean modern multi-zone build. It must be reasoned about as a structurally linked thermal volume rather than as fully isolated rooms.
+The system must respect:
+Vertical heat drift
+Thermal mass
+Cross-room coupling
+Lag between control action and observed comfort result
+Prime Directive: Software cannot out-calculate structure and gravity.
+3. Current Active System Snapshot
+3.1 Active Control Layer
+Current active runtime control layer: V8.3 automations
+Current control posture: Comfort-first deadband + passive stack-effect mitigation
+State: V8.2 is an honest hotfix that replaced the old waterfall target ladder with a simpler cooling deadband model and reintroduced explicit safety protections. It is now considered durable doctrine.
+3.2 Active Truth Layer
+Current active truth layer: V3.1 configuration
+High-level truth-layer philosophy: Audited, trimmed, smoothed truth architecture utilizing 2-hour staleness rejection, outlier handling, and explicit removal of hardware like the MSR-2 DPS310 sensors (see Doc 5 / Runtime Layer).
+Note: Live YAML defines actual runtime truth.
+3.3 Active Telemetry Layer
+Current telemetry/export layer: VTherm_Launch_Data_v5
+Telemetry naming philosophy: Semantic Heritage naming (room + metric + role + transport) used to objectively validate outcomes like comfort drift and starvation over time (see Doc 4 / Operations Sheet).
+Make clear that telemetry is evidence, not doctrine.
+4. Startup Non-Negotiables
+(The following truths must be inherited by every new session before proposing anything.)
+House-level thermal coupling is real.
+Room-isolation assumptions are dangerous.
+Runtime YAML (Doc 5) outranks prose when they conflict.
+Degraded hardware does not automatically mean truth-layer failure if fallback logic is healthy.
+Comfort logic and safety logic are separate on purpose.
+The current system should be judged by measured evidence, not theoretical elegance.
+5. Current Operating Doctrine
+5.1 Cooling / Comfort Doctrine
+Comfort logic is supervisory and deadband-focused, treating the house as a coupled volume (see Doc 5 / Runtime Layer for code specifics).
+Deadband philosophy: Comfort-first target ranges (e.g., setpoint 68, off ≤68, on >72).
+Room targeting philosophy: Rooms act as engines or spillways, not mathematically isolated zones.
+Bedroom sleep logic: Aggressive cool-down targeting a 62–66°F Master sleep window.
+Always-on comfort assumptions: Away modes relax targets (74–76°F) rather than fully abandoning control.
+V8.3 Heating Doctrine: Heating and shoulder daytime paths use a top-anchored deadband (target 68°F, off ≥68, on <64) to prevent compressor short-cycling. To passively mitigate stack-effect heating upstairs, the Living Room target drops to 64°F (deadband 62-64°F) during the bedtime window (18:00–22:00) when the house is occupied.
+5.2 Safety Doctrine
+Safety logic operates independently of comfort optimization.
+Floor/ceiling protections: 58°F Master emergency cooling floor.
+Runaway protections: 60°F Living Room runaway cutoff.
+Separation from comfort arbitration: Safety logic will intervene and forcefully stop HVAC loops regardless of what the comfort logic is requesting.
+Explicitly note that safety logic is not the same thing as comfort optimization.
+5.3 Deferred Architecture
+The following concepts have been intentionally deferred and are not to be reintroduced casually without evidence:
+Explicit multi-head capacity arbitration.
+Cleaning up command-on-every-tick loops into explicit state transitions.
+Complex predictive suppression.
+6. Current Known Issues & Hardware Debt
+(Preserve known realities that a new session must not “discover” again.)
+Degraded BT probes: Bluetooth (BT) is primary in doctrine but currently transport-degraded in spaces like Deck. ST + Matter fallbacks are actively carrying the truth calculations (see Doc 2 / Reference Map).
+MSR DPS hardware pending validation / rehab: MSR-2 DPS310 sensors are explicitly removed from truth calculations due to historical hardware failure (see Doc 5 / Runtime Layer).
+Transport reliability vs truth-layer logic distinction: Transport degradation (e.g., BT drops) does not mean total truth failure if fallback logic remains healthy. Avoid over-architecting around transient network drops.
+Deadband memory shortcut limitations: The current supervisor uses HVAC mode as deadband memory. This degrades gracefully when device and controller intent diverge between 15-minute ticks, but remains a known imperfection.
+Remaining sensor debt that affects confidence: Legacy bare ST entities are targeted for retirement, and internal Samsung thermistors are permanently assigned low weight due to hardware bias.
+7. Retired Approaches / Do Not Re-Propose
+(This is a startup warning layer. See Doc 3 / Regression Appendix for the full breakdown.)
+Room-Isolation-First Control (Software cannot ignore shared airflow)
+Blind Trust in Unaudited Truth Layers (Sensors must be validated and trimmed)
+Presence as Master Governor (The house has too much thermal inertia)
+Preemptive Living Room Suppression Without Evidence (Do not solve theoretical starvation)
+Over-Architected Arbitration Before Measured Need (Complexity requires evidence)
+Offset Stacking Without Hard Boundary Discipline (Leads to limit strikes and hardware oscillation)
+Naive Multi-Sensor Fusion Without Aggressive Rejection Logic (Averaging bad sensors ruins control)
+Treating Transport Degradation as Total Truth-Layer Failure (Fallbacks exist for a reason)
+Treating Historical Doctrine as Live Runtime Truth (YAML is truth)
+Closing Rule: Materially similar approaches are considered retired unless new evidence justifies reopening them.
+8. Live vs Historical Source Boundary
+(What counts as current truth)
+8.1 Live / Authoritative for Current Reality
+Doc 1 / Moose House Startup Canon (This Document)
+Doc 2 / Moose House Climate Reference Map
+Doc 5 / Runtime Layer (Active YAML and Control Definitions)
+Doc 4 / Operations Sheet (V8.2 Cooling Validation)
+VTherm_Launch_Data_v5 (Live Telemetry Evidence)
+8.2 Historical / Context Only
+Doc 3 / Appendix B — Regression Appendix (For understanding why ideas failed)
+Appendix A — V8.1 Truth Layer Audit (For understanding legacy sensor cleanup)
+Older telemetry schemas and superseded narrative docs
+8.3 Conflict Rule
+If historical docs conflict with active canon or live YAML, historical docs lose for current runtime truth.
+If prose conflicts with live YAML, YAML wins for runtime behavior.
+If telemetry conflicts with expectation, investigate rather than assuming doctrine is correct.
+9. Document Routing / What This Canon Does Not Cover
+For room-by-room topology and source precedence, use Doc 2 / Reference Map.
+For a record of failed approaches to avoid, use Doc 3 / Regression Appendix.
+For performance judgment and stability validation, use Doc 4 / Operations Sheet.
+For actual implementation behavior, use Doc 5 / Runtime Layer.
+10. Startup Handoff Rule
+In a new session, begin with this document.
+Treat it as the authoritative memory layer for current system identity and doctrine.
+Use Doc 2 (Reference Map) for routing and topology, not this document.
+Do not reopen retired approaches (Doc 3) unless new evidence is explicitly identified.
+Update this canon only when a truth has actually changed, not when wording can be made prettier.
+11. Executive Snapshot
+Moose House is a highly coupled 1894 farmhouse operating on V8.3 (a comfort-first hotfix with passive stack-effect mitigation) and V3.1 (an audited truth layer). Software cannot out-calculate gravity and structure, so control is supervisory and deadband-focused (68-72°F normally). The system utilizes multi-sensor per-room truth (favoring BT/ST/Matter) but specifically avoids over-architected isolation logic or premature arbitration. Telemetry acts as evidence, YAML acts as runtime truth, and all new sessions must respect these boundaries before proposing changes.
+Meta Notes for Document Maintenance
+What to keep out of Doc 1:
+Do not let this doc absorb full room-by-room sensor tables, weighted truth-layer math, full operational KPI tables, long audit narratives, raw telemetry excerpts, or exhaustive history from V5/V6/V7/V8 docs. That belongs in Docs 2-5.
