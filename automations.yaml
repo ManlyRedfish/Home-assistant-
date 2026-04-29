@@ -584,6 +584,40 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
+# V9 SLEEP PRIORITY INTERLOCK
+# -----------------------------------------------------------------------------
+# Solves cross-mode contention lockout during shoulder seasons. If the Master
+# Bedroom requires cooling while the Living Room is actively heating, V9
+# explicitly forces the Living Room to off (provided LR truth remains safely
+# above the 60°F structural floor) to ensure proper mode arbitration at the
+# outdoor compressor.
+# -----------------------------------------------------------------------------
+- id: v9_sleep_priority_interlock
+  alias: "V9: Sleep Priority Interlock (Cross-Mode Contention)"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      to: "cool"
+    - platform: state
+      entity_id: climate.living_room_air
+      to: "heat"
+  condition:
+    - condition: state
+      entity_id: climate.master_bedroom_air
+      state: "cool"
+    - condition: state
+      entity_id: climate.living_room_air
+      state: "heat"
+    - condition: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      above: 60
+  action:
+    - action: climate.set_hvac_mode
+      target: { entity_id: climate.living_room_air }
+      data: { hvac_mode: "off" }
+
+# -----------------------------------------------------------------------------
 # RUNAWAY COOLING CUTOFF (LR) — V8.2
 # -----------------------------------------------------------------------------
 # This is NOT a comfort gate. Normal Section 2 control turns LR off at 68°F.
