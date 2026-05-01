@@ -1060,3 +1060,96 @@ sensor:
 # - sensor.office_temperature_control
 # - sensor.laundry_temperature_control
 # - sensor.deck_temperature_control
+
+
+# =============================================================================
+# SECTION 13: EVENT JOURNAL INFRASTRUCTURE (Phase 1A — Observability-Only)
+# =============================================================================
+# ⚠️  DO NOT DELETE without also removing automations.yaml Section 12
+#     (Event Journal Observer). Removing only one half leaves orphaned
+#     state. This section is OBSERVABILITY-ONLY: nothing in the control
+#     path reads from /config/logs/event_journal.csv.
+#
+# WHAT THIS DOES:
+#   Defines a notify.file sink and a parameterized script.log_event that
+#   together append one structured CSV row per meaningful HVAC event to
+#   /config/logs/event_journal.csv. Complements the 15-min Sheets snapshot
+#   (Section 1 of automations.yaml) and the V8.3 HVAC Transition Logger
+#   (Section 11). Schema documented in docs/event_telemetry_plan.md §3.1.
+#
+# CONTROL IMPACT: NONE.
+#   - notify.file does not block the supervisor.
+#   - script.log_event runs in mode: parallel and is fire-and-forget.
+#   - If the file write fails, the source state change has already happened.
+#
+# PRE-FLIGHT (one-time, before first run):
+#   $ mkdir -p /config/logs
+#   Then in HA UI: Developer Tools → YAML → Reload Notify Services and
+#   Reload Scripts. (notify: was a new top-level key on first add — a
+#   restart may be required the first time only.)
+#
+# ROLLBACK:
+#   1. Delete Section 12 of automations.yaml (Event Journal Observer).
+#   2. Delete this section.
+#   3. Restart HA.
+#   /config/logs/event_journal.csv remains on disk for archival.
+# =============================================================================
+
+notify:
+  - name: event_journal
+    platform: file
+    filename: /config/logs/event_journal.csv
+    timestamp: false
+
+script:
+  log_event:
+    alias: "Event Journal: Log Row"
+    mode: parallel
+    max: 50
+    fields:
+      event_type:
+        description: "Event type (see plan §4: hvac_mode_changed, setpoint_changed, manual_override_detected, waf_started, waf_expired, ...)"
+      entity_id:
+        description: "Primary entity for this event"
+        default: ""
+      zone:
+        description: "living_room | master | lincoln | lilly | house | outdoor | system"
+        default: ""
+      old_state:
+        default: ""
+      new_state:
+        default: ""
+      requested_mode:
+        default: ""
+      requested_setpoint:
+        default: ""
+      requested_fan_mode:
+        default: ""
+      actual_mode_after:
+        default: ""
+      actual_setpoint_after:
+        default: ""
+      actor:
+        default: "unknown"
+      reason:
+        default: ""
+      supervisor_branch:
+        default: ""
+      correlation_id:
+        default: ""
+      source_automation:
+        default: ""
+      notes:
+        default: ""
+    sequence:
+      - variables:
+          ts: "{{ utcnow().strftime('%Y-%m-%dT%H:%M:%SZ') }}"
+          season_now: "{{ states('input_select.hvac_season_mode') }}"
+          waf_now: "{{ states('timer.manual_hvac_override') }}"
+          waf_active: "{{ 'true' if waf_now == 'active' else 'false' }}"
+          q_reason: '"{{ (reason | string) | replace(''"'', ''""'') }}"'
+          q_notes: '"{{ (notes | string) | replace(''"'', ''""'') }}"'
+      - service: notify.event_journal
+        data:
+          message: >-
+            {{ ts }},{{ event_type }},{{ entity_id }},{{ zone }},{{ old_state }},{{ new_state }},{{ requested_mode }},{{ requested_setpoint }},{{ requested_fan_mode }},{{ actual_mode_after }},{{ actual_setpoint_after }},{{ actor }},{{ q_reason }},{{ supervisor_branch }},{{ season_now }},{{ waf_now }},{{ waf_active }},{{ source_automation }},{{ correlation_id }},{{ q_notes }}
