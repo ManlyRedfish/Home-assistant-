@@ -1060,3 +1060,61 @@ sensor:
 # - sensor.office_temperature_control
 # - sensor.laundry_temperature_control
 # - sensor.deck_temperature_control
+# =============================================================================
+# SECTION 13: EVENT JOURNAL INFRASTRUCTURE (PHASE 1A)
+# =============================================================================
+# ⚠️  Observability-only. Do not add duplicate top-level notify: or script:
+#     blocks elsewhere in this file; extend these blocks only.
+# ⚠️  /config/logs/ must exist before Home Assistant restart:
+#     run `mkdir -p /config/logs` on the HA host.
+# =============================================================================
+
+notify:
+  - name: event_journal
+    platform: file
+    filename: /config/logs/event_journal.csv
+    timestamp: false
+
+script:
+  log_event:
+    alias: "Log Event"
+    description: "Append a structured Phase 1A event row to /config/logs/event_journal.csv"
+    mode: queued
+    fields:
+      event_type:
+        description: "Event type"
+      entity_id:
+        description: "Primary entity id"
+      zone:
+        description: "Zone label"
+      old_state:
+        description: "Prior state"
+      new_state:
+        description: "New state"
+      actor:
+        description: "Event actor"
+      reason:
+        description: "Reason tag"
+      requested_mode:
+        description: "Requested hvac mode"
+      requested_setpoint:
+        description: "Requested setpoint"
+      requested_fan_mode:
+        description: "Requested fan mode"
+      actual_mode_after:
+        description: "Actual hvac mode after event"
+      actual_setpoint_after:
+        description: "Actual setpoint after event"
+      supervisor_branch:
+        description: "Supervisor branch label"
+      source_automation:
+        description: "Source automation id"
+      correlation_id:
+        description: "Correlation id"
+      notes:
+        description: "Additional notes"
+    sequence:
+      - action: notify.event_journal
+        data:
+          message: >-
+            {{ now().isoformat() }},{{ event_type | default('') }},{{ entity_id | default('') }},{{ zone | default('') }},{{ old_state | default('') }},{{ new_state | default('') }},{{ requested_mode | default('') }},{{ requested_setpoint | default('') }},{{ requested_fan_mode | default('') }},{{ actual_mode_after | default('') }},{{ actual_setpoint_after | default('') }},{{ actor | default('') }},{{ reason | default('') }},{{ supervisor_branch | default('') }},{{ states('input_select.hvac_season_mode') if states('input_select.hvac_season_mode') not in ['unknown', 'unavailable'] else '' }},{{ states('timer.manual_hvac_override') if states('timer.manual_hvac_override') not in ['unknown', 'unavailable'] else '' }},{{ 'true' if states('timer.manual_hvac_override') == 'active' else 'false' }},{{ source_automation | default('') }},{{ correlation_id | default('') }},{{ notes | default('') }}

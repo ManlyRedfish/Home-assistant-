@@ -1482,3 +1482,138 @@
           (setpoint {{ setpoint }}°F, outdoor
           {{ states('sensor.deck_temperature_truth') }}°F)
         entity_id: "{{ entity }}"
+
+# =============================================================================
+# SECTION 12: EVENT JOURNAL OBSERVER (PHASE 1A)
+# =============================================================================
+# ⚠️  Observability-only. These automations only append event rows and do not
+#     control HVAC devices. Section 3 WAF automation remains the timer owner.
+# =============================================================================
+
+- id: ej_hvac_mode_changed
+  alias: "EJ: HVAC Mode Changed"
+  mode: queued
+  trigger:
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+  condition:
+    - condition: template
+      value_template: >-
+        {{ trigger.from_state is not none and trigger.to_state is not none and trigger.from_state.state != trigger.to_state.state }}
+  action:
+    - action: script.log_event
+      data:
+        event_type: hvac_mode_changed
+        entity_id: "{{ trigger.entity_id }}"
+        zone: >-
+          {% if 'living_room' in trigger.entity_id %}living_room{% elif 'master' in trigger.entity_id %}master{% elif 'lincoln' in trigger.entity_id %}lincoln{% elif 'lilly' in trigger.entity_id %}lilly{% else %}system{% endif %}
+        old_state: "{{ trigger.from_state.state }}"
+        new_state: "{{ trigger.to_state.state }}"
+        actual_mode_after: "{{ trigger.to_state.state }}"
+        actual_setpoint_after: "{{ trigger.to_state.attributes.temperature | default('') }}"
+        actor: observer
+        reason: state_trigger
+        source_automation: automation.ej_hvac_mode_changed
+
+- id: ej_setpoint_changed
+  alias: "EJ: Setpoint Changed"
+  mode: queued
+  trigger:
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      attribute: temperature
+  condition:
+    - condition: template
+      value_template: >-
+        {{ trigger.from_state is not none and trigger.to_state is not none and trigger.from_state.attributes.temperature != trigger.to_state.attributes.temperature }}
+  action:
+    - action: script.log_event
+      data:
+        event_type: setpoint_changed
+        entity_id: "{{ trigger.entity_id }}"
+        zone: >-
+          {% if 'living_room' in trigger.entity_id %}living_room{% elif 'master' in trigger.entity_id %}master{% elif 'lincoln' in trigger.entity_id %}lincoln{% elif 'lilly' in trigger.entity_id %}lilly{% else %}system{% endif %}
+        old_state: "{{ trigger.from_state.attributes.temperature | default('') }}"
+        new_state: "{{ trigger.to_state.attributes.temperature | default('') }}"
+        actual_mode_after: "{{ trigger.to_state.state }}"
+        actual_setpoint_after: "{{ trigger.to_state.attributes.temperature | default('') }}"
+        actor: observer
+        reason: attribute_temperature_trigger
+        source_automation: automation.ej_setpoint_changed
+
+- id: ej_manual_override_detected
+  alias: "EJ: Manual Override Detected"
+  mode: queued
+  trigger:
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
+      attribute: temperature
+  condition:
+    - condition: template
+      value_template: >-
+        {{ trigger.from_state is not none and trigger.to_state is not none and trigger.to_state.context is not none and trigger.to_state.context.parent_id is none and trigger.from_state.attributes.temperature != trigger.to_state.attributes.temperature }}
+  action:
+    - action: script.log_event
+      data:
+        event_type: manual_override_detected
+        entity_id: "{{ trigger.entity_id }}"
+        zone: >-
+          {% if 'living_room' in trigger.entity_id %}living_room{% elif 'master' in trigger.entity_id %}master{% elif 'lincoln' in trigger.entity_id %}lincoln{% elif 'lilly' in trigger.entity_id %}lilly{% else %}system{% endif %}
+        old_state: "{{ trigger.from_state.attributes.temperature | default('') }}"
+        new_state: "{{ trigger.to_state.attributes.temperature | default('') }}"
+        actual_mode_after: "{{ trigger.to_state.state }}"
+        actual_setpoint_after: "{{ trigger.to_state.attributes.temperature | default('') }}"
+        actor: human
+        reason: setpoint_change_no_parent_context
+        source_automation: automation.ej_manual_override_detected
+
+- id: ej_waf_started
+  alias: "EJ: WAF Started"
+  mode: queued
+  trigger:
+    - platform: state
+      entity_id: timer.manual_hvac_override
+      to: active
+  action:
+    - action: script.log_event
+      data:
+        event_type: waf_started
+        entity_id: timer.manual_hvac_override
+        zone: system
+        old_state: "{{ trigger.from_state.state if trigger.from_state is not none else '' }}"
+        new_state: "{{ trigger.to_state.state if trigger.to_state is not none else '' }}"
+        actor: waf_watcher
+        reason: timer_active
+        source_automation: automation.ej_waf_started
+
+- id: ej_waf_expired
+  alias: "EJ: WAF Expired"
+  mode: queued
+  trigger:
+    - platform: state
+      entity_id: timer.manual_hvac_override
+      from: active
+      to: idle
+  action:
+    - action: script.log_event
+      data:
+        event_type: waf_expired
+        entity_id: timer.manual_hvac_override
+        zone: system
+        old_state: "{{ trigger.from_state.state if trigger.from_state is not none else '' }}"
+        new_state: "{{ trigger.to_state.state if trigger.to_state is not none else '' }}"
+        actor: waf_watcher
+        reason: timer_idle
+        source_automation: automation.ej_waf_expired
