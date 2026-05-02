@@ -1122,7 +1122,9 @@ script:
       notes:
         description: "Additional notes"
     sequence:
-      - action: notify.event_journal
+      - action: notify.send_message
+        target:
+          entity_id: notify.event_journal
         data:
           message: >-
             {{ now().isoformat() }},{{ event_type | default('') }},{{ entity_id | default('') }},{{ zone | default('') }},{{ old_state | default('') }},{{ new_state | default('') }},{{ requested_mode | default('') }},{{ requested_setpoint | default('') }},{{ requested_fan_mode | default('') }},{{ actual_mode_after | default('') }},{{ actual_setpoint_after | default('') }},{{ actor | default('') }},{{ reason | default('') }},{{ supervisor_branch | default('') }},{{ states('input_select.hvac_season_mode') if states('input_select.hvac_season_mode') not in ['unknown', 'unavailable'] else '' }},{{ states('timer.manual_hvac_override') if states('timer.manual_hvac_override') not in ['unknown', 'unavailable'] else '' }},{{ 'true' if states('timer.manual_hvac_override') == 'active' else 'false' }},{{ source_automation | default('') }},{{ correlation_id | default('') }},{{ notes | default('') }}
