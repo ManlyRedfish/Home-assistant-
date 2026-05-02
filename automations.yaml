@@ -1629,6 +1629,9 @@
 #     Note: Section 2 may overwrite the boost on its next 15-minute
 #     supervisor tick. This is an intentional pilot limitation and
 #     should be evaluated with event_journal.csv and Sheets telemetry.
+#
+#     Safety Note: The max-runtime timer uses restore: true so an
+#     active boost does not lose its time boundary during HA restart.
 # =============================================================================
 
 - id: v8_4_lr_heating_recovery_boost_engage
