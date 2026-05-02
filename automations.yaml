@@ -1625,6 +1625,10 @@
 #     Uses 77°F setpoint to force recovery in heating/shoulder season,
 #     stops based on truth cap of 67°F or 90min timeout.
 #     WAF override terminates boost immediately.
+#
+#     Note: Section 2 may overwrite the boost on its next 15-minute
+#     supervisor tick. This is an intentional pilot limitation and
+#     should be evaluated with event_journal.csv and Sheets telemetry.
 # =============================================================================
 
 - id: v8_4_lr_heating_recovery_boost_engage
@@ -1650,16 +1654,9 @@
     - condition: state
       entity_id: input_boolean.lr_heating_recovery_boost_active
       state: "off"
-    - condition: state
-      entity_id: climate.living_room_air
-      state:
-        - "heat"
-        - "cool"
-        - "heat_cool"
-        - "fan_only"
-        - "dry"
-        - "off"
-      match: any
+    - condition: template
+      value_template: >-
+        {{ states('climate.living_room_air') not in ['unknown', 'unavailable'] }}
     - condition: template
       value_template: >-
         {{ states('sensor.living_room_temperature_truth') | float(none) is not none }}
