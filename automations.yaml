@@ -1617,3 +1617,146 @@
         actor: waf_watcher
         reason: timer_idle
         source_automation: automation.ej_waf_expired
+
+# =============================================================================
+# SECTION 14: V8.4 LR HEATING RECOVERY BOOST PILOT
+# =============================================================================
+# ⚠️  DO NOT DELETE — V8.4 LR Heating Recovery Boost Pilot
+#     Uses 77°F setpoint to force recovery in heating/shoulder season,
+#     stops based on truth cap of 67°F or 90min timeout.
+#     WAF override terminates boost immediately.
+#
+#     Note: Section 2 may overwrite the boost on its next 15-minute
+#     supervisor tick. This is an intentional pilot limitation and
+#     should be evaluated with event_journal.csv and Sheets telemetry.
+#
+#     Safety Note: The max-runtime timer uses restore: true so an
+#     active boost does not lose its time boundary during HA restart.
+# =============================================================================
+
+- id: v8_4_lr_heating_recovery_boost_engage
+  alias: "V8.4: LR Heating Recovery Boost Engage"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      below: 64
+  condition:
+    - condition: template
+      value_template: >-
+        {{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+    - condition: state
+      entity_id: input_boolean.away_mode
+      state: "off"
+    - condition: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      below: 64
+    - condition: state
+      entity_id: input_boolean.lr_heating_recovery_boost_active
+      state: "off"
+    - condition: template
+      value_template: >-
+        {{ states('climate.living_room_air') not in ['unknown', 'unavailable'] }}
+    - condition: template
+      value_template: >-
+        {{ states('sensor.living_room_temperature_truth') | float(none) is not none }}
+  action:
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.lr_heating_recovery_boost_active
+    - action: timer.start
+      target:
+        entity_id: timer.lr_heating_recovery_boost_max_runtime
+      data:
+        duration: "01:30:00"
+    - action: climate.set_temperature
+      target:
+        entity_id: climate.living_room_air
+      data:
+        temperature: 77
+        hvac_mode: heat
+    - action: script.log_event
+      data:
+        event_type: heating_recovery_boost_started
+        entity_id: climate.living_room_air
+        zone: living_room
+        old_state: ""
+        new_state: heat
+        requested_mode: heat
+        requested_setpoint: 77
+        actor: supervisor
+        reason: lr_truth_below_64
+        source_automation: automation.v8_4_lr_heating_recovery_boost_engage
+
+- id: v8_4_lr_heating_recovery_boost_release
+  alias: "V8.4: LR Heating Recovery Boost Release"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.living_room_temperature_truth
+      above: 66.99
+      id: truth_cap
+    - platform: event
+      event_type: timer.finished
+      event_data:
+        entity_id: timer.lr_heating_recovery_boost_max_runtime
+      id: timeout
+    - platform: state
+      entity_id: timer.manual_hvac_override
+      to: "active"
+      id: waf
+    - platform: template
+      value_template: >-
+        {{ states('input_select.hvac_season_mode') not in ['heating', 'shoulder'] }}
+      id: season_change
+    - platform: template
+      value_template: >-
+        {{ states('sensor.living_room_temperature_truth') in ['unknown', 'unavailable'] or states('sensor.living_room_temperature_truth') | float(none) is none }}
+      id: truth_unavailable
+  condition:
+    - condition: state
+      entity_id: input_boolean.lr_heating_recovery_boost_active
+      state: "on"
+  action:
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.lr_heating_recovery_boost_active
+    - choose:
+        - conditions:
+            - condition: state
+              entity_id: timer.lr_heating_recovery_boost_max_runtime
+              state: "active"
+          sequence:
+            - action: timer.cancel
+              target:
+                entity_id: timer.lr_heating_recovery_boost_max_runtime
+    - choose:
+        - conditions:
+            - condition: not
+              conditions:
+                - condition: state
+                  entity_id: timer.manual_hvac_override
+                  state: "active"
+          sequence:
+            - action: climate.set_hvac_mode
+              target:
+                entity_id: climate.living_room_air
+              data:
+                hvac_mode: "off"
+    - action: script.log_event
+      data:
+        event_type: >-
+          {% if trigger.id == 'truth_cap' %}heating_recovery_boost_stopped_truth_cap{% elif trigger.id == 'timeout' %}heating_recovery_boost_stopped_timeout{% elif trigger.id == 'waf' %}heating_recovery_boost_stopped_waf{% elif trigger.id == 'season_change' %}heating_recovery_boost_stopped_season_change{% else %}heating_recovery_boost_stopped_truth_unavailable{% endif %}
+        entity_id: climate.living_room_air
+        zone: living_room
+        old_state: heat
+        new_state: >-
+          {% if states('timer.manual_hvac_override') == 'active' %}heat{% else %}off{% endif %}
+        requested_mode: >-
+          {% if states('timer.manual_hvac_override') == 'active' %}heat{% else %}off{% endif %}
+        actor: supervisor
+        reason: "{{ trigger.id }}"
+        source_automation: automation.v8_4_lr_heating_recovery_boost_release
