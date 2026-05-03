@@ -113,10 +113,11 @@ The live truth runtime includes:
 The runtime depends on several helpers. The live automations file explicitly lists helper dependencies including:
 - `input_select.hvac_season_mode`
 - `input_boolean.night_mode_lr_primary`
-- `input_boolean.precool_active` (explicitly noted as orphaned in V8.2 but still toggled by Section 3B)
 - `timer.manual_hvac_override`
 - `timer.shade_manual_override`
 - `input_boolean.away_mode`
+- `input_boolean.lr_heating_recovery_boost_active` (Section 14 V8.4 LR boost latch)
+- `timer.lr_heating_recovery_boost_max_runtime` (Section 14 V8.4 LR boost timeout, `restore: true`)
 *(These helpers are not just UI artifacts. They are part of the live control path and must exist for runtime behavior to function properly.)*
 
 ### 6.6 Evidence / Runtime Observation Components
@@ -143,9 +144,11 @@ The live V8.3 runtime does not implement explicit multi-head capacity arbitratio
 
 ### 7.4 Orphaned / Transitional Runtime Pieces
 The live file explicitly identifies:
-- **PRE-COOL LATCH:** (ORPHANED — helper retained, nothing reads it)
+- **PRE-COOL LATCH (Section 3B):** (REMOVED in PR #28 — the orphaned Section 3B `v8_precool_latch` automation was deleted from `automations.yaml`. The `input_boolean.precool_active` helper is no longer toggled or read by any YAML; if it persists as a UI-defined helper it has no remaining writers or readers.)
 - **MASTER PRE-COOL:** (DISABLED — superseded by V8.1/V8.2 cooling branch)
 - **HVAC TRANSITION LOGGER:** (Expanded in V8.3 to capture heating hysteresis transitions)
+- **EVENT JOURNAL (Section 13 + Section 12):** (CONTAINED in PR #26 — `script.log_event` is a safe no-op (`stop:` action), and all five Section 12 EJ observer automations carry `initial_state: false`. The `notify.event_journal` sink never registered on this HA build and PRs #19/#22/#23/#24/#25 failed to land a working sink. Do not re-enable observers and do not introduce another sink without first satisfying the live-spike rules in `docs/postmortems/2026-05-02_event_journal_containment.md`. Section 14 calls into the no-op script and is unaffected.)
+- **V8.4 LR HEATING RECOVERY BOOST (Section 14):** (DEPLOYED, NOT YET TRIGGERED — engage and release automations are enabled and the helpers (`input_boolean.lr_heating_recovery_boost_active`, `timer.lr_heating_recovery_boost_max_runtime`) are live, but Living Room truth has not fallen below 64°F in available V5 telemetry, so the engage path has not yet exercised. Validation evidence pipeline is HA Logbook + `VTherm_Launch_Data_v5` + Section 14 traces, per the postmortem §9.)
 *(These are part of the current runtime surface and should not be silently forgotten.)*
 
 ### 7.5 Sensor Exclusion Reality
