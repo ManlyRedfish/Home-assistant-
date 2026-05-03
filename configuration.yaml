@@ -1079,7 +1079,7 @@ sensor:
 
 shell_command:
   event_journal_append: >-
-    printf '%s\n' "$(echo '{{ row | default("") | b64encode }}' | base64 -d)" >> /config/logs/event_journal.csv
+    printf '%s\n' '{{ row | default("") | replace("'", "'\"'\"'") }}' >> /config/logs/event_journal.csv
 
 script:
   log_event:
