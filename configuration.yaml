@@ -1077,9 +1077,11 @@ sensor:
 #     run `mkdir -p /config/logs` on the HA host.
 # =============================================================================
 
-shell_command:
-  event_journal_append: >-
-    printf '%s\n' '{{ row | default("") | replace("'", "'\"'\"'") }}' >> /config/logs/event_journal.csv
+notify:
+  - name: event_journal
+    platform: file
+    filename: /config/logs/event_journal.csv
+    timestamp: false
 
 script:
   log_event:
@@ -1120,9 +1122,9 @@ script:
       notes:
         description: "Additional notes"
     sequence:
-      - action: shell_command.event_journal_append
+      - action: notify.event_journal
         data:
-          row: >-
+          message: >-
             {{ now().isoformat() }},{{ event_type | default('') }},{{ entity_id | default('') }},{{ zone | default('') }},{{ old_state | default('') }},{{ new_state | default('') }},{{ requested_mode | default('') }},{{ requested_setpoint | default('') }},{{ requested_fan_mode | default('') }},{{ actual_mode_after | default('') }},{{ actual_setpoint_after | default('') }},{{ actor | default('') }},{{ reason | default('') }},{{ supervisor_branch | default('') }},{{ states('input_select.hvac_season_mode') if states('input_select.hvac_season_mode') not in ['unknown', 'unavailable'] else '' }},{{ states('timer.manual_hvac_override') if states('timer.manual_hvac_override') not in ['unknown', 'unavailable'] else '' }},{{ 'true' if states('timer.manual_hvac_override') == 'active' else 'false' }},{{ source_automation | default('') }},{{ correlation_id | default('') }},{{ notes | default('') }}
 
 # =============================================================================
