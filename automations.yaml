@@ -1492,6 +1492,7 @@
 
 - id: ej_hvac_mode_changed
   alias: "EJ: HVAC Mode Changed"
+  initial_state: false
   mode: queued
   trigger:
     - platform: state
@@ -1521,6 +1522,7 @@
 
 - id: ej_setpoint_changed
   alias: "EJ: Setpoint Changed"
+  initial_state: false
   mode: queued
   trigger:
     - platform: state
@@ -1551,6 +1553,7 @@
 
 - id: ej_manual_override_detected
   alias: "EJ: Manual Override Detected"
+  initial_state: false
   mode: queued
   trigger:
     - platform: state
@@ -1581,6 +1584,7 @@
 
 - id: ej_waf_started
   alias: "EJ: WAF Started"
+  initial_state: false
   mode: queued
   trigger:
     - platform: state
@@ -1600,6 +1604,7 @@
 
 - id: ej_waf_expired
   alias: "EJ: WAF Expired"
+  initial_state: false
   mode: queued
   trigger:
     - platform: state
