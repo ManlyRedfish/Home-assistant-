@@ -1060,14 +1060,6 @@ sensor:
         time_constant: 10
         precision: 2
 
-# VTherm should point at:
-# - sensor.living_room_temperature_control
-# - sensor.master_bedroom_temperature_control
-# - sensor.lincoln_s_room_temperature_control
-# - sensor.lilly_s_room_temperature_control
-# - sensor.office_temperature_control
-# - sensor.laundry_temperature_control
-# - sensor.deck_temperature_control
 # =============================================================================
 # SECTION 13: EVENT JOURNAL INFRASTRUCTURE (PHASE 1A) — DISABLED
 # =============================================================================
