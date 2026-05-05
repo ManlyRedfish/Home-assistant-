@@ -1018,6 +1018,7 @@ sensor:
 
   - platform: filter
     name: "Lincoln's Room Temperature Smoothed"
+    unique_id: lincoln_s_room_temperature_smoothed
     entity_id: sensor.lincoln_s_room_temperature_truth
     filters:
       - filter: lowpass
@@ -1026,6 +1027,7 @@ sensor:
 
   - platform: filter
     name: "Lilly's Room Temperature Smoothed"
+    unique_id: lilly_s_room_temperature_smoothed
     entity_id: sensor.lilly_s_room_temperature_truth
     filters:
       - filter: lowpass
