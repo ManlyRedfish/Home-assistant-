@@ -767,8 +767,8 @@
 # SECTION 4: GHOST ASSASSIN
 # =============================================================================
 # ⚠️  DO NOT DELETE — Kills phantom heat activation on Lincoln's Samsung head
-#     unit at 1:20 AM. This is a known SmartThings/Samsung ghost automation
-#     that cannot be disabled on the device side.
+#     unit at 1:20 AM. This is a known SmartThings/Samsung ghost automation.
+#     The Home Assistant automation below must remain active to suppress the hardware bug.
 # =============================================================================
 
 - id: v7_5_ghost_assassin
