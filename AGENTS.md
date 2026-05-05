@@ -58,7 +58,6 @@ This file contains multiple independent systems:
 
 Key Architectural Notes:
 
-* VTherm has been deprecated.
 * The current architecture uses custom orchestration logic.
 * The system intentionally separates:
 
