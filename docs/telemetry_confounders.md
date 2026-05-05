@@ -146,9 +146,9 @@ is required for either.
 Either option is acceptable. The goal is a written, durable record that future
 sessions can join against `VTherm_Launch_Data_v5` timestamps.
 
-The event journal sink is **contained per PR #26** and is not the right place for
-this annotation. Do not re-enable observers, propose another sink, or attempt a new
-event-journal write path on the strength of this annotation need.
+The event journal infrastructure was **retired and removed** after the sink failed
+to register. Do not re-introduce observers or attempt a new event-journal write path
+on the strength of this annotation need without a proven HA-compatible sink.
 
 ## 7. Hard constraints carried forward
 
@@ -161,7 +161,7 @@ This document does not change:
 - Telemetry schema (`VTherm_Launch_Data_v5`).
 - Any threshold (64°F engage, 67°F truth_cap, 90-min timer, 60°F runaway,
   58°F floor, 76°F ceiling).
-- The disabled state of EJ observers or the no-op state of `script.log_event`.
+- The removal of EJ observers and the `script.log_event` no-op.
 
 If a future proposal materially relaxes any of the above, that proposal must be
 evaluated against `docs/3_regression_appendix.md` reopen conditions, not against this

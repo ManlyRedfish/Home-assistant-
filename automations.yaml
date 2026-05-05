@@ -22,6 +22,7 @@
 #   8.  SAMSUNG AUTO GUARDRAIL (Anti-rogue auto mode logic)
 #   9.  TRUTH SENSOR HEALTH ALERT
 #   11. HVAC TRANSITION LOGGER (V8.3 — audit trail for heating/cooling behavior)
+#   14. V8.4 LR HEATING RECOVERY BOOST PILOT
 #
 # DEPENDENCIES (helpers that must exist):
 #   - input_select.hvac_season_mode (heating / shoulder / cooling)
@@ -1406,154 +1407,6 @@
         entity_id: "{{ entity }}"
 
 # =============================================================================
-# SECTION 12: EVENT JOURNAL OBSERVER (PHASE 1A) — DISABLED
-# =============================================================================
-# ⚠️  Observability-only. These automations only append event rows and do not
-#     control HVAC devices. Section 3 WAF automation remains the timer owner.
-#
-# ⚠️  CONTAINED post-PR #26: all five EJ observers below carry
-#     initial_state: false, and script.log_event in configuration.yaml
-#     Section 13 is a safe no-op. notify.event_journal never registered
-#     on this HA build (PRs #19/#22/#23/#24/#25 failed to land a sink).
-#     Do NOT re-enable these observers and do NOT introduce another sink
-#     without first satisfying the live-spike rules in
-#     docs/postmortems/2026-05-02_event_journal_containment.md §6.
-# =============================================================================
-
-- id: ej_hvac_mode_changed
-  alias: "EJ: HVAC Mode Changed"
-  initial_state: false
-  mode: queued
-  trigger:
-    - platform: state
-      entity_id:
-        - climate.living_room_air
-        - climate.master_bedroom_air
-        - climate.lincoln_air
-        - climate.lilly_air
-  condition:
-    - condition: template
-      value_template: >-
-        {{ trigger.from_state is not none and trigger.to_state is not none and trigger.from_state.state != trigger.to_state.state }}
-  action:
-    - action: script.log_event
-      data:
-        event_type: hvac_mode_changed
-        entity_id: "{{ trigger.entity_id }}"
-        zone: >-
-          {% if 'living_room' in trigger.entity_id %}living_room{% elif 'master' in trigger.entity_id %}master{% elif 'lincoln' in trigger.entity_id %}lincoln{% elif 'lilly' in trigger.entity_id %}lilly{% else %}system{% endif %}
-        old_state: "{{ trigger.from_state.state }}"
-        new_state: "{{ trigger.to_state.state }}"
-        actual_mode_after: "{{ trigger.to_state.state }}"
-        actual_setpoint_after: "{{ trigger.to_state.attributes.temperature | default('') }}"
-        actor: observer
-        reason: state_trigger
-        source_automation: automation.ej_hvac_mode_changed
-
-- id: ej_setpoint_changed
-  alias: "EJ: Setpoint Changed"
-  initial_state: false
-  mode: queued
-  trigger:
-    - platform: state
-      entity_id:
-        - climate.living_room_air
-        - climate.master_bedroom_air
-        - climate.lincoln_air
-        - climate.lilly_air
-      attribute: temperature
-  condition:
-    - condition: template
-      value_template: >-
-        {{ trigger.from_state is not none and trigger.to_state is not none and trigger.from_state.attributes.temperature != trigger.to_state.attributes.temperature }}
-  action:
-    - action: script.log_event
-      data:
-        event_type: setpoint_changed
-        entity_id: "{{ trigger.entity_id }}"
-        zone: >-
-          {% if 'living_room' in trigger.entity_id %}living_room{% elif 'master' in trigger.entity_id %}master{% elif 'lincoln' in trigger.entity_id %}lincoln{% elif 'lilly' in trigger.entity_id %}lilly{% else %}system{% endif %}
-        old_state: "{{ trigger.from_state.attributes.temperature | default('') }}"
-        new_state: "{{ trigger.to_state.attributes.temperature | default('') }}"
-        actual_mode_after: "{{ trigger.to_state.state }}"
-        actual_setpoint_after: "{{ trigger.to_state.attributes.temperature | default('') }}"
-        actor: observer
-        reason: attribute_temperature_trigger
-        source_automation: automation.ej_setpoint_changed
-
-- id: ej_manual_override_detected
-  alias: "EJ: Manual Override Detected"
-  initial_state: false
-  mode: queued
-  trigger:
-    - platform: state
-      entity_id:
-        - climate.living_room_air
-        - climate.master_bedroom_air
-        - climate.lincoln_air
-        - climate.lilly_air
-      attribute: temperature
-  condition:
-    - condition: template
-      value_template: >-
-        {{ trigger.from_state is not none and trigger.to_state is not none and trigger.to_state.context is not none and trigger.to_state.context.parent_id is none and trigger.from_state.attributes.temperature != trigger.to_state.attributes.temperature }}
-  action:
-    - action: script.log_event
-      data:
-        event_type: manual_override_detected
-        entity_id: "{{ trigger.entity_id }}"
-        zone: >-
-          {% if 'living_room' in trigger.entity_id %}living_room{% elif 'master' in trigger.entity_id %}master{% elif 'lincoln' in trigger.entity_id %}lincoln{% elif 'lilly' in trigger.entity_id %}lilly{% else %}system{% endif %}
-        old_state: "{{ trigger.from_state.attributes.temperature | default('') }}"
-        new_state: "{{ trigger.to_state.attributes.temperature | default('') }}"
-        actual_mode_after: "{{ trigger.to_state.state }}"
-        actual_setpoint_after: "{{ trigger.to_state.attributes.temperature | default('') }}"
-        actor: human
-        reason: setpoint_change_no_parent_context
-        source_automation: automation.ej_manual_override_detected
-
-- id: ej_waf_started
-  alias: "EJ: WAF Started"
-  initial_state: false
-  mode: queued
-  trigger:
-    - platform: state
-      entity_id: timer.manual_hvac_override
-      to: active
-  action:
-    - action: script.log_event
-      data:
-        event_type: waf_started
-        entity_id: timer.manual_hvac_override
-        zone: system
-        old_state: "{{ trigger.from_state.state if trigger.from_state is not none else '' }}"
-        new_state: "{{ trigger.to_state.state if trigger.to_state is not none else '' }}"
-        actor: waf_watcher
-        reason: timer_active
-        source_automation: automation.ej_waf_started
-
-- id: ej_waf_expired
-  alias: "EJ: WAF Expired"
-  initial_state: false
-  mode: queued
-  trigger:
-    - platform: state
-      entity_id: timer.manual_hvac_override
-      from: active
-      to: idle
-  action:
-    - action: script.log_event
-      data:
-        event_type: waf_expired
-        entity_id: timer.manual_hvac_override
-        zone: system
-        old_state: "{{ trigger.from_state.state if trigger.from_state is not none else '' }}"
-        new_state: "{{ trigger.to_state.state if trigger.to_state is not none else '' }}"
-        actor: waf_watcher
-        reason: timer_idle
-        source_automation: automation.ej_waf_expired
-
-# =============================================================================
 # SECTION 14: V8.4 LR HEATING RECOVERY BOOST PILOT
 # =============================================================================
 # ⚠️  DO NOT DELETE — V8.4 LR Heating Recovery Boost Pilot
@@ -1613,18 +1466,6 @@
       data:
         temperature: 77
         hvac_mode: heat
-    - action: script.log_event
-      data:
-        event_type: heating_recovery_boost_started
-        entity_id: climate.living_room_air
-        zone: living_room
-        old_state: ""
-        new_state: heat
-        requested_mode: heat
-        requested_setpoint: 77
-        actor: supervisor
-        reason: lr_truth_below_64
-        source_automation: automation.v8_4_lr_heating_recovery_boost_engage
 
 - id: v8_4_lr_heating_recovery_boost_release
   alias: "V8.4: LR Heating Recovery Boost Release"
@@ -1681,17 +1522,3 @@
                 entity_id: climate.living_room_air
               data:
                 hvac_mode: "off"
-    - action: script.log_event
-      data:
-        event_type: >-
-          {% if trigger.id == 'truth_cap' %}heating_recovery_boost_stopped_truth_cap{% elif trigger.id == 'timeout' %}heating_recovery_boost_stopped_timeout{% elif trigger.id == 'waf' %}heating_recovery_boost_stopped_waf{% elif trigger.id == 'season_change' %}heating_recovery_boost_stopped_season_change{% else %}heating_recovery_boost_stopped_truth_unavailable{% endif %}
-        entity_id: climate.living_room_air
-        zone: living_room
-        old_state: heat
-        new_state: >-
-          {% if states('timer.manual_hvac_override') == 'active' %}heat{% else %}off{% endif %}
-        requested_mode: >-
-          {% if states('timer.manual_hvac_override') == 'active' %}heat{% else %}off{% endif %}
-        actor: supervisor
-        reason: "{{ trigger.id }}"
-        source_automation: automation.v8_4_lr_heating_recovery_boost_release
