@@ -388,7 +388,7 @@ template:
       #   Samsung is excluded from outlier calc (always passes if fresh).
       # =========================================================
       - name: "Lincoln's Room Temperature Truth"
-        unique_id: lincolns_room_temperature_truth_v3
+        unique_id: lincoln_s_room_temperature_truth_v3
         unit_of_measurement: "°F"
         device_class: temperature
         state_class: measurement
@@ -433,7 +433,7 @@ template:
           {{ (ns.total / ns.weight) | round(2) }}
 
       - name: "Lincoln's Room Humidity Truth"
-        unique_id: lincolns_room_humidity_truth_v3
+        unique_id: lincoln_s_room_humidity_truth_v3
         unit_of_measurement: "%"
         device_class: humidity
         state_class: measurement
@@ -568,7 +568,7 @@ template:
       #   lilly_temp_temperature_2 (Outdoor Meter 58 fallback)
       # =========================================================
       - name: "Lilly's Room Temperature Truth"
-        unique_id: lillys_room_temperature_truth_v3
+        unique_id: lilly_s_room_temperature_truth_v3
         unit_of_measurement: "°F"
         device_class: temperature
         state_class: measurement
@@ -597,7 +597,7 @@ template:
           {{ (ns.total / ns.weight) | round(2) }}
 
       - name: "Lilly's Room Humidity Truth"
-        unique_id: lillys_room_humidity_truth_v3
+        unique_id: lilly_s_room_humidity_truth_v3
         unit_of_measurement: "%"
         device_class: humidity
         state_class: measurement
@@ -870,9 +870,8 @@ template:
         state: >
           {{ states('sensor.master_bedroom_temperature_smoothed') | float(none) | round(2) }}
 
-      # FIX: slug is lincoln_s_room not lincolns_room
       - name: "Lincoln's Room Temperature Control"
-        unique_id: lincolns_room_temperature_control_v3
+        unique_id: lincoln_s_room_temperature_control_v3
         unit_of_measurement: "°F"
         device_class: temperature
         state_class: measurement
@@ -881,9 +880,8 @@ template:
         state: >
           {{ states('sensor.lincoln_s_room_temperature_smoothed') | float(none) | round(2) }}
 
-      # FIX: slug is lilly_s_room not lillys_room
       - name: "Lilly's Room Temperature Control"
-        unique_id: lillys_room_temperature_control_v3
+        unique_id: lilly_s_room_temperature_control_v3
         unit_of_measurement: "°F"
         device_class: temperature
         state_class: measurement
@@ -1018,7 +1016,6 @@ sensor:
         time_constant: 10
         precision: 2
 
-  # FIX: slug is lincoln_s_room not lincolns_room
   - platform: filter
     name: "Lincoln's Room Temperature Smoothed"
     entity_id: sensor.lincoln_s_room_temperature_truth
@@ -1027,7 +1024,6 @@ sensor:
         time_constant: 10
         precision: 2
 
-  # FIX: slug is lilly_s_room not lillys_room
   - platform: filter
     name: "Lilly's Room Temperature Smoothed"
     entity_id: sensor.lilly_s_room_temperature_truth
