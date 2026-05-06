@@ -1,5 +1,43 @@
 # Event Telemetry Plan (V8.3-Compatible, Observability-Only)
 
+> ## ⚠️ STATUS: RETIRED / ARCHIVAL — DO NOT IMPLEMENT
+>
+> **Retired:** 2026-05-05 (PR #34 — full removal).
+>
+> **Why retired:** The Phase 1A implementation in PR #19 failed to register
+> `notify.event_journal` on this Home Assistant build. PRs #22, #23, #24, and
+> #25 each attempted alternative sinks (`notify.send_message`, `shell_command`
+> with `b64encode`, `shell_command` with raw `printf`, restored `notify.file`)
+> and each failed. PR #26 contained the failure by converting `script.log_event`
+> to a no-op and disabling the Section 12 EJ observers. PR #34 then **permanently
+> removed** Section 12, Section 13 (`script.log_event`), and the `script.log_event`
+> calls in Section 14. No part of the architecture described below is present in
+> the live runtime.
+>
+> **Current evidence pipeline (use these instead):**
+> - **HA Logbook** for state transitions and hand-curated narrative.
+> - **`VTherm_Launch_Data_v5`** (Google Sheets, 15-minute snapshot) — the live
+>   `automations.yaml` Section 1 telemetry.
+> - **`docs/telemetry_confounders.md`** for window classification rules
+>   (operator-suppressed vs. clean) before drawing doctrine conclusions.
+> - **`docs/postmortems/2026-05-02_event_journal_containment.md`** §6 for the
+>   live-spike rules any future sink proposal must satisfy.
+> - **Section 11 HVAC Transition Logger** for off ⇄ cool/heat audit trails.
+>
+> **Do not implement this plan.** Do not re-introduce `script.log_event`,
+> `notify.event_journal`, `/config/logs/event_journal.csv`, the Section 12 EJ
+> observers, or the Phase 1A `notify.file` configuration without:
+> 1. A new live-spike issue that satisfies the postmortem §6 rules,
+> 2. Explicit operator approval, and
+> 3. A successful proof of `notify.event_journal` (or replacement sink) writing
+>    a CSV row on the live HA build before any automation is added.
+>
+> The document below is preserved as an archival record of the original Phase 1A
+> design intent. Schema choices, event-type lists, and rollback procedures are
+> historical context, not forward guidance.
+
+---
+
 **Plan Date:** May 1, 2026
 **Document Role:** Verification / Observability / Systems-Architecture proposal
 **Status:** Draft — planning artifact only. No control changes proposed. Safe to merge as documentation.
