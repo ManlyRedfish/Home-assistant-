@@ -52,11 +52,6 @@
 #   - sensor.downstairs_bathroom_temperature       (Laundry, was w=0.8)
 #   + all corresponding humidity phantom entities
 #
-# REMOVED — 2 dead MSR-2 DPS310 temperature sensors (hardware failure,
-#           confirmed 'unknown' in all telemetry since March 14):
-#   - sensor.living_room_msr_dps310_temperature    (LR, was w=0.45)
-#   - sensor.lincoln_msr_dps310_temperature        (Lincoln, was w=0.35)
-#
 # ADDED — 3 verified-live sensors not previously in truth calculations
 #         (confirmed reporting in Developer Tools April 6, 2026):
 #   - sensor.master_bedroom_temp_temperature_2     (7C3F, w=1.0)
@@ -64,7 +59,6 @@
 #   - sensor.laundry_temperature                   (WoTHP, w=1.0)
 #   + all corresponding humidity entities
 # =====================================================================
-
 
 # =============================================================================
 # SECTION 1: CORE HA CONFIG
@@ -106,7 +100,6 @@ timer:
     duration: "01:30:00"
     restore: true
     icon: mdi:timer-alert
-
 
 recorder:
   purge_keep_days: 30
@@ -185,7 +178,6 @@ template:
       #
       # REMOVED (V3.1):
       #   living_room_temperature_temperature — phantom, never existed
-      #   living_room_msr_dps310_temperature  — hardware failure
       # =========================================================
       - name: "Living Room Temperature Truth"
         unique_id: living_room_temperature_truth_v3
@@ -382,7 +374,6 @@ template:
       #   lincoln_air_temperature              (Samsung, +4.7°F)  w=0.20
       #
       # REMOVED (V3.1):
-      #   lincoln_msr_dps310_temperature  — hardware failure
       #
       # OUTLIER REJECTION: 3°F limit against base mean of primary sensors.
       #   Samsung is excluded from outlier calc (always passes if fresh).

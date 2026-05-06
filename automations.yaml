@@ -66,17 +66,16 @@
 # V8.3 CHANGELOG (April 25, 2026):
 #
 #   CHANGES FROM V8.2:
-#     • SECTION 2: Added LR heating deadband (target at top of band) and bedtime 
-#       LR setpoint reduction (target 64°F, deadband 62-64°F, 18:00-22:00) to 
+#     • SECTION 2: Added LR heating deadband (target at top of band) and bedtime
+#       LR setpoint reduction (target 64°F, deadband 62-64°F, 18:00-22:00) to
 #       prevent compressor short-cycling and passively reduce stack-effect heating.
 #     • SECTION 6: Added explicit fan_mode: auto commands to engage branches
 #       to prevent manual turbo overrides from sticking for 10+ hours.
-#     • Branch 1.5 (Bedtime Master Cooling) prototyped and removed in favor 
+#     • Branch 1.5 (Bedtime Master Cooling) prototyped and removed in favor
 #       of the passive LR-source approach above.
 #     • SECTION 11: Expanded logger to capture heating hysteresis transitions.
 #
 # =============================================================================
-
 
 # =============================================================================
 # SECTION 1: DATA COLLECTION (V5 Semantic Heritage Schema)
@@ -87,163 +86,159 @@
 # =============================================================================
 
 - id: vtherm_mega_tracker_v5
-  alias: 'Experiment Data: Export to Google Sheets v5'
+  alias: "Experiment Data: Export to Google Sheets v5"
   description: >
     V5 — Semantic Heritage Schema. Clean headers mapping lineage to entities.
   trigger:
-  - minutes: /15
-    trigger: time_pattern
+    - minutes: /15
+      trigger: time_pattern
   condition: []
   action:
-  - action: google_sheets.append_sheet
-    data:
-      config_entry: !secret google_sheets_config_entry
-      worksheet: VTherm_Launch_Data_v5
+    - action: google_sheets.append_sheet
       data:
-        # 1. Timestamp / Global Context
-        Timestamp: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
-        Season_Mode: "{% set v = states('input_select.hvac_season_mode') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Night_Mode_Toggle: "{% set v = states('input_boolean.night_mode_lr_primary') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Away_Mode: "{% set v = states('input_boolean.away_mode') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        config_entry: !secret google_sheets_config_entry
+        worksheet: VTherm_Launch_Data_v5
+        data:
+          # 1. Timestamp / Global Context
+          Timestamp: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+          Season_Mode: "{% set v = states('input_select.hvac_season_mode') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Night_Mode_Toggle: "{% set v = states('input_boolean.night_mode_lr_primary') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Away_Mode: "{% set v = states('input_boolean.away_mode') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 2. Outdoor / Deck
-        Deck_Temp_Truth: "{% set v = states('sensor.deck_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Deck_Hum_Truth: "{% set v = states('sensor.deck_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Deck_Temp_RoomProbe_BT: "{% set v = states('sensor.deck_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Deck_Hum_RoomProbe_BT: "{% set v = states('sensor.deck_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Deck_Temp_RoomProbe_ST: "{% set v = states('sensor.deck_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Deck_Hum_RoomProbe_ST: "{% set v = states('sensor.deck_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Deck_Temp_RoomProbe_Matter: "{% set v = states('sensor.deck_temp_temperature_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Deck_Hum_RoomProbe_Matter: "{% set v = states('sensor.deck_temp_humidity_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 2. Outdoor / Deck
+          Deck_Temp_Truth: "{% set v = states('sensor.deck_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Deck_Hum_Truth: "{% set v = states('sensor.deck_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Deck_Temp_RoomProbe_BT: "{% set v = states('sensor.deck_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Deck_Hum_RoomProbe_BT: "{% set v = states('sensor.deck_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Deck_Temp_RoomProbe_ST: "{% set v = states('sensor.deck_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Deck_Hum_RoomProbe_ST: "{% set v = states('sensor.deck_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Deck_Temp_RoomProbe_Matter: "{% set v = states('sensor.deck_temp_temperature_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Deck_Hum_RoomProbe_Matter: "{% set v = states('sensor.deck_temp_humidity_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 3. Living Room
-        LR_Temp_Truth: "{% set v = states('sensor.living_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Hum_Truth: "{% set v = states('sensor.living_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Temp_RoomProbe_BT_Primary: "{% set v = states('sensor.hub_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Hum_RoomProbe_BT_Primary: "{% set v = states('sensor.hub_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Temp_RoomProbe_ST: "{% set v = states('sensor.hub_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Hum_RoomProbe_ST: "{% set v = states('sensor.hub_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Temp_RoomProbe_BT_Secondary: "{% set v = states('sensor.hub_2_tempsensor_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Hum_RoomProbe_BT_Secondary: "{% set v = states('sensor.hub_2_humisensor_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Temp_HVAC_Samsung: "{% set v = states('sensor.living_room_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Hum_HVAC_Samsung: "{% set v = states('sensor.living_room_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_CO2_Diag_MSR: "{% set v = states('sensor.living_room_msr_co2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 3. Living Room
+          LR_Temp_Truth: "{% set v = states('sensor.living_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Hum_Truth: "{% set v = states('sensor.living_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Temp_RoomProbe_BT_Primary: "{% set v = states('sensor.hub_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Hum_RoomProbe_BT_Primary: "{% set v = states('sensor.hub_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Temp_RoomProbe_ST: "{% set v = states('sensor.hub_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Hum_RoomProbe_ST: "{% set v = states('sensor.hub_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Temp_RoomProbe_BT_Secondary: "{% set v = states('sensor.hub_2_tempsensor_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Hum_RoomProbe_BT_Secondary: "{% set v = states('sensor.hub_2_humisensor_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Temp_HVAC_Samsung: "{% set v = states('sensor.living_room_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Hum_HVAC_Samsung: "{% set v = states('sensor.living_room_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_CO2_Diag_MSR: "{% set v = states('sensor.living_room_msr_co2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 4. Master Bedroom
-        Master_Temp_Truth: "{% set v = states('sensor.master_bedroom_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Hum_Truth: "{% set v = states('sensor.master_bedroom_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Temp_RoomProbe_BT: "{% set v = states('sensor.master_bedroom_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Hum_RoomProbe_BT: "{% set v = states('sensor.master_bedroom_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Temp_RoomProbe_ST: "{% set v = states('sensor.master_bedroom_temperature_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Hum_RoomProbe_ST: "{% set v = states('sensor.master_bedroom_temperature_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Temp_RoomProbe_Matter: "{% set v = states('sensor.master_bedroom_temp_temperature_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Hum_RoomProbe_Matter: "{% set v = states('sensor.master_bedroom_temp_humidity_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Temp_HVAC_Samsung: "{% set v = states('sensor.master_bedroom_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Hum_HVAC_Samsung: "{% set v = states('sensor.master_bedroom_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 4. Master Bedroom
+          Master_Temp_Truth: "{% set v = states('sensor.master_bedroom_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Hum_Truth: "{% set v = states('sensor.master_bedroom_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Temp_RoomProbe_BT: "{% set v = states('sensor.master_bedroom_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Hum_RoomProbe_BT: "{% set v = states('sensor.master_bedroom_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Temp_RoomProbe_ST: "{% set v = states('sensor.master_bedroom_temperature_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Hum_RoomProbe_ST: "{% set v = states('sensor.master_bedroom_temperature_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Temp_RoomProbe_Matter: "{% set v = states('sensor.master_bedroom_temp_temperature_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Hum_RoomProbe_Matter: "{% set v = states('sensor.master_bedroom_temp_humidity_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Temp_HVAC_Samsung: "{% set v = states('sensor.master_bedroom_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Hum_HVAC_Samsung: "{% set v = states('sensor.master_bedroom_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 5. Lincoln's Room
-        Lincoln_Temp_Truth: "{% set v = states('sensor.lincoln_s_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Hum_Truth: "{% set v = states('sensor.lincoln_s_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Temp_RoomProbe_BT: "{% set v = states('sensor.lincoln_s_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Hum_RoomProbe_BT: "{% set v = states('sensor.lincoln_s_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Temp_RoomProbe_ST: "{% set v = states('sensor.lincoln_s_room_temperature_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Hum_RoomProbe_ST: "{% set v = states('sensor.lincoln_s_room_temperature_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Temp_RoomProbe_Matter: "{% set v = states('sensor.lincoln_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Hum_RoomProbe_Matter: "{% set v = states('sensor.lincoln_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Temp_HVAC_Samsung: "{% set v = states('sensor.lincoln_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Hum_HVAC_Samsung: "{% set v = states('sensor.lincoln_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Temp_Diag_MSR: "{% set v = states('sensor.lincoln_msr_dps310_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Pressure_Diag_MSR: "{% set v = states('sensor.lincoln_msr_dps310_pressure') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_ESPTemp_Diag_MSR: "{% set v = states('sensor.lincoln_msr_esp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 5. Lincoln's Room
+          Lincoln_Temp_Truth: "{% set v = states('sensor.lincoln_s_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Hum_Truth: "{% set v = states('sensor.lincoln_s_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Temp_RoomProbe_BT: "{% set v = states('sensor.lincoln_s_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Hum_RoomProbe_BT: "{% set v = states('sensor.lincoln_s_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Temp_RoomProbe_ST: "{% set v = states('sensor.lincoln_s_room_temperature_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Hum_RoomProbe_ST: "{% set v = states('sensor.lincoln_s_room_temperature_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Temp_RoomProbe_Matter: "{% set v = states('sensor.lincoln_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Hum_RoomProbe_Matter: "{% set v = states('sensor.lincoln_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Temp_HVAC_Samsung: "{% set v = states('sensor.lincoln_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Hum_HVAC_Samsung: "{% set v = states('sensor.lincoln_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 6. Lilly's Room
-        Lilly_Temp_Truth: "{% set v = states('sensor.lilly_s_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Hum_Truth: "{% set v = states('sensor.lilly_s_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Temp_RoomProbe_BT: "{% set v = states('sensor.lilly_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Hum_RoomProbe_BT: "{% set v = states('sensor.lilly_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Temp_RoomProbe_ST: "{% set v = states('sensor.lilly_room_temperature_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Hum_RoomProbe_ST: "{% set v = states('sensor.lilly_room_temperature_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Temp_RoomProbe_Matter: "{% set v = states('sensor.lilly_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Hum_RoomProbe_Matter: "{% set v = states('sensor.lilly_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Temp_HVAC_Samsung: "{% set v = states('sensor.lilly_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Hum_HVAC_Samsung: "{% set v = states('sensor.lilly_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 6. Lilly's Room
+          Lilly_Temp_Truth: "{% set v = states('sensor.lilly_s_room_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Hum_Truth: "{% set v = states('sensor.lilly_s_room_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Temp_RoomProbe_BT: "{% set v = states('sensor.lilly_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Hum_RoomProbe_BT: "{% set v = states('sensor.lilly_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Temp_RoomProbe_ST: "{% set v = states('sensor.lilly_room_temperature_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Hum_RoomProbe_ST: "{% set v = states('sensor.lilly_room_temperature_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Temp_RoomProbe_Matter: "{% set v = states('sensor.lilly_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Hum_RoomProbe_Matter: "{% set v = states('sensor.lilly_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Temp_HVAC_Samsung: "{% set v = states('sensor.lilly_air_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Hum_HVAC_Samsung: "{% set v = states('sensor.lilly_air_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 7. Laundry
-        Laundry_Temp_Truth: "{% set v = states('sensor.laundry_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Laundry_Hum_Truth: "{% set v = states('sensor.laundry_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Laundry_Temp_RoomProbe_BT: "{% set v = states('sensor.laundry_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Laundry_Hum_RoomProbe_BT: "{% set v = states('sensor.laundry_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Laundry_Temp_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Laundry_Hum_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Laundry_Temp_RoomProbe_Matter: "{% set v = states('sensor.laundry_room_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Laundry_Hum_RoomProbe_Matter: "{% set v = states('sensor.laundry_room_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 7. Laundry
+          Laundry_Temp_Truth: "{% set v = states('sensor.laundry_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Laundry_Hum_Truth: "{% set v = states('sensor.laundry_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Laundry_Temp_RoomProbe_BT: "{% set v = states('sensor.laundry_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Laundry_Hum_RoomProbe_BT: "{% set v = states('sensor.laundry_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Laundry_Temp_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Laundry_Hum_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Laundry_Temp_RoomProbe_Matter: "{% set v = states('sensor.laundry_room_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Laundry_Hum_RoomProbe_Matter: "{% set v = states('sensor.laundry_room_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 8. Office
-        Office_Temp_Truth: "{% set v = states('sensor.office_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Hum_Truth: "{% set v = states('sensor.office_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Temp_Anchor_Netatmo: "{% set v = states('sensor.indoor_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Hum_Anchor_Netatmo: "{% set v = states('sensor.indoor_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_CO2_Anchor_Netatmo: "{% set v = states('sensor.indoor_carbon_dioxide') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Pressure_Anchor_Netatmo: "{% set v = states('sensor.indoor_atmospheric_pressure') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Noise_Anchor_Netatmo: "{% set v = states('sensor.indoor_noise') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Temp_RoomProbe_BT: "{% set v = states('sensor.office_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Hum_RoomProbe_BT: "{% set v = states('sensor.office_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Temp_RoomProbe_ST: "{% set v = states('sensor.office_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Hum_RoomProbe_ST: "{% set v = states('sensor.office_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Temp_RoomProbe_Matter: "{% set v = states('sensor.office_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Office_Hum_RoomProbe_Matter: "{% set v = states('sensor.office_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 8. Office
+          Office_Temp_Truth: "{% set v = states('sensor.office_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Hum_Truth: "{% set v = states('sensor.office_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Temp_Anchor_Netatmo: "{% set v = states('sensor.indoor_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Hum_Anchor_Netatmo: "{% set v = states('sensor.indoor_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_CO2_Anchor_Netatmo: "{% set v = states('sensor.indoor_carbon_dioxide') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Pressure_Anchor_Netatmo: "{% set v = states('sensor.indoor_atmospheric_pressure') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Noise_Anchor_Netatmo: "{% set v = states('sensor.indoor_noise') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Temp_RoomProbe_BT: "{% set v = states('sensor.office_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Hum_RoomProbe_BT: "{% set v = states('sensor.office_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Temp_RoomProbe_ST: "{% set v = states('sensor.office_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Hum_RoomProbe_ST: "{% set v = states('sensor.office_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Temp_RoomProbe_Matter: "{% set v = states('sensor.office_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Office_Hum_RoomProbe_Matter: "{% set v = states('sensor.office_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 9. Dining / Nest / Boiler
-        Dining_Temp_Anchor_Nest: "{% set v = states('sensor.dining_room_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Dining_Hum_Anchor_Nest: "{% set v = states('sensor.dining_room_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Dining_Mode_Nest: "{% set v = states('climate.dining_room') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Dining_Action_Nest: "{% set v = state_attr('climate.dining_room', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Dining_Setpoint_Nest: "{% set v = state_attr('climate.dining_room', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Boiler_Runtime_Today_Hrs: "{% set v = states('sensor.boiler_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 9. Dining / Nest / Boiler
+          Dining_Temp_Anchor_Nest: "{% set v = states('sensor.dining_room_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Dining_Hum_Anchor_Nest: "{% set v = states('sensor.dining_room_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Dining_Mode_Nest: "{% set v = states('climate.dining_room') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Dining_Action_Nest: "{% set v = state_attr('climate.dining_room', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Dining_Setpoint_Nest: "{% set v = state_attr('climate.dining_room', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Boiler_Runtime_Today_Hrs: "{% set v = states('sensor.boiler_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 10. HVAC Runtime / State
-        LR_Air_Mode: "{% set v = states('climate.living_room_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Air_Action: "{% set v = state_attr('climate.living_room_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        LR_Air_Setpoint: "{% set v = state_attr('climate.living_room_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        LR_Air_Fan_Mode: "{% set v = state_attr('climate.living_room_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        LR_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lr_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 10. HVAC Runtime / State
+          LR_Air_Mode: "{% set v = states('climate.living_room_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Air_Action: "{% set v = state_attr('climate.living_room_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          LR_Air_Setpoint: "{% set v = state_attr('climate.living_room_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          LR_Air_Fan_Mode: "{% set v = state_attr('climate.living_room_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          LR_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lr_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        Master_Air_Mode: "{% set v = states('climate.master_bedroom_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Master_Air_Action: "{% set v = state_attr('climate.master_bedroom_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Master_Air_Setpoint: "{% set v = state_attr('climate.master_bedroom_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Master_Air_Fan_Mode: "{% set v = state_attr('climate.master_bedroom_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Master_HP_Runtime_Today_Hrs: "{% set v = states('sensor.master_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Air_Mode: "{% set v = states('climate.master_bedroom_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Master_Air_Action: "{% set v = state_attr('climate.master_bedroom_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Master_Air_Setpoint: "{% set v = state_attr('climate.master_bedroom_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Master_Air_Fan_Mode: "{% set v = state_attr('climate.master_bedroom_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Master_HP_Runtime_Today_Hrs: "{% set v = states('sensor.master_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        Lincoln_Air_Mode: "{% set v = states('climate.lincoln_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Air_Action: "{% set v = state_attr('climate.lincoln_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Lincoln_Air_Setpoint: "{% set v = state_attr('climate.lincoln_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Lincoln_Air_Fan_Mode: "{% set v = state_attr('climate.lincoln_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Lincoln_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lincoln_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Air_Mode: "{% set v = states('climate.lincoln_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Air_Action: "{% set v = state_attr('climate.lincoln_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Lincoln_Air_Setpoint: "{% set v = state_attr('climate.lincoln_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Lincoln_Air_Fan_Mode: "{% set v = state_attr('climate.lincoln_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Lincoln_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lincoln_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        Lilly_Air_Mode: "{% set v = states('climate.lilly_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lilly_Air_Action: "{% set v = state_attr('climate.lilly_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Lilly_Air_Setpoint: "{% set v = state_attr('climate.lilly_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Lilly_Air_Fan_Mode: "{% set v = state_attr('climate.lilly_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Lilly_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lilly_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Air_Mode: "{% set v = states('climate.lilly_air') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lilly_Air_Action: "{% set v = state_attr('climate.lilly_air', 'hvac_action') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Lilly_Air_Setpoint: "{% set v = state_attr('climate.lilly_air', 'temperature') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Lilly_Air_Fan_Mode: "{% set v = state_attr('climate.lilly_air', 'fan_mode') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Lilly_HP_Runtime_Today_Hrs: "{% set v = states('sensor.lilly_hp_runtime_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 11. Presence
-        LR_Presence_MSR: "{% set v = states('binary_sensor.living_room_msr_radar_zone_3_occupancy') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Presence_MSR: "{% set v = states('binary_sensor.lincoln_msr_radar_zone_3_occupancy') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        LR_Presence_Today_Hrs: "{% set v = states('sensor.lr_presence_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Presence_Today_Hrs: "{% set v = states('sensor.lincoln_presence_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 11. Presence
+          LR_Presence_MSR: "{% set v = states('binary_sensor.living_room_msr_radar_zone_3_occupancy') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Presence_MSR: "{% set v = states('binary_sensor.lincoln_msr_radar_zone_3_occupancy') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          LR_Presence_Today_Hrs: "{% set v = states('sensor.lr_presence_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Presence_Today_Hrs: "{% set v = states('sensor.lincoln_presence_today') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 12. Shades / Solar
-        Shade_1_State: "{% set v = states('cover.shade_1') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Shade_2_State: "{% set v = states('cover.shade_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Shade_1_Tilt: "{% set v = state_attr('cover.shade_1', 'current_tilt_position') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Shade_2_Tilt: "{% set v = state_attr('cover.shade_2', 'current_tilt_position') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
-        Shade_1_Light: "{% set v = states('sensor.shade_1_light_level') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Shade_2_Light: "{% set v = states('sensor.shade_2_light_level') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          # 12. Shades / Solar
+          Shade_1_State: "{% set v = states('cover.shade_1') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Shade_2_State: "{% set v = states('cover.shade_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Shade_1_Tilt: "{% set v = state_attr('cover.shade_1', 'current_tilt_position') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Shade_2_Tilt: "{% set v = state_attr('cover.shade_2', 'current_tilt_position') %}{{ '' if v in [none, 'unknown', 'unavailable'] else v }}"
+          Shade_1_Light: "{% set v = states('sensor.shade_1_light_level') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Shade_2_Light: "{% set v = states('sensor.shade_2_light_level') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
-        # 13. Diagnostics
-        LR_Truth_Count: "{% set v = states('sensor.living_room_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Lincoln_Truth_Count: "{% set v = states('sensor.lincoln_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-
+          # 13. Diagnostics
+          LR_Truth_Count: "{% set v = states('sensor.living_room_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+          Lincoln_Truth_Count: "{% set v = states('sensor.lincoln_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
 
 # =============================================================================
 # SECTION 2: MAIN SUPERVISOR (V8.2 Deadband Cooling + V8.3 LR Heating Deadband)
@@ -425,7 +420,16 @@
                         hvac_mode: "{{ 'heat' if lr_temp < (58 if away else 65) else 'off' }}"
                         temperature: "{{ 58 if away else 65 }}"
                     - action: climate.set_hvac_mode
-                      target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                      target:
+                        {
+                          entity_id:
+                            [
+                              climate.master_bedroom_air,
+                              climate.lincoln_air,
+                              climate.lilly_air,
+                              climate.dining_room,
+                            ],
+                        }
                       data: { hvac_mode: "off" }
               default:
                 - choose:
@@ -435,15 +439,31 @@
                       sequence:
                         - action: climate.set_temperature
                           target: { entity_id: climate.master_bedroom_air }
-                          data: { hvac_mode: "{{ 'cool' if master_temp > 70 else 'off' }}", temperature: 70 }
+                          data:
+                            {
+                              hvac_mode: "{{ 'cool' if master_temp > 70 else 'off' }}",
+                              temperature: 70,
+                            }
                         - action: climate.set_temperature
                           target: { entity_id: climate.lincoln_air }
-                          data: { hvac_mode: "{{ 'cool' if lincoln_temp > 70 else 'off' }}", temperature: 70 }
+                          data:
+                            {
+                              hvac_mode: "{{ 'cool' if lincoln_temp > 70 else 'off' }}",
+                              temperature: 70,
+                            }
                         - action: climate.set_temperature
                           target: { entity_id: climate.lilly_air }
-                          data: { hvac_mode: "{{ 'cool' if lilly_temp > 70 else 'off' }}", temperature: 70 }
+                          data:
+                            {
+                              hvac_mode: "{{ 'cool' if lilly_temp > 70 else 'off' }}",
+                              temperature: 70,
+                            }
                         - action: climate.set_hvac_mode
-                          target: { entity_id: [climate.living_room_air, climate.dining_room] }
+                          target:
+                            {
+                              entity_id:
+                                [climate.living_room_air, climate.dining_room],
+                            }
                           data: { hvac_mode: "off" }
                     - conditions:
                         - condition: template
@@ -467,11 +487,30 @@
                               {% else %}off{% endif %}
                             temperature: "{{ target_lr }}"
                         - action: climate.set_hvac_mode
-                          target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                          target:
+                            {
+                              entity_id:
+                                [
+                                  climate.master_bedroom_air,
+                                  climate.lincoln_air,
+                                  climate.lilly_air,
+                                  climate.dining_room,
+                                ],
+                            }
                           data: { hvac_mode: "off" }
                   default:
                     - action: climate.set_hvac_mode
-                      target: { entity_id: [climate.living_room_air, climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                      target:
+                        {
+                          entity_id:
+                            [
+                              climate.living_room_air,
+                              climate.master_bedroom_air,
+                              climate.lincoln_air,
+                              climate.lilly_air,
+                              climate.dining_room,
+                            ],
+                        }
                       data: { hvac_mode: "off" }
 
         # =============================================
@@ -498,16 +537,31 @@
                                 temperature: "{{ 65 if away else 71 }}"
                             - action: climate.set_temperature
                               target: { entity_id: climate.master_bedroom_air }
-                              data: { hvac_mode: "{{ 'heat' if master_temp < 62 else 'off' }}", temperature: 62 }
+                              data:
+                                {
+                                  hvac_mode: "{{ 'heat' if master_temp < 62 else 'off' }}",
+                                  temperature: 62,
+                                }
                             - action: climate.set_temperature
                               target: { entity_id: climate.lincoln_air }
-                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 62 else 'off' }}", temperature: 62 }
+                              data:
+                                {
+                                  hvac_mode: "{{ 'heat' if lincoln_temp < 62 else 'off' }}",
+                                  temperature: 62,
+                                }
                             - action: climate.set_temperature
                               target: { entity_id: climate.lilly_air }
-                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 62 else 'off' }}", temperature: 62 }
+                              data:
+                                {
+                                  hvac_mode: "{{ 'heat' if lilly_temp < 62 else 'off' }}",
+                                  temperature: 62,
+                                }
                             - action: climate.set_hvac_mode
                               target: { entity_id: climate.dining_room }
-                              data: { hvac_mode: "{{ 'heat' if lr_temp < 68 else 'off' }}" }
+                              data:
+                                {
+                                  hvac_mode: "{{ 'heat' if lr_temp < 68 else 'off' }}",
+                                }
                             - action: climate.set_temperature
                               target: { entity_id: climate.dining_room }
                               data: { temperature: 68 }
@@ -523,21 +577,46 @@
                                     hvac_mode: "{{ 'heat' if lr_temp < (58 if away else 65) else 'off' }}"
                                     temperature: "{{ 58 if away else 65 }}"
                                 - action: climate.set_hvac_mode
-                                  target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                                  target:
+                                    {
+                                      entity_id:
+                                        [
+                                          climate.master_bedroom_air,
+                                          climate.lincoln_air,
+                                          climate.lilly_air,
+                                          climate.dining_room,
+                                        ],
+                                    }
                                   data: { hvac_mode: "off" }
                           default:
                             - action: climate.set_temperature
                               target: { entity_id: climate.master_bedroom_air }
-                              data: { hvac_mode: "{{ 'heat' if master_temp < 67 else 'off' }}", temperature: 67 }
+                              data:
+                                {
+                                  hvac_mode: "{{ 'heat' if master_temp < 67 else 'off' }}",
+                                  temperature: 67,
+                                }
                             - action: climate.set_temperature
                               target: { entity_id: climate.lincoln_air }
-                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 67 else 'off' }}", temperature: 67 }
+                              data:
+                                {
+                                  hvac_mode: "{{ 'heat' if lincoln_temp < 67 else 'off' }}",
+                                  temperature: 67,
+                                }
                             - action: climate.set_temperature
                               target: { entity_id: climate.lilly_air }
-                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 67 else 'off' }}", temperature: 67 }
+                              data:
+                                {
+                                  hvac_mode: "{{ 'heat' if lilly_temp < 67 else 'off' }}",
+                                  temperature: 67,
+                                }
                             - action: climate.set_temperature
                               target: { entity_id: climate.living_room_air }
-                              data: { hvac_mode: "{{ 'heat' if lr_temp < 60 else 'off' }}", temperature: 60 }
+                              data:
+                                {
+                                  hvac_mode: "{{ 'heat' if lr_temp < 60 else 'off' }}",
+                                  temperature: 60,
+                                }
                             - action: climate.set_hvac_mode
                               target: { entity_id: climate.dining_room }
                               data: { hvac_mode: "off" }
@@ -560,7 +639,16 @@
                       {% else %}off{% endif %}
                     temperature: "{{ target_lr }}"
                 - action: climate.set_hvac_mode
-                  target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                  target:
+                    {
+                      entity_id:
+                        [
+                          climate.master_bedroom_air,
+                          climate.lincoln_air,
+                          climate.lilly_air,
+                          climate.dining_room,
+                        ],
+                    }
                   data: { hvac_mode: "off" }
 
 # =============================================================================
@@ -792,7 +880,6 @@
         title: "👻 Ghost Blocked"
         message: "Lincoln head unit attempted heat activation during non-heating season."
 
-
 # =============================================================================
 # SECTION 5: AUTO SEASON MODE
 # =============================================================================
@@ -833,7 +920,6 @@
       data:
         title: "🌡️ Season Mode Changed"
         message: "Auto-switched to {{ states('input_select.hvac_season_mode') }} (Deck: {{ states('sensor.deck_temperature_truth') }}°F)"
-
 
 # =============================================================================
 # SECTION 6: SHOULDER SEASON FAN DESTRATIFICATION
@@ -962,7 +1048,6 @@
             - action: climate.set_hvac_mode
               target: { entity_id: climate.lilly_air }
               data: { hvac_mode: "off" }
-
 
 # =============================================================================
 # SECTION 7: SOLAR SHADE PROTECTION
@@ -1153,7 +1238,6 @@
       data:
         tilt_position: 100
 
-
 # =============================================================================
 # SECTION 8: SAMSUNG AUTO GUARDRAIL
 # =============================================================================
@@ -1336,13 +1420,12 @@
           truth is running on {{ states(trigger.entity_id) }} contributor(s)
           for 30+ minutes. Check sensor health.
 
-
 # =============================================================================
 # SECTION 11: HVAC TRANSITION LOGGER (V8.3)
 # =============================================================================
 # ⚠️  Lightweight audit trail for V8.3 HVAC behavior.
-#     Writes to the HA Logbook on every cool⇄off and heat⇄off transition 
-#     per head with room temp and setpoint context. Lets you see exactly when 
+#     Writes to the HA Logbook on every cool⇄off and heat⇄off transition
+#     per head with room temp and setpoint context. Lets you see exactly when
 #     each unit engaged and disengaged during hysteresis tracking.
 #
 #     View in: Home Assistant → Logbook panel, filter by climate entity.
