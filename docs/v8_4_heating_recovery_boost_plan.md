@@ -4,6 +4,30 @@
 *Date: 2026-05-02*
 *Status: Design only — no YAML modified*
 
+> ## ⚠️ STATUS NOTE — Section 14 deployed; event-journal integration is RETIRED
+>
+> Section 14 was deployed in PR #21 and is live in `automations.yaml`. **However,
+> all references in this document to `script.log_event`, `notify.event_journal`,
+> the "Phase 1A event journal infrastructure", and `/config/logs/event_journal.csv`
+> are archival.** That sink failed to register on the live HA build (PR #19
+> through PR #25), was contained in PR #26, and was permanently removed in
+> PR #34. The `script.log_event` calls inside Section 14 were also removed in
+> PR #34.
+>
+> Treat §9.1 ("Integration with Phase 1A event journal"), the "log to
+> `event_journal.csv`" steps in §10 / §11, and any "existing Phase 1A event
+> journal infrastructure" prerequisite as **superseded**. Validate Section 14
+> against:
+> - **HA Logbook** (Section 11 HVAC Transition Logger)
+> - **`VTherm_Launch_Data_v5`** (Google Sheets snapshot every 15 min)
+> - **`docs/telemetry_confounders.md`** classification rules
+> - **`docs/postmortems/2026-05-02_event_journal_containment.md`** §9 evidence pipeline
+>
+> Section 14's deploy-status, four observed engages, and the
+> "boost effectiveness still unmeasured" verdict are tracked in
+> `docs/5_runtime_layer.md` §7.4 and `docs/telemetry_confounders.md` §5 — not in
+> this design doc.
+
 ---
 
 ## 1. Problem Statement

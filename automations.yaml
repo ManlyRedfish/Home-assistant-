@@ -1419,7 +1419,14 @@
 #
 #     Note: Section 2 may overwrite the boost on its next 15-minute
 #     supervisor tick. This is an intentional pilot limitation and
-#     should be evaluated with event_journal.csv and Sheets telemetry.
+#     should be evaluated against the live evidence pipeline:
+#       - HA Logbook (Section 11 HVAC Transition Logger)
+#       - VTherm_Launch_Data_v5 (Google Sheets, 15-min snapshot)
+#       - Section 14 traces in HA history
+#     See docs/telemetry_confounders.md for window classification rules
+#     before drawing doctrine conclusions from boost cycles. The original
+#     event_journal.csv sink was retired in PR #34 — see
+#     docs/postmortems/2026-05-02_event_journal_containment.md.
 #
 #     Safety Note: The max-runtime timer uses restore: true so an
 #     active boost does not lose its time boundary during HA restart.
