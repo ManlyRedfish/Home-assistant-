@@ -1,6 +1,6 @@
 # =============================================================================
 # MOOSE HOUSE CLIMATE — COMPLETE CONFIGURATION.YAML
-# Last Updated: April 16, 2026
+# Last Updated: May 6, 2026
 # Architecture: V3.1 — Audited Truth / Smoothed / Control
 # =============================================================================
 #
@@ -20,7 +20,7 @@
 #   7. TRUTH SENSORS — OFFICE (temp, humidity, CO2)
 #   8. TRUTH SENSORS — LAUNDRY (temp, humidity)
 #   9. TRUTH SENSORS — DECK / OUTDOOR (temp, humidity)
-#  10. CONTROL WRAPPERS (smoothed pass-through for VTherm / UI)
+#  10. CONTROL WRAPPERS (smoothed pass-through for UI / supervisor)
 #  11. RUNTIME TRACKING (history_stats for boiler + all heat pumps)
 #  12. SMOOTHED SENSORS (lowpass filter on all truth temps)
 #
@@ -30,7 +30,7 @@
 #   - Outlier rejection (Lincoln pilot, 3°F limit)
 #   - Mini-split internal sensors always low-weight (biased hardware)
 #   - MSR-2 DPS310 sensors removed (both units hardware-failed)
-#   - Smoothed output → control wrapper → VTherm / supervisor
+#   - Smoothed output → control wrapper → V8.3 supervisor / HA UI
 #
 # CHANGELOG:
 #   V3-FIX:   Corrected entity_id slugification for Lincoln's/Lilly's
@@ -840,12 +840,13 @@ template:
           {% endif %}
 
       # =========================================================
-      # SECTION 10: CONTROL WRAPPERS FOR VTHERM / UI
+      # SECTION 10: CONTROL WRAPPERS FOR UI / SUPERVISOR
       # =========================================================
       # ⚠️  DO NOT DELETE — These sensors pass smoothed truth values
-      #     through a template with unique_id so VTherm and the HA UI
-      #     can manage them as distinct entities. Without these, VTherm
-      #     loses its temperature input and control stops working.
+      #     through a template with unique_id so the V8.3 supervisor
+      #     and the HA UI can manage them as distinct entities. Without
+      #     these wrappers, downstream consumers lose their temperature
+      #     input and control stops working.
       #
       # Each wrapper reads from the corresponding smoothed sensor
       # in Section 12 and exposes it with a stable unique_id.
@@ -992,7 +993,7 @@ sensor:
   # =============================================================================
   # ⚠️  DO NOT DELETE — These lowpass filters smooth the raw truth sensors
   #     to prevent control jitter. The control wrappers in Section 10 read
-  #     from these, and VTherm / the supervisor ultimately act on the
+  #     from these, and the V8.3 supervisor ultimately acts on the
   #     smoothed values. Removing these causes noisy truth spikes to
   #     propagate directly into setpoint decisions.
   #
