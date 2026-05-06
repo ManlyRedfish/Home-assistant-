@@ -2,6 +2,11 @@ import yaml
 import pytest
 import os
 
+
+class MooseAutomationLoader(yaml.SafeLoader):
+    pass
+
+
 # Home Assistant specific constructors
 def secret_constructor(loader, node):
     return f"SECRET_{node.value}"
@@ -15,17 +20,17 @@ def input_constructor(loader, node):
 def include_dir_merge_list_constructor(loader, node):
     return []
 
-yaml.SafeLoader.add_constructor('!secret', secret_constructor)
-yaml.SafeLoader.add_constructor('!include', include_constructor)
-yaml.SafeLoader.add_constructor('!input', input_constructor)
-yaml.SafeLoader.add_constructor('!include_dir_merge_list', include_dir_merge_list_constructor)
-yaml.SafeLoader.add_constructor('!include_dir_named', include_dir_merge_list_constructor)
+MooseAutomationLoader.add_constructor('!secret', secret_constructor)
+MooseAutomationLoader.add_constructor('!include', include_constructor)
+MooseAutomationLoader.add_constructor('!input', input_constructor)
+MooseAutomationLoader.add_constructor('!include_dir_merge_list', include_dir_merge_list_constructor)
+MooseAutomationLoader.add_constructor('!include_dir_named', include_dir_merge_list_constructor)
 
 @pytest.fixture(scope="module")
 def automations_data():
     file_path = os.path.join(os.path.dirname(__file__), '..', 'automations.yaml')
     with open(file_path, 'r') as f:
-        data = yaml.safe_load(f)
+        data = yaml.load(f, Loader=MooseAutomationLoader)
     return data
 
 

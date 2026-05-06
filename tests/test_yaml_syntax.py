@@ -2,14 +2,19 @@ import pytest
 import yaml
 import os
 
+
+class MooseSyntaxLoader(yaml.SafeLoader):
+    pass
+
+
 def yaml_include(loader, node):
     return node.value
 
 def yaml_secret(loader, node):
     return node.value
 
-yaml.add_constructor('!include', yaml_include, Loader=yaml.SafeLoader)
-yaml.add_constructor('!secret', yaml_secret, Loader=yaml.SafeLoader)
+MooseSyntaxLoader.add_constructor('!include', yaml_include)
+MooseSyntaxLoader.add_constructor('!secret', yaml_secret)
 
 def check_yaml_file(filepath):
     """Parses a YAML file and raises an exception if it's invalid."""
@@ -19,7 +24,7 @@ def check_yaml_file(filepath):
 
     with open(filepath, 'r') as file:
         try:
-            yaml.safe_load(file)
+            yaml.load(file, Loader=MooseSyntaxLoader)
         except Exception as e:
             pytest.fail(f"Invalid YAML in {filepath}:\n{e}")
 
