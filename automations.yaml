@@ -88,6 +88,7 @@
 
 - id: vtherm_mega_tracker_v5
   alias: 'Experiment Data: Export to Google Sheets v5'
+  mode: single
   description: >
     V5 — Semantic Heritage Schema. Clean headers mapping lineage to entities.
   trigger:
@@ -628,6 +629,7 @@
 # -----------------------------------------------------------------------------
 - id: v8_2_runaway_cooling_cutoff_lr
   alias: "V8.2: Runaway Cooling Cutoff (LR Equipment Protection)"
+  mode: single
   trigger:
     - platform: numeric_state
       entity_id: sensor.living_room_temperature_truth
@@ -668,6 +670,7 @@
 # -----------------------------------------------------------------------------
 - id: v8_2_master_emergency_floor
   alias: "V8.2: Master Emergency Cooling Floor"
+  mode: single
   trigger:
     - platform: numeric_state
       entity_id: sensor.master_bedroom_temperature_truth
