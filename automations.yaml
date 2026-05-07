@@ -79,18 +79,33 @@
 
 
 # =============================================================================
-# SECTION 1: DATA COLLECTION (V5 Semantic Heritage Schema)
+# SECTION 1: DATA COLLECTION (V5.5 Semantic Heritage Schema + Section 14 obs)
 # =============================================================================
 # ⚠️  DO NOT DELETE — This is the telemetry pipeline to Google Sheets.
 #     Without this, no experiment data is captured.
-#     Worksheet: VTherm_Launch_Data_v5
+#     Worksheet: VTherm_Launch_Data_v5_5
+#
+#     V5.5 NOTE (issue #62, observability-only):
+#       v5.5 is a wide-table interim schema that extends V5 with Section 14
+#       boost-state observability columns (sub-block 14 below). It preserves
+#       the V5 row model and column conventions; v5.5 begins the Section 14
+#       observability era while v5 remains historical and unchanged. The
+#       future event-oriented telemetry work is V6 — this is not V6.
+#
+#     ⚠️  DEPLOYMENT: the live Google Sheets worksheet header row for
+#       VTherm_Launch_Data_v5_5 must include the new sub-block-14 columns
+#       (in the order they appear below) before the first export tick after
+#       this change ships, otherwise rows will be misaligned. The previous
+#       VTherm_Launch_Data_v5 worksheet remains as historical-only evidence
+#       and is no longer written to by this automation.
 # =============================================================================
 
 - id: vtherm_mega_tracker_v5
-  alias: 'Experiment Data: Export to Google Sheets v5'
+  alias: 'Experiment Data: Export to Google Sheets v5.5'
   mode: single
   description: >
-    V5 — Semantic Heritage Schema. Clean headers mapping lineage to entities.
+    V5.5 — Semantic Heritage Schema + Section 14 boost-state observability.
+    Wide-table interim schema. Forward path is V6 (event-oriented).
   trigger:
   - minutes: /15
     trigger: time_pattern
@@ -99,7 +114,7 @@
   - action: google_sheets.append_sheet
     data:
       config_entry: !secret google_sheets_config_entry
-      worksheet: VTherm_Launch_Data_v5
+      worksheet: VTherm_Launch_Data_v5_5
       data:
         # 1. Timestamp / Global Context
         Timestamp: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
@@ -244,6 +259,45 @@
         # 13. Diagnostics
         LR_Truth_Count: "{% set v = states('sensor.living_room_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Lincoln_Truth_Count: "{% set v = states('sensor.lincoln_temperature_truth_active_count') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
+        # 14. SECTION 14 BOOST OBSERVABILITY (v5.5, issue #62)
+        # Observability-only. No Section 14 control logic / threshold
+        # changes. New columns must be added to the worksheet header row
+        # (in this order) before deployment to avoid row drift. Keeps the
+        # existing V5 blank-on-unknown convention.
+        Section14_Boost_Active: "{% set v = states('input_boolean.lr_heating_recovery_boost_active') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Section14_Timer_State: "{% set v = states('timer.lr_heating_recovery_boost_max_runtime') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Section14_Timer_Remaining: >-
+          {% set t = states('timer.lr_heating_recovery_boost_max_runtime') %}
+          {% set finishes = state_attr('timer.lr_heating_recovery_boost_max_runtime', 'finishes_at') %}
+          {% if t == 'active' and finishes not in [none, 'unknown', 'unavailable'] %}
+          {{ ((as_datetime(finishes) - now()).total_seconds()) | int }}
+          {% else %}{% endif %}
+        Section14_Last_Engage_Reason: "{% set v = states('input_text.lr_heating_recovery_boost_last_engage_reason') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Section14_Last_Release_Reason: "{% set v = states('input_text.lr_heating_recovery_boost_last_release_reason') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Section14_Last_Engage_At: "{% set v = states('input_datetime.lr_heating_recovery_boost_last_engage_at') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Section14_Last_Release_At: "{% set v = states('input_datetime.lr_heating_recovery_boost_last_release_at') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Section14_Engage_Eligible: >-
+          {% set season = states('input_select.hvac_season_mode') %}
+          {% set override = states('timer.manual_hvac_override') %}
+          {% set away = states('input_boolean.away_mode') %}
+          {% set boost = states('input_boolean.lr_heating_recovery_boost_active') %}
+          {% set lr = states('sensor.living_room_temperature_truth') %}
+          {% set lrc = states('climate.living_room_air') %}
+          {% set lr_num = lr | float(none) %}
+          {% if season in ['heating', 'shoulder']
+                and override == 'idle'
+                and away == 'off'
+                and boost == 'off'
+                and lrc not in ['unknown', 'unavailable']
+                and lr_num is not none
+                and lr_num < 64 %}true{% elif season in ['unknown', 'unavailable'] or override in ['unknown', 'unavailable'] or away in ['unknown', 'unavailable'] or boost in ['unknown', 'unavailable'] %}{% else %}false{% endif %}
+        Section14_WAF_Active: >-
+          {% set v = states('timer.manual_hvac_override') %}
+          {% if v in ['unknown', 'unavailable'] %}{% elif v == 'active' %}true{% else %}false{% endif %}
+        Section14_Truth_Available: >-
+          {% set v = states('sensor.living_room_temperature_truth') %}
+          {% if v in ['unknown', 'unavailable'] %}false{% elif v | float(none) is none %}false{% else %}true{% endif %}
 
 
 # =============================================================================
@@ -1476,6 +1530,25 @@
       data:
         temperature: 77
         hvac_mode: heat
+    # -------------------------------------------------------------------------
+    # OBSERVABILITY ONLY (v5.5 / issue #62) — runs AFTER control actions.
+    # Records last engage classification + timestamp into helpers so the
+    # v5.5 telemetry export can classify boost cycles. Does not change any
+    # Section 14 control behavior. Today there is exactly one engage path
+    # (LR truth < 64 °F under heating/shoulder, override idle, away off);
+    # the constant string `truth_below_64` is a stable forward-compatible
+    # classifier and not a threshold value.
+    # -------------------------------------------------------------------------
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.lr_heating_recovery_boost_last_engage_reason
+      data:
+        value: "truth_below_64"
+    - action: input_datetime.set_datetime
+      target:
+        entity_id: input_datetime.lr_heating_recovery_boost_last_engage_at
+      data:
+        timestamp: "{{ now().timestamp() | int }}"
 
 - id: v8_4_lr_heating_recovery_boost_release
   alias: "V8.4: LR Heating Recovery Boost Release"
@@ -1532,3 +1605,71 @@
                 entity_id: climate.living_room_air
               data:
                 hvac_mode: "off"
+    # -------------------------------------------------------------------------
+    # OBSERVABILITY ONLY (v5.5 / issue #62) — runs AFTER control actions.
+    # Maps the release trigger.id to a stable classifier string and persists
+    # it (plus the release timestamp) so the v5.5 telemetry export can
+    # distinguish all five doctrinal terminations: truth_cap, timeout, waf,
+    # season_change, truth_unavailable. The default branch writes
+    # `unknown_release_reason` so this block can never raise on an
+    # unrecognized trigger.id and cannot interrupt the latch flip, timer
+    # cancel, or climate-off actions above. No threshold change. No #49
+    # closure.
+    # -------------------------------------------------------------------------
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: truth_cap
+          sequence:
+            - action: input_text.set_value
+              target:
+                entity_id: input_text.lr_heating_recovery_boost_last_release_reason
+              data:
+                value: "truth_cap"
+        - conditions:
+            - condition: trigger
+              id: timeout
+          sequence:
+            - action: input_text.set_value
+              target:
+                entity_id: input_text.lr_heating_recovery_boost_last_release_reason
+              data:
+                value: "timeout"
+        - conditions:
+            - condition: trigger
+              id: waf
+          sequence:
+            - action: input_text.set_value
+              target:
+                entity_id: input_text.lr_heating_recovery_boost_last_release_reason
+              data:
+                value: "waf"
+        - conditions:
+            - condition: trigger
+              id: season_change
+          sequence:
+            - action: input_text.set_value
+              target:
+                entity_id: input_text.lr_heating_recovery_boost_last_release_reason
+              data:
+                value: "season_change"
+        - conditions:
+            - condition: trigger
+              id: truth_unavailable
+          sequence:
+            - action: input_text.set_value
+              target:
+                entity_id: input_text.lr_heating_recovery_boost_last_release_reason
+              data:
+                value: "truth_unavailable"
+      default:
+        - action: input_text.set_value
+          target:
+            entity_id: input_text.lr_heating_recovery_boost_last_release_reason
+          data:
+            value: "unknown_release_reason"
+    - action: input_datetime.set_datetime
+      target:
+        entity_id: input_datetime.lr_heating_recovery_boost_last_release_at
+      data:
+        timestamp: "{{ now().timestamp() | int }}"

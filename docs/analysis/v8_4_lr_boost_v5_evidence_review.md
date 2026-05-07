@@ -280,3 +280,48 @@ Issue #49 remains open. This review does not propose to close it.
 - `docs/v6_telemetry_schema_proposal.md`, `docs/v6_observability_roadmap.md` —
   where any future telemetry-column additions to support boost-state recording
   would be discussed (this review does not advance either).
+
+## 13. Addendum (issue #62 / v5.5 schema)
+
+This addendum was added after the issue #62 implementation PR. The body of
+this review (§1 through §12) describes the state of evidence at the time
+of the original 2026-05-07 analysis and is **left unchanged**. The §6
+finding that no Section 14 boost-state columns existed in the workbook was
+correct as of that date and applies to the historical `VTherm_Launch_Data_v5`
+tab in perpetuity.
+
+**What changed:**
+- Issue #62 added Section 14 boost-state observability columns going
+  forward, in a new wide-table interim schema `VTherm_Launch_Data_v5_5`.
+  The original `VTherm_Launch_Data_v5` tab remains historical and is no
+  longer written to.
+- The new columns (`Section14_Boost_Active`, `Section14_Timer_State`,
+  `Section14_Timer_Remaining`, `Section14_Last_Engage_Reason`,
+  `Section14_Last_Release_Reason`, `Section14_Last_Engage_At`,
+  `Section14_Last_Release_At`, `Section14_Engage_Eligible`,
+  `Section14_WAF_Active`, `Section14_Truth_Available`) are populated by
+  the same 15-minute export plus by Section 14 action-block writes to
+  four new helpers (two `input_text`, two `input_datetime`).
+- Section 14 control logic, triggers, conditions, thresholds (64 °F engage,
+  67 °F truth_cap, 77 °F demand setpoint, 90-minute timer), and climate /
+  timer / latch effects were **not** changed. The new helpers are written
+  AFTER the existing control actions complete.
+
+**What does not change:**
+- Historical rows in `VTherm_Launch_Data_v5` (and prior tabs) remain
+  inferential for Section 14 cycle classification — they still rely on
+  the `LR_Air_Setpoint = 77` proxy described in §6.
+- The four cycles enumerated in §5 (2026-05-03 04:45, 2026-05-03 11:45,
+  2026-05-04 10:00, 2026-05-04 13:30) cannot be retroactively classified
+  by release cause from current evidence.
+- The verdict in §9 — **effectiveness remains unmeasured** — is unchanged
+  by this addendum. v5.5 starts collecting the data needed for a future
+  measurement; it does not retroactively supply that measurement.
+- The verdict in §10 — **#49 close criteria not met** — is unchanged.
+  Issue #49 remains open. v5.5 enables the future evidence pipeline that
+  could eventually satisfy the #49 criteria; this addendum does not.
+
+**Forward path:** with v5.5 active, future Section 14 cycles will record
+their engage cause, release cause, and timestamps directly. Once ≥3 clean
+cycles per the #49 criteria accumulate, an effectiveness verdict can be
+written using direct boost-state telemetry rather than setpoint inference.

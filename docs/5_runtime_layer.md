@@ -23,9 +23,9 @@ This file contains the live supervisory climate behavior, safety gates, telemetr
 This file contains per-room truth sensors, staleness rejection, outlier handling, smoothed sensors, runtime tracking, and control wrappers. It explicitly states the design principles of weighted per-room truth, 2-hour staleness rejection, Lincoln outlier rejection, low-weight internal Samsung sensing, and removal of failed MSR-2 DPS310 sensors.
 
 ### 2.3 Active Evidence Source
-**Source:** VTherm_Launch_Data_v5
-**Current telemetry/export schema:** V5 — Semantic Heritage Schema
-The live telemetry pipeline is defined in `automations.yaml` as a 15-minute export to Google Sheets under the worksheet `VTherm_Launch_Data_v5`, with room/metric/role/transport-aware naming.
+**Source:** VTherm_Launch_Data_v5_5
+**Current telemetry/export schema:** V5.5 — Semantic Heritage Schema + Section 14 boost-state observability
+The live telemetry pipeline is defined in `automations.yaml` as a 15-minute export to Google Sheets under the worksheet `VTherm_Launch_Data_v5_5`, with room/metric/role/transport-aware naming. V5.5 is a wide-table interim schema that extends V5 with Section 14 boost-state observability columns (issue #62); it preserves the V5 row model and column conventions. V5 (`VTherm_Launch_Data_v5`) remains historical and is no longer written to. V6 (event-oriented) remains future work — see `docs/v6_telemetry_schema_proposal.md` and `docs/v6_observability_roadmap.md`.
 
 ### 2.4 Active Surface-State Sources
 - Live Home Assistant state
@@ -68,11 +68,18 @@ This layer should not become a full YAML dump. It is a runtime map, not a code m
 **Current truth file:** `configuration.yaml`
 **Current posture:** Audited, trimmed, smoothed truth architecture.
 
-### 5.3 Active Telemetry Layer (V5 Semantic Heritage Schema)
-**Current telemetry version:** V5
+### 5.3 Active Telemetry Layer (V5.5 Semantic Heritage Schema + Section 14 boost obs)
+**Current telemetry version:** V5.5
 **Current export destination:** Google Sheets
-**Current worksheet:** `VTherm_Launch_Data_v5`
-**Current schema style:** Semantic Heritage naming, mapping room + metric + role + transport into export headers.
+**Current worksheet:** `VTherm_Launch_Data_v5_5`
+**Current schema style:** Semantic Heritage naming, mapping room + metric + role + transport into export headers, plus Section 14 boost-state observability columns.
+
+**V5 vs V5.5 vs V6 boundary:**
+- V5 (`VTherm_Launch_Data_v5`) — historical and unchanged. No longer written to. Referenced by `docs/analysis/v8_4_lr_boost_v5_evidence_review.md`.
+- V5.5 (`VTherm_Launch_Data_v5_5`) — begins the Section 14 observability era. Wide-table interim schema. Adds the §14 sub-block columns from `automations.yaml` Section 1: `Section14_Boost_Active`, `Section14_Timer_State`, `Section14_Timer_Remaining`, `Section14_Last_Engage_Reason`, `Section14_Last_Release_Reason`, `Section14_Last_Engage_At`, `Section14_Last_Release_At`, `Section14_Engage_Eligible`, `Section14_WAF_Active`, `Section14_Truth_Available`. No control or threshold change.
+- V6 — future event-oriented telemetry work. Out of scope here.
+
+**⚠️  Worksheet header row:** the live Google Sheets `VTherm_Launch_Data_v5_5` worksheet header must include the new sub-block-14 columns in the same order they appear in `automations.yaml` Section 1 before the first export tick after this change ships, otherwise rows will be misaligned. This is an out-of-band manual step.
 
 ## 6. Live Runtime Components
 
@@ -118,7 +125,11 @@ The runtime depends on several helpers. The live automations file explicitly lis
 - `input_boolean.away_mode`
 - `input_boolean.lr_heating_recovery_boost_active` (Section 14 V8.4 LR boost latch)
 - `timer.lr_heating_recovery_boost_max_runtime` (Section 14 V8.4 LR boost timeout, `restore: true`)
-*(These helpers are not just UI artifacts. They are part of the live control path and must exist for runtime behavior to function properly.)*
+- `input_text.lr_heating_recovery_boost_last_engage_reason` (Section 14 v5.5 observability — last engage classifier; written by engage action block; observability-only, no control authority)
+- `input_text.lr_heating_recovery_boost_last_release_reason` (Section 14 v5.5 observability — one of `truth_cap` / `timeout` / `waf` / `season_change` / `truth_unavailable` / `unknown_release_reason`; written by release action block; observability-only, no control authority)
+- `input_datetime.lr_heating_recovery_boost_last_engage_at` (Section 14 v5.5 observability — engage timestamp; observability-only)
+- `input_datetime.lr_heating_recovery_boost_last_release_at` (Section 14 v5.5 observability — release timestamp; observability-only)
+*(These helpers are not just UI artifacts. They are part of the live control path and must exist for runtime behavior to function properly. The four v5.5 observability helpers are written from Section 14 action blocks AFTER the existing control actions complete; they do not gate, change, or interrupt any Section 14 trigger, condition, climate command, timer call, or latch flip.)*
 
 ### 6.6 Evidence / Runtime Observation Components
 The runtime evidence layer includes:
@@ -197,8 +208,8 @@ When checking a runtime claim, use this order:
 The runtime layer should always preserve, at minimum:
 - Active control version: V8.3
 - Active truth version: V3.1
-- Active telemetry version: V5
-- Telemetry worksheet: VTherm_Launch_Data_v5
+- Active telemetry version: V5.5
+- Telemetry worksheet: VTherm_Launch_Data_v5_5
 - Key helper dependencies
 - Key climate entities
 - Key room truth entities

@@ -1066,3 +1066,39 @@ input_boolean:
   lr_heating_recovery_boost_active:
     name: "LR Heating Recovery Active"
     icon: mdi:fire-alert
+
+# =============================================================================
+# SECTION 14 OBSERVABILITY HELPERS (v5.5)
+# =============================================================================
+# ⚠️  Observability-only — issue #62.
+#     These helpers persist last-edge memory of Section 14 engage / release
+#     events so the v5.5 telemetry export can classify boost cycles directly
+#     instead of inferring them from LR_Air_Setpoint=77.
+#     They are written by Section 14's engage/release action blocks AFTER the
+#     control actions complete. They do not gate, change, or interrupt any
+#     Section 14 trigger, condition, climate command, timer call, or latch
+#     flip. No threshold change. No #49 closure.
+# =============================================================================
+input_text:
+  lr_heating_recovery_boost_last_engage_reason:
+    name: "LR Boost Last Engage Reason"
+    icon: mdi:play-circle-outline
+    initial: ""
+    max: 64
+  lr_heating_recovery_boost_last_release_reason:
+    name: "LR Boost Last Release Reason"
+    icon: mdi:stop-circle-outline
+    initial: ""
+    max: 64
+
+input_datetime:
+  lr_heating_recovery_boost_last_engage_at:
+    name: "LR Boost Last Engage At"
+    icon: mdi:clock-start
+    has_date: true
+    has_time: true
+  lr_heating_recovery_boost_last_release_at:
+    name: "LR Boost Last Release At"
+    icon: mdi:clock-end
+    has_date: true
+    has_time: true
