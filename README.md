@@ -71,3 +71,9 @@ Avoid silently changing behavior.
 
 If architecture assumptions are unclear:
 **ask instead of inventing behavior**.
+
+## Running Static Safety Tests
+
+```bash
+python -m pytest tests/
+```
