@@ -127,24 +127,11 @@ as operator-managed.
    a regression entry) cites Apr 28–May 1 as evidence of Section 2 behavior, that
    doc is wrong and should be corrected against this confounder note.
 
-## 6. Suggested operator annotation practice (not implemented)
+## 6. Operator Annotation Practice
 
-To prevent the same confounder from contaminating future analyses, the operator can
-adopt either of the following lightweight, **manual** practices. No automation change
-is required for either.
+To prevent the same confounder from contaminating future analyses, the operator must utilize the out-of-band forensic workflow.
 
-- **Sheet-side annotation (recommended).** Add a small adjacent worksheet on the
-  same `Home Assistant` Google Sheet — e.g. `supervisor_state_log` — with two
-  columns: `date_local`, `supervisor_enabled_local_window`. Fill in only the
-  exceptions (e.g. "2026-04-28 22:00 → 2026-05-01 14:00: supervisor disabled,
-  disrupted-sleep manual control"). One row per disable event is enough; clean nights
-  need no entry.
-- **Repo-side annotation.** Append a dated bullet to a single section of this doc
-  (e.g. a `## 7. Operator-disabled history` section, added when the first such
-  bullet exists). One line per event.
-
-Either option is acceptable. The goal is a written, durable record that future
-sessions can join against `VTherm_Launch_Data_v5` timestamps.
+For the full design and schema of this out-of-band workflow, refer to the [Operator Annotation Design (`docs/operator_annotation_design.md`)](operator_annotation_design.md).
 
 The event journal infrastructure was **retired and removed** after the sink failed
 to register. Do not re-introduce observers or attempt a new event-journal write path
