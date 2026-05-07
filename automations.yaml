@@ -1711,6 +1711,15 @@
       entity_id: input_boolean.lr_heating_recovery_boost_active
       id: boost_state
   condition:
+    # Issue #69: skip when fired manually — manual runs do not provide
+    # trigger.from_state / trigger.to_state / trigger.entity_id / trigger.id.
+    - condition: template
+      value_template: >-
+        {{ trigger is defined
+           and trigger.from_state is defined
+           and trigger.to_state is defined
+           and trigger.entity_id is defined
+           and trigger.id is defined }}
     # Skip identical-value writes (noise control per design §8.2).
     - condition: template
       value_template: >-
