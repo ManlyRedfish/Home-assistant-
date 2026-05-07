@@ -23,8 +23,8 @@ _Identify and verify all exposed entities for each MSR device. Mark unknowns as 
 
 | Room            | Device          | Presence Entity                          | CO2 Entity           | Temperature Entity                   | Pressure/DPS310 Entity            | Verified? | Notes                                  |
 | :-------------- | :-------------- | :--------------------------------------- | :------------------- | :----------------------------------- | :-------------------------------- | :-------- | :------------------------------------- |
-| Living Room     | Living Room MSR | `binary_sensor.living_room_msr_presence` | [needs verification] | `sensor.living_room_msr_temperature` | `sensor.living_room_msr_pressure` | [ ]       | Example known MSR.                     |
-| Lincoln's Room  | Lincoln MSR     | `binary_sensor.lincoln_msr_presence`     | [needs verification] | `sensor.lincoln_msr_temperature`     | `sensor.lincoln_msr_pressure`     | [ ]       | Do not assume Lincoln MSR exposes CO2. |
+| Living Room     | Living Room MSR | `binary_sensor.living_room_msr_presence` | [needs verification] | `sensor.living_room_msr_temperature` | `sensor.living_room_msr_pressure` | [ ]       | Example known MSR. DPS310 (temperature/pressure) on this MSR-2 unit is part of the documented MSR-2 DPS310 hardware-debt exclusion — observability-only; see `5_runtime_layer.md` §7.5 and `truth_sensor_architecture.md`. |
+| Lincoln's Room  | Lincoln MSR     | `binary_sensor.lincoln_msr_presence`     | [needs verification] | `sensor.lincoln_msr_temperature`     | `sensor.lincoln_msr_pressure`     | [ ]       | Do not assume Lincoln MSR exposes CO2. DPS310 on MSR-2 hardware is observability-only per the global warning below. |
 | [Template Room] | [Device Name]   | `binary_sensor.[name]_presence`          | [needs verification] | `sensor.[name]_temperature`          | `sensor.[name]_pressure`          | [ ]       | Generic Room Template.                 |
 
 ## CO2 Availability Checklist

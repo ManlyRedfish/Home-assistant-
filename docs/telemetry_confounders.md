@@ -127,11 +127,17 @@ as operator-managed.
    a regression entry) cites Apr 28–May 1 as evidence of Section 2 behavior, that
    doc is wrong and should be corrected against this confounder note.
 
-## 6. Operator Annotation Practice
+## 6. Operator Annotation Practice (Proposed)
 
-To prevent the same confounder from contaminating future analyses, the operator must utilize the out-of-band forensic workflow.
+To prevent the same confounder from contaminating future analyses, the operator
+should utilize the **proposed** out-of-band forensic workflow once it is adopted.
+The workflow is currently a design proposal, not implemented operational
+procedure.
 
-For the full design and schema of this out-of-band workflow, refer to the [Operator Annotation Design (`docs/operator_annotation_design.md`)](operator_annotation_design.md).
+For the full design and schema of this out-of-band workflow, refer to the
+[Operator Annotation Design (`docs/operator_annotation_design.md`)](operator_annotation_design.md)
+(`Status: Proposed`). Adoption is tracked in issue #50; until that issue closes,
+contaminated windows must continue to be classified behaviorally per §4.
 
 The event journal infrastructure was **retired and removed** after the sink failed
 to register. Do not re-introduce observers or attempt a new event-journal write path
