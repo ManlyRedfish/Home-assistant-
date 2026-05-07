@@ -36,18 +36,18 @@ supervisor is disabled:
 
 The operator did not historically annotate these disable windows. The V5 schema has
 **no `Supervisor_Enabled` column**. Therefore the cleanest forensic signal that a
-window was operator-suppressed is *behavioral*, derived from rows that V5 already
+window was operator-suppressed is _behavioral_, derived from rows that V5 already
 records.
 
 ## 3. The contaminated window: 2026-04-28 → 2026-05-01
 
 This is the canonical operator-suppressed window in current telemetry.
 
-| Day | LR_HP_Runtime_Today_Hrs (max) | LR pattern across day |
-|---|---:|---|
-| 2026-04-29 | **0.00** | LR pinned `off@68` for 95/95 ticks; truth drifted 64.0 → 63.7°F |
-| 2026-04-30 | **0.00** | LR pinned `off@68` for 96/96 ticks; truth drifted to 60.3°F |
-| 2026-05-01 | **0.00** | LR pinned `off@68` for 96/96 ticks; truth held in low 60s; 56-tick stretch min 59.05°F (0.95°F above the LR runaway floor) |
+| Day        | LR_HP_Runtime_Today_Hrs (max) | LR pattern across day                                                                                                      |
+| ---------- | ----------------------------: | -------------------------------------------------------------------------------------------------------------------------- |
+| 2026-04-29 |                      **0.00** | LR pinned `off@68` for 95/95 ticks; truth drifted 64.0 → 63.7°F                                                            |
+| 2026-04-30 |                      **0.00** | LR pinned `off@68` for 96/96 ticks; truth drifted to 60.3°F                                                                |
+| 2026-05-01 |                      **0.00** | LR pinned `off@68` for 96/96 ticks; truth held in low 60s; 56-tick stretch min 59.05°F (0.95°F above the LR runaway floor) |
 
 Three consecutive days of zero LR heat-pump runtime in heating/shoulder season with
 truth dropping into the low 60s **cannot be reconciled with V8.3 doctrine**:
@@ -100,14 +100,14 @@ as operator-managed.
 
 ### 4.5 Decision tree
 
-| Signature | Class |
-|---|---|
-| `LR_HP_Runtime_Today_Hrs = 0.00` for full day in heating/shoulder | `operator_suppressed_likely` |
-| Frozen `(off, 68)` across many ticks while truth < 64°F | `operator_suppressed_likely` |
-| Non-doctrinal SP (60/65/71/75/80) appearing on LR without Section 14 latch evidence | `waf_or_manual_override_possible` |
-| Section 14 boost confirmed (`SP=77` post-2026-05-02 with engage edge) | `boost_engaged` (separate analysis from §2 doctrine) |
-| Doctrinal SP (68 daytime / 64 LR bedtime) with mode movement on `:00, :15, :30, :45` ticks | `clean_auto` |
-| None of the above | `unknown` |
+| Signature                                                                                  | Class                                                |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `LR_HP_Runtime_Today_Hrs = 0.00` for full day in heating/shoulder                          | `operator_suppressed_likely`                         |
+| Frozen `(off, 68)` across many ticks while truth < 64°F                                    | `operator_suppressed_likely`                         |
+| Non-doctrinal SP (60/65/71/75/80) appearing on LR without Section 14 latch evidence        | `waf_or_manual_override_possible`                    |
+| Section 14 boost confirmed (`SP=77` post-2026-05-02 with engage edge)                      | `boost_engaged` (separate analysis from §2 doctrine) |
+| Doctrinal SP (68 daytime / 64 LR bedtime) with mode movement on `:00, :15, :30, :45` ticks | `clean_auto`                                         |
+| None of the above                                                                          | `unknown`                                            |
 
 ## 5. What this means for forward analyses
 
@@ -169,6 +169,7 @@ doc.
 
 ## 8. Cross-references
 
+- `docs/apollo_msr_observability_checklist.md` — Validation checklist outlining MSR observability constraints.
 - `docs/1_startup_canon.md` §5.1 — V8.3 heating doctrine (the doctrine that
   contaminated windows must not be evaluated against).
 - `docs/3_regression_appendix.md` §4.4 — "Preemptive Living Room Suppression Without
@@ -184,4 +185,4 @@ doc.
 
 ---
 
-*End of Telemetry Confounders Doc.*
+_End of Telemetry Confounders Doc._
