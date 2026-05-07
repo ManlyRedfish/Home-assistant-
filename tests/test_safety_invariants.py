@@ -69,8 +69,19 @@ def test_master_emergency_cooling_floor_exists(automations_data):
     for auto in automations_data:
         if auto.get('id') == 'v8_2_master_emergency_floor':
             found = True
-            # TODO: Add assertions for the exact 58F threshold once full HA simulation is supported.
-            # Currently conservative, just verifying the automation ID exists.
+
+            # Mirror the LR runaway test: pin the 58F threshold statically.
+            # This static check does not require full HA runtime simulation —
+            # the trigger shape is identical to the LR runaway cutoff.
+            triggers = auto.get('trigger', [])
+            threshold_found = False
+            for trigger in triggers:
+                if trigger.get('platform') == 'numeric_state' and trigger.get('entity_id') == 'sensor.master_bedroom_temperature_truth':
+                    if trigger.get('below') == 58:
+                        threshold_found = True
+                        break
+
+            assert threshold_found, "Master emergency floor automation exists, but 58F threshold trigger is missing or modified."
             break
 
     assert found, "Master emergency cooling floor automation (v8_2_master_emergency_floor) not found in automations.yaml"
