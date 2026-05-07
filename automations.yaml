@@ -1673,3 +1673,129 @@
         entity_id: input_datetime.lr_heating_recovery_boost_last_release_at
       data:
         timestamp: "{{ now().timestamp() | int }}"
+
+# =============================================================================
+# SECTION 15: HVAC PROVENANCE LOGGER (V8.5 Observability)
+# =============================================================================
+# Observability-only logger for issue #66.
+# Writes provenance rows to the Google Sheets worksheet `hvac_provenance_log`
+# (a sibling to `supervisor_state_log`). Does NOT mutate any HVAC state,
+# helper, timer, or input. Does NOT read from Google Sheets. Does NOT change
+# Section 2 / Section 3 / Section 14 behavior. The tab is HA-write-only;
+# no automation, condition, template, or supervisor branch may consume rows
+# from `hvac_provenance_log`. Issue #49 remains open; this logger does not
+# satisfy its close criteria.
+#
+# DEPLOYMENT: the live Google Sheets `hvac_provenance_log` worksheet header
+# row must be created in Sheets BEFORE this change ships, in the column
+# order declared in the action body below, otherwise rows will be misaligned.
+# See docs/hvac_provenance_logger_design.md §7 for the full schema.
+# =============================================================================
+
+- id: v8_5_hvac_provenance_logger
+  alias: "V8.5: HVAC Provenance Logger"
+  mode: parallel
+  max: 20
+  trigger:
+    - platform: state
+      entity_id: climate.living_room_air
+      id: lr_state
+    - platform: state
+      entity_id: climate.living_room_air
+      attribute: temperature
+      id: lr_temp_attr
+    - platform: state
+      entity_id: timer.manual_hvac_override
+      id: override_state
+    - platform: state
+      entity_id: input_boolean.lr_heating_recovery_boost_active
+      id: boost_state
+  condition:
+    # Skip identical-value writes (noise control per design §8.2).
+    - condition: template
+      value_template: >-
+        {% if trigger.id == 'lr_temp_attr' %}
+        {% set ov = trigger.from_state.attributes.temperature if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.attributes.temperature if trigger.to_state is not none else none %}
+        {% else %}
+        {% set ov = trigger.from_state.state if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.state if trigger.to_state is not none else none %}
+        {% endif %}
+        {{ (ov | string) != (nv | string) }}
+  action:
+    - variables:
+        attribute_name: "{% if trigger.id == 'lr_temp_attr' %}temperature{% else %}state{% endif %}"
+        old_raw: >-
+          {% if trigger.id == 'lr_temp_attr' %}
+          {{ trigger.from_state.attributes.temperature if trigger.from_state is not none else '' }}
+          {% else %}
+          {{ trigger.from_state.state if trigger.from_state is not none else '' }}
+          {% endif %}
+        new_raw: >-
+          {% if trigger.id == 'lr_temp_attr' %}
+          {{ trigger.to_state.attributes.temperature if trigger.to_state is not none else '' }}
+          {% else %}
+          {{ trigger.to_state.state if trigger.to_state is not none else '' }}
+          {% endif %}
+        old_value_clean: >-
+          {% set v = (old_raw | string) | trim %}
+          {{ '' if v in ['None', 'unknown', 'unavailable', ''] else v }}
+        new_value_clean: >-
+          {% set v = (new_raw | string) | trim %}
+          {{ '' if v in ['None', 'unknown', 'unavailable', ''] else v }}
+        ctx_user_id: >-
+          {% if trigger.to_state is not none and trigger.to_state.context is not none %}
+          {{ trigger.to_state.context.user_id if trigger.to_state.context.user_id is not none else '' }}
+          {% else %}{% endif %}
+        ctx_parent_id: >-
+          {% if trigger.to_state is not none and trigger.to_state.context is not none %}
+          {{ trigger.to_state.context.parent_id if trigger.to_state.context.parent_id is not none else '' }}
+          {% else %}{% endif %}
+        ctx_id: >-
+          {% if trigger.to_state is not none and trigger.to_state.context is not none %}
+          {{ trigger.to_state.context.id if trigger.to_state.context.id is not none else '' }}
+          {% else %}{% endif %}
+        # Origin classification per design doc §6 (decision order; first match wins).
+        # Cold-start guard: from_state missing/unknown/unavailable maps to system_restore.
+        # The 5-min uptime refinement is approximated by the from_state signal — once HA
+        # has fully restored, entities transition between known states, not from
+        # unknown/unavailable.
+        origin_kind_v: >-
+          {% if trigger.from_state is none or (trigger.from_state is not none and trigger.from_state.state in ['unknown', 'unavailable']) %}system_restore
+          {% elif trigger.to_state is not none and trigger.to_state.context is not none and trigger.to_state.context.user_id is not none %}manual_user
+          {% elif trigger.to_state is not none and trigger.to_state.context is not none and trigger.to_state.context.user_id is none and trigger.to_state.context.parent_id is not none %}automation_or_script
+          {% elif trigger.to_state is not none and trigger.to_state.context is not none and trigger.to_state.context.user_id is none and trigger.to_state.context.parent_id is none and trigger.entity_id == 'climate.living_room_air' %}integration_or_device
+          {% else %}unknown
+          {% endif %}
+        # Best-effort automation candidate hint per design doc §6 — forensic guidance only.
+        automation_candidate_v: >-
+          {% set ok = (origin_kind_v | trim) %}
+          {% set m = now().minute %}
+          {% set ts = trigger.to_state.state if trigger.to_state is not none else '' %}
+          {% if ok != 'automation_or_script' %}
+          {% elif trigger.entity_id == 'timer.manual_hvac_override' and ts == 'active' %}v7_5_waf_manual_override
+          {% elif trigger.entity_id == 'input_boolean.lr_heating_recovery_boost_active' and ts == 'on' %}v8_4_lr_heating_recovery_boost_engage
+          {% elif trigger.entity_id == 'input_boolean.lr_heating_recovery_boost_active' and ts == 'off' %}v8_4_lr_heating_recovery_boost_release
+          {% elif trigger.entity_id == 'climate.living_room_air' and trigger.id == 'lr_temp_attr' and (new_value_clean | string) == '77' %}v8_4_lr_heating_recovery_boost_engage
+          {% elif trigger.entity_id == 'climate.living_room_air' and m in [0, 15, 30, 45] %}v7_5_main_supervisor
+          {% else %}
+          {% endif %}
+        ts_now_v: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+    - action: google_sheets.append_sheet
+      data:
+        config_entry: !secret google_sheets_config_entry
+        worksheet: hvac_provenance_log
+        data:
+          event_local: "{{ ts_now_v }}"
+          entity_id: "{{ trigger.entity_id }}"
+          attribute: "{{ attribute_name }}"
+          old_value: "{{ old_value_clean }}"
+          new_value: "{{ new_value_clean }}"
+          origin_kind: "{{ origin_kind_v | trim }}"
+          context_id: "{{ ctx_id | trim }}"
+          context_parent_id: "{{ ctx_parent_id | trim }}"
+          context_user_id: "{{ ctx_user_id | trim }}"
+          automation_candidate: "{{ automation_candidate_v | trim }}"
+          related_issue: "#66"
+          note: ""
+          created_at: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
