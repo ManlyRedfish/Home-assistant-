@@ -79,6 +79,39 @@ The manual sheet-side practice is **the** practice today. The richer
 Form/Apps Script flow described below is a future design and is not
 implemented.
 
+#### `supervisor_state_log` vs. `hvac_provenance_log`
+
+`supervisor_state_log` is the **human narrative annotation** surface. Rows
+are typed by the operator after the fact and use the schema in
+`docs/telemetry_confounders.md` §6.2 (`start_local`, `end_local`, `kind`,
+`note`, `created_at`). `kind` is the operator's claim about what was
+happening (e.g., `manual_setpoint_nudge`, `waf_observed`,
+`supervisor_disabled`). The worksheet is appended to manually and is
+forensic-only.
+
+`hvac_provenance_log` is the **machine-generated provenance** surface
+adopted in #66. It is appended to automatically by the V8.5 provenance
+logger (`automations.yaml` Section 15, `id: v8_5_hvac_provenance_logger`)
+on every state/setpoint change to the four observed entities listed in
+`docs/hvac_provenance_logger_design.md` §5. Rows use the schema in §7 of
+that doc and carry an `origin_kind` derived from
+`trigger.to_state.context` (`manual_user`, `automation_or_script`,
+`integration_or_device`, `system_restore`, `unknown`). The worksheet is
+also forensic-only, but it is **HA-write-only**: no automation, condition,
+template, supervisor branch, or safety gate may consume rows from it.
+
+The two tabs are sibling surfaces in the same workbook, joinable by time
+and entity but never mixed:
+
+- `supervisor_state_log` — interval-shaped, human author-of-record, low
+  row count, written by the operator, never written by HA.
+- `hvac_provenance_log` — event-shaped, machine-classified, ≤ ~50 rows/day
+  in steady state, written exclusively by the V8.5 provenance logger,
+  never read by HA.
+
+The forbidden-path list in §6 applies to both tabs: neither may become a
+control-loop input.
+
 ### 4.1 Proposed Google Sheets / Apps Script Workflow (not implemented)
 
 The following is a forward-looking design for a richer ingest path. It is

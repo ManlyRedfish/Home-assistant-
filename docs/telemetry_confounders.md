@@ -209,6 +209,29 @@ are:
 For the architecture rationale and the full forbidden-path list, see
 [Operator Annotation Design (`docs/operator_annotation_design.md`)](operator_annotation_design.md).
 
+### 6.6 Cross-reference: `hvac_provenance_log` (machine provenance, sibling tab)
+
+`supervisor_state_log` is the human narrative annotation surface. Its
+machine sibling is `hvac_provenance_log`, written automatically by the
+V8.5 provenance logger (`automations.yaml` Section 15,
+`id: v8_5_hvac_provenance_logger`, adopted under issue #66). The
+provenance log tags each tracked HVAC state/setpoint change with an
+`origin_kind` (`manual_user`, `automation_or_script`,
+`integration_or_device`, `system_restore`, `unknown`) derived from
+`trigger.to_state.context`. See
+[`docs/hvac_provenance_logger_design.md`](hvac_provenance_logger_design.md)
+for the schema and classification rules, and
+[`docs/operator_annotation_design.md`](operator_annotation_design.md) §4.0
+for the side-by-side comparison with `supervisor_state_log`.
+
+The two tabs share the same forbidden-path discipline as §6.5: the
+provenance tab is **HA-write-only** and may never be read back into a
+control surface (Section 2, Section 3, Section 14, truth-sensor math, or
+any other control loop). For #49 clean-cycle classification, an analyst
+may consult both tabs — `supervisor_state_log` for human-claimed context
+and `hvac_provenance_log` for HA-classified context — but neither row set
+becomes runtime input.
+
 ## 7. Hard constraints carried forward
 
 This document does not change:

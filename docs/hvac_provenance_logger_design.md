@@ -1,14 +1,19 @@
-# HVAC Provenance Logger — Planning (Issue #66)
+# HVAC Provenance Logger — Adopted / Implemented (Issue #66)
 
 **Doc Date:** 2026-05-07
-**Document Role:** Planning artifact for issue #66 (automatic operator
-provenance logging for manual HVAC changes).
-**Status:** Planning only. Docs-only. No runtime YAML changes.
-**Scope Lock:** Documentation only. Does not modify `automations.yaml`,
+**Document Role:** Design + acceptance record for issue #66 (automatic
+operator provenance logging for manual HVAC changes).
+**Status:** Adopted / Implemented. Section 15 of `automations.yaml` now
+contains the `v8_5_hvac_provenance_logger` automation that fulfills this
+design. Implementation PR: "Add v8.5 HVAC provenance logger (issue #66) —
+observability-only, narrow first pass".
+**Scope Lock:** The implementation pass added exactly one new section
+(Section 15) to `automations.yaml` and four new tests in
+`tests/test_provenance_observability.py`. It did not modify
 `configuration.yaml`, helpers, ESPHome, thresholds, Section 2 supervisor
-behavior, Section 3 safety gates, or Section 14 boost behavior. Does not
-promote any annotation/provenance data into a control loop input. Does not
-touch issue #49.
+behavior, Section 3 safety gates, or Section 14 boost behavior. It did not
+promote any annotation/provenance data into a control loop input. Issue #49
+remains open.
 
 ---
 
