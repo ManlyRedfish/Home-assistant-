@@ -1,9 +1,10 @@
 # Telemetry Confounders — Operator-Suppressed Supervisor Windows
 
-**Doc Date:** 2026-05-04
+**Doc Date:** 2026-05-07
 **Document Role:** Telemetry Analysis Guardrail
 **Status:** Living. Update when a new confounder pattern is identified or when the
-operator annotation practice changes.
+operator annotation practice changes. Operator annotation practice was moved
+from *Proposed* to *Adopted (sheet-side)* on 2026-05-07; see §6.
 **Scope:** Documentation only. Does not change runtime YAML, thresholds, safety gates,
 or telemetry schema.
 
@@ -127,21 +128,86 @@ as operator-managed.
    a regression entry) cites Apr 28–May 1 as evidence of Section 2 behavior, that
    doc is wrong and should be corrected against this confounder note.
 
-## 6. Operator Annotation Practice (Proposed)
+## 6. Operator Annotation Practice (Adopted — Sheet-Side)
 
-To prevent the same confounder from contaminating future analyses, the operator
-should utilize the **proposed** out-of-band forensic workflow once it is adopted.
-The workflow is currently a design proposal, not implemented operational
-procedure.
+The adopted operator annotation surface is a manual sheet-side workflow. The
+worksheet `supervisor_state_log` lives in the existing **Home Assistant** Google
+Sheets workbook alongside `VTherm_Launch_Data_v5` / `VTherm_Launch_Data_v5_5`.
+Adoption of this practice is tracked in issue #50.
 
-For the full design and schema of this out-of-band workflow, refer to the
-[Operator Annotation Design (`docs/operator_annotation_design.md`)](operator_annotation_design.md)
-(`Status: Proposed`). Adoption is tracked in issue #50; until that issue closes,
-contaminated windows must continue to be classified behaviorally per §4.
+### 6.1 Hard properties
 
-The event journal infrastructure was **retired and removed** after the sink failed
-to register. Do not re-introduce observers or attempt a new event-journal write path
-on the strength of this annotation need without a proven HA-compatible sink.
+- The worksheet is **forensic-only**. It exists to let analysts join human/operator
+  context to telemetry windows after the fact.
+- **Home Assistant does not read this sheet.** No automation, helper, template,
+  webhook, Apps Script, or supervisor logic consumes annotation rows.
+- **Annotations must never trigger automations or change HVAC behavior.** They
+  are a labeling surface, not a control input.
+- No HA helper, no Apps Script, no webhook, no event-bus path is implemented.
+  The worksheet is updated by the operator manually.
+- The retired event-journal sink remains retired. Annotations live in Sheets,
+  not in the HA event bus.
+
+### 6.2 Schema
+
+The header row of `supervisor_state_log` carries (at minimum) these fields:
+
+| Field        | Meaning                                                      |
+| ------------ | ------------------------------------------------------------ |
+| `start_local` | Local start time of the operator/context event.              |
+| `end_local`   | Local end time, if known. May be empty for point annotations. |
+| `kind`        | Event category (see §6.3).                                   |
+| `note`        | Human-readable context.                                      |
+| `created_at`  | When the annotation row was created.                         |
+
+If the operator extends the schema (e.g., `operator_id`, `source`), additional
+columns are tolerated downstream and are not breaking. Analysts should ignore
+unknown columns and never assume a column is mandatory beyond the five above.
+
+### 6.3 Recommended `kind` values
+
+To keep filtering tractable across analyses, the recommended dropdown values
+are:
+
+- `supervisor_disabled` — `automation.v7_5_main_supervisor` was off.
+- `manual_setpoint_nudge` — operator set a non-doctrinal setpoint by hand.
+- `waf_observed` — comfort intervention by household member.
+- `boost_observed` — Section 14 LR boost engagement window observed.
+- `away_window` — household away; thermal load atypical.
+- `truth_unavailable` — truth sensor or contributors went unavailable.
+- `stale_setpoint_artifact` — stale setpoint left over from prior state.
+- `hardware_maintenance` — battery swap, filter clean, network outage.
+- `sensor_relocation` — physical move of a Netatmo / room probe.
+- `comfort_complaint` — reported discomfort without immediate manual action.
+- `other` — anything else; require detail in `note`.
+
+### 6.4 Join guidance for V5/V5.5 telemetry
+
+- Current `VTherm_Launch_Data_v5` / `VTherm_Launch_Data_v5_5` rows land at
+  15-minute boundaries (`:00`, `:15`, `:30`, `:45`).
+- An annotation **applies to any telemetry row whose timestamp overlaps the
+  `[start_local, end_local]` window**.
+- If only `start_local` is known (point annotation), join the annotation to the
+  nearest 15-minute telemetry row, plus adjacent rows if the analyst's
+  evaluation window plausibly extends into them.
+- For #49 V8.4 LR boost clean-cycle evaluation, **any overlapping operator
+  annotation must be reviewed before classifying a cycle as `clean_auto`**.
+  An overlapping `manual_setpoint_nudge`, `waf_observed`,
+  `supervisor_disabled`, `truth_unavailable`, or `stale_setpoint_artifact`
+  generally disqualifies a cycle from a clean-window verdict.
+
+### 6.5 Forbidden paths (carried forward from `operator_annotation_design.md`)
+
+- No `input_text` / `input_boolean` / sensor / template helper for annotations.
+- No webhook ingest from outside HA.
+- No automation that triggers on, or reacts to, annotation data.
+- No Apps Script that writes back into HA or alters telemetry rows.
+- No event-bus routing of annotation payloads.
+- No annotation can become a control-loop input for Section 2, Section 3, or
+  Section 14.
+
+For the architecture rationale and the full forbidden-path list, see
+[Operator Annotation Design (`docs/operator_annotation_design.md`)](operator_annotation_design.md).
 
 ## 7. Hard constraints carried forward
 

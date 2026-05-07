@@ -22,7 +22,7 @@ hierarchy:
 - **Doc 6 / Proposals** — `6_proposals.md` — V9 architectural proposals.
 - **Telemetry Confounders** — `telemetry_confounders.md` — analysis guardrail.
 - **Apollo MSR Observability Checklist** — `apollo_msr_observability_checklist.md` — observability-only doctrine and validation checklist for Apollo MSR sensors (proposed; no control-loop promotion).
-- **Operator Annotation Design** — `operator_annotation_design.md` — proposed out-of-band forensic annotation workflow (Status: Proposed).
+- **Operator Annotation Design** — `operator_annotation_design.md` — out-of-band forensic annotation workflow. Status: sheet-side practice **adopted** (worksheet `supervisor_state_log` in the Home Assistant Google Sheet); Form / Apps Script ingest remains proposed.
 - **V6 Telemetry Schema Proposal** — `v6_telemetry_schema_proposal.md` — proposed `VTherm_Launch_Data_v6` schema (planning only; V5 remains active).
 - **V6 Observability Roadmap** — `v6_observability_roadmap.md` — phase order and guardrails for V5 → V6 observability work.
 - **V8.4 LR Boost V5 Evidence Review** — `analysis/v8_4_lr_boost_v5_evidence_review.md` — tab-by-tab forensic review of Section 14 (V8.4) boost cycles in `VTherm_Launch_Data_v5` and prior versioned tabs. Verdict: effectiveness remains unmeasured; #49 close criteria not met.
@@ -81,7 +81,7 @@ For the topology and routing slices Doc 2 is meant to cover, current sources are
 | Telemetry worksheet / column names | `automations.yaml` Section 1 (`vtherm_mega_tracker_v5`) | Worksheet `VTherm_Launch_Data_v5`. |
 | Operator-suppressed window classification | [`telemetry_confounders.md`](telemetry_confounders.md) | Read before joining columns to behavior. |
 | Apollo MSR observability validation (proposed) | [`apollo_msr_observability_checklist.md`](apollo_msr_observability_checklist.md) | Observability-only; not a control authority. |
-| Operator annotation workflow (proposed) | [`operator_annotation_design.md`](operator_annotation_design.md) | Out-of-band; no HA helpers. Adoption tracked in #50. |
+| Operator annotation workflow (sheet-side adopted) | [`operator_annotation_design.md`](operator_annotation_design.md) and [`telemetry_confounders.md`](telemetry_confounders.md) §6 | Live worksheet `supervisor_state_log` in the Home Assistant workbook. Forensic-only; not read by HA. Form / Apps Script ingest still proposed. Adoption / first-row gate tracked in #50. |
 | V6 telemetry schema (proposed) | [`v6_telemetry_schema_proposal.md`](v6_telemetry_schema_proposal.md) | Planning only. V5 remains active. |
 | V6 observability roadmap (proposed) | [`v6_observability_roadmap.md`](v6_observability_roadmap.md) | Phase order and guardrails. |
 | V8.4 LR boost V5 evidence review | [`analysis/v8_4_lr_boost_v5_evidence_review.md`](analysis/v8_4_lr_boost_v5_evidence_review.md) | Forensic review of Section 14 boost cycles in `VTherm_Launch_Data_v5`. Verdict: effectiveness unmeasured; #49 not yet closeable. |
