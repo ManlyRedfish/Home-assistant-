@@ -12,10 +12,68 @@ As explicitly codified in the [Startup Canon](1_startup_canon.md) and [Runtime L
 
 ## Forbidden Uses
 
-- **No HVAC Control:** MSR entities must not be used as triggers, conditions, or data sources for HVAC automations.
-- **No Truth Layer Impact:** Do not make DPS310, MSR temperature, pressure, CO2, or presence part of the Truth Layer calculation.
+- **No HVAC Control:** MSR entities must not be used as triggers, conditions, or data sources for HVAC automations, except for the single narrow allowance documented in §"Explicit Exception: Lincoln Fan-Only Destratification" below.
+- **No Truth Layer Impact:** Do not make DPS310, MSR temperature, pressure, CO2, or presence part of the Truth Layer calculation. The exception below does not change this — Lincoln truth fusion remains MSR-free.
 - **No Assumptions of Hardware Features:** Do not assume a given MSR device exposes CO2 unless verified.
-- **No State Alteration:** MSR sensors must not mutate the state of the climate control systems or related logic.
+- **No State Alteration:** MSR sensors must not mutate the state of the climate control systems or related logic, except as scoped by the exception below.
+
+## Explicit Exception: Lincoln Fan-Only Destratification
+
+Status: **documented narrow legacy/experimental exception** to the Forbidden
+Uses list above. Adopted only because the path predates this doctrine. It is
+not a precedent and may not be expanded.
+
+**Default rule (unchanged).** Apollo / MSR data is observability-only. MSR
+entities must not feed VTherm room truth, setpoints, supervisor decisions,
+interlocks, safety gates, runaway cutoffs, ceiling gates, Section 14 LR boost,
+season-mode logic, manual-override timers, or any other thermostat target
+calculation.
+
+**The single narrow exception today.** The MSR mmWave occupancy signal
+`binary_sensor.lincoln_msr_radar_zone_3_occupancy` is wrapped by the debounced
+template binary sensor `binary_sensor.lincoln_presence_debounced_v3`
+(configuration.yaml Section 2). That debounced wrapper is consumed by the
+fan-only destratification automation `v8_comfort_fan_destratification`
+(automations.yaml Section 6) as the variable `lincoln_fan_allowed`, where it
+gates `climate.set_hvac_mode` for `climate.lincoln_air` between `fan_only`
+and `off` only.
+
+**Hard constraints on this exception.**
+
+- Affected entity: `climate.lincoln_air` only.
+- Affected service: `climate.set_hvac_mode` only.
+- Affected `hvac_mode` values: `fan_only` and `off` only — never `heat`,
+  `cool`, `auto`, `heat_cool`, or `dry`.
+- Affected service `climate.set_temperature` is **forbidden** in this
+  exception path. Setpoint changes must never depend on MSR data.
+- Affected room scope: Living Room, Master Bedroom, Lilly's Room, and any
+  whole-house supervisor decision are **not** part of this exception.
+  Replicating the pattern to those rooms requires a new doctrine update
+  and a new allow-list entry in the boundary test before merge.
+- Affected control surface: this exception must not flow into Section 2
+  supervisor logic, Section 3 safety gates, Section 7.5 ceiling gates,
+  Section 14 LR boost, Samsung guardrails, or any safety cutoff. Lincoln
+  fan-only destratification is comfort-mode airflow only and remains
+  setpoint-neutral.
+
+**Why it is allowed.** Fan-only destratification is an experimental airflow
+comfort feature. The presence gate exists so the fan does not run when the
+occupant is present (noise / disturbance consideration), not as a thermal
+control input. There is no path through this exception that changes a
+setpoint, weights truth, or relaxes a safety gate.
+
+**Forward review.** This exception is to be re-evaluated once Apollo MSR
+observability evidence has accumulated against the V5/V5.5 telemetry record
+and the §"Promotion Criteria Placeholder" gates below have been documented
+against the Lincoln mmWave specifically. Until then the exception remains
+narrow, scoped, and documented.
+
+**Test enforcement.** The boundary tests in
+`tests/test_msr_observability_boundary.py` enforce the constraints above
+mechanically — they fail if any non-allow-listed automation references an
+MSR-derived entity, if the Lincoln exception flows into
+`climate.set_temperature`, or if it gates an `hvac_mode` outside
+`{fan_only, off}`.
 
 ## Entity Inventory Checklist
 
@@ -76,7 +134,8 @@ _This criteria outlines the minimum prerequisites for promoting an MSR sensor be
 _To be completed by the reviewer when evaluating PRs related to MSR configuration or tuning._
 
 - [ ] Does this PR adhere to the "Observability-Only Doctrine"?
-- [ ] Are any MSR entities introduced into HVAC automations or the Truth Layer? (If yes, REJECT).
+- [ ] Are any MSR entities introduced into HVAC automations or the Truth Layer? (If yes, REJECT — unless the change explicitly extends the §"Explicit Exception: Lincoln Fan-Only Destratification" allow-list and updates `tests/test_msr_observability_boundary.py` in the same PR with a recorded human approval.)
 - [ ] Are CO2 entities verified as existing before being integrated into logging dashboards?
 - [ ] Are mmWave tuning adjustments documented and annotation-backed?
 - [ ] Has the DPS310/Temperature warning been respected?
+- [ ] If the Lincoln fan-only path was modified, are the §Explicit Exception constraints (climate.lincoln_air only, fan_only/off only, no setpoint changes) still satisfied and still test-locked?

@@ -36,7 +36,7 @@ To ensure system stability, all observability and V6 work must follow this stric
 
 All work in this pipeline must adhere to the following strict guardrails:
 
-- **No MSR control-loop promotion:** Apollo MSR data must remain strictly observational.
+- **No MSR control-loop promotion:** Apollo MSR data must remain strictly observational. The single documented narrow exception is the legacy Lincoln fan-only destratification path described in [`apollo_msr_observability_checklist.md`](apollo_msr_observability_checklist.md) §"Explicit Exception: Lincoln Fan-Only Destratification" and locked by `tests/test_msr_observability_boundary.py`. The exception is `climate.lincoln_air` + `fan_only`/`off` only and is not a precedent for further promotion.
 - **No HA helpers for annotations:** Operator annotations must not rely on new Home Assistant helper entities.
 - **No local high-frequency event journal:** Do not implement local high-frequency SQLite/MariaDB event journaling.
 - **No weakening safety gates:** Existing Section 3 safety gates must remain absolute.
@@ -46,7 +46,9 @@ All work in this pipeline must adhere to the following strict guardrails:
 
 A future PR should be blocked if it:
 
-- [ ] Promotes Apollo MSR presence, CO2, DPS310, pressure, or temperature into HVAC control.
+- [ ] Promotes Apollo MSR presence, CO2, DPS310, pressure, or temperature into HVAC control beyond the documented Lincoln fan-only exception (see §4).
+- [ ] Extends the Lincoln fan-only exception to Living Room, Master, Lilly, or whole-house supervisor logic without (a) a doctrine update in `apollo_msr_observability_checklist.md` and (b) a matching allow-list entry in `tests/test_msr_observability_boundary.py`.
+- [ ] Lets the Lincoln exception flow into `climate.set_temperature`, truth fusion, safety cutoffs, ceiling gates, or Section 14 boost.
 - [ ] Adds Home Assistant helpers for operator annotations.
 - [ ] Revives local high-frequency SQLite/MariaDB event journaling.
 - [ ] Weakens Section 3 safety gates.

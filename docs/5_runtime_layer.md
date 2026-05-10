@@ -168,6 +168,11 @@ The live file explicitly identifies:
 ### 7.6 Operator-Suppressed Telemetry Windows
 On occasion the operator has manually disabled `automation.v7_5_main_supervisor` (Section 2) during disrupted-sleep nights/days. Section 1 telemetry continues to write rows in those windows, but the rows reflect operator-managed state, not Section 2 doctrine. Apr 28–May 1 (2026) is the canonical contaminated window: three consecutive days of `LR_HP_Runtime_Today_Hrs = 0.00` with LR truth dropping to 60.3°F while LR was pinned `off@68`. Cold-drift, zero-runtime, or `Section 2 did/did not do X` claims drawn from operator-suppressed windows are category errors. The classification rules and the canonical contaminated window are documented in `docs/telemetry_confounders.md`. No runtime change is required; this is a forward-analysis guardrail, addressed against Issue #31.
 
+### 7.7 Apollo / MSR Observability Boundary
+Apollo / MSR data (mmWave presence, CO2, DPS310 temperature/pressure, ESP temperature) is observability-only. MSR entities are exported through Section 1 (`vtherm_mega_tracker_v5` → `VTherm_Launch_Data_v5_5`) for forensic analysis but do not feed VTherm room truth, setpoints, the Section 2 supervisor, Section 3 safety gates, Section 7.5 ceiling gates, Section 14 LR boost, or any Samsung guardrail.
+
+There is one documented narrow exception: `binary_sensor.lincoln_msr_radar_zone_3_occupancy` is wrapped by `binary_sensor.lincoln_presence_debounced_v3` (configuration.yaml Section 2) and consumed by Section 6 (`v8_comfort_fan_destratification`) as the variable `lincoln_fan_allowed`. The exception only gates `climate.set_hvac_mode` for `climate.lincoln_air` between `fan_only` and `off`. It is setpoint-neutral and does not touch any safety surface. The full constraints are listed in `docs/apollo_msr_observability_checklist.md` §"Explicit Exception: Lincoln Fan-Only Destratification" and locked by `tests/test_msr_observability_boundary.py`. The exception is not a precedent and does not extend to other rooms or other control surfaces.
+
 ## 8. Runtime Change Rules
 
 Update this layer only when live implementation changes.
