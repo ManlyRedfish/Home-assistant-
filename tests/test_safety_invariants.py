@@ -86,12 +86,37 @@ def test_master_emergency_cooling_floor_exists(automations_data):
 
     assert found, "Master emergency cooling floor automation (v8_2_master_emergency_floor) not found in automations.yaml"
 
-def test_cooling_not_permitted_below_safety_floor():
+def test_cooling_not_permitted_below_safety_floor_static(automations_data):
     """
-    Placeholder for future HA simulation test: Cooling should not be permitted below safety floor.
-    Currently, we only statically analyze YAML.
-    Full simulation would require mocking the climate entity state and observing it is forced 'off'.
+    Static guardrail ensuring that cooling is not permitted below the safety floor.
+    Full HA runtime simulation (mocking the climate entity state and observing it
+    is forced 'off') is intentionally out of scope for now to avoid complex dependencies.
+    Instead, we statically verify the 'off' action is present in the safety automations.
     """
-    # TODO: Implement full HA runtime simulation to verify that the climate entity
-    # changes to 'off' when truth temp < 60F for LR and < 58F for Master.
-    pass
+    required_automations = {
+        'v8_2_runaway_cooling_cutoff_lr': 'climate.living_room_air',
+        'v8_2_master_emergency_floor': 'climate.master_bedroom_air'
+    }
+
+    found_automations = 0
+
+    for auto in automations_data:
+        auto_id = auto.get('id')
+        if auto_id in required_automations:
+            found_automations += 1
+            target_climate = required_automations[auto_id]
+            actions = auto.get('action', [])
+
+            # Look for the climate.set_hvac_mode action that turns it off
+            action_found = False
+            for action in actions:
+                if action.get('action') == 'climate.set_hvac_mode':
+                    target = action.get('target', {})
+                    data = action.get('data', {})
+                    if target.get('entity_id') == target_climate and data.get('hvac_mode') == 'off':
+                        action_found = True
+                        break
+
+            assert action_found, f"Automation {auto_id} exists but is missing the action to turn off {target_climate}."
+
+    assert found_automations == len(required_automations), "Not all required safety floor automations were found."
