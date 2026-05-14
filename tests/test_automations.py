@@ -107,3 +107,65 @@ def test_slugified_entities_check():
 def test_all_automations_have_mode(automations_data):
     for a in automations_data:
         assert 'mode' in a, f"Automation '{a.get('id')}' is missing 'mode'"
+
+
+def test_waf_manual_override_has_mode_and_setpoint_triggers(automations_data):
+    waf = next((a for a in automations_data if a.get("id") == "v7_5_waf_manual_override"), None)
+    assert waf is not None, "Automation 'v7_5_waf_manual_override' not found"
+
+    triggers = waf.get("trigger", [])
+    assert isinstance(triggers, list), "WAF manual override automation triggers must be a list"
+
+    climate_entities = {
+        "climate.living_room_air",
+        "climate.master_bedroom_air",
+        "climate.lincoln_air",
+        "climate.lilly_air",
+    }
+
+    def _entity_ids(value):
+        if isinstance(value, list):
+            return set(value)
+        if isinstance(value, str):
+            return {value}
+        return set()
+
+    has_temperature_attribute_trigger = any(
+        isinstance(t, dict)
+        and t.get("platform") == "state"
+        and t.get("attribute") == "temperature"
+        and _entity_ids(t.get("entity_id")) == climate_entities
+        for t in triggers
+    )
+    assert has_temperature_attribute_trigger, (
+        "Expected a state trigger with attribute=temperature for the four climate entities"
+    )
+
+    has_state_trigger_without_attribute = any(
+        isinstance(t, dict)
+        and t.get("platform") == "state"
+        and "attribute" not in t
+        and _entity_ids(t.get("entity_id")) == climate_entities
+        for t in triggers
+    )
+    assert has_state_trigger_without_attribute, (
+        "Expected a state trigger with no attribute for the four climate entities"
+    )
+
+    conditions = waf.get("condition", [])
+    assert isinstance(conditions, list), "WAF manual override conditions must be a list"
+    assert any(
+        isinstance(c, dict)
+        and c.get("condition") == "template"
+        and c.get("value_template") == "{{ trigger.context.parent_id is none }}"
+        for c in conditions
+    ), "Expected manual-only guard condition '{{ trigger.context.parent_id is none }}'"
+
+    actions = waf.get("action", [])
+    assert isinstance(actions, list), "WAF manual override actions must be a list"
+    assert any(
+        isinstance(a, dict)
+        and a.get("action") == "timer.start"
+        and a.get("target", {}).get("entity_id") == "timer.manual_hvac_override"
+        for a in actions
+    ), "Expected action to start timer.manual_hvac_override"

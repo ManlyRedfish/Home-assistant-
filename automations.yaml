@@ -813,6 +813,12 @@
         - climate.lincoln_air
         - climate.lilly_air
       attribute: temperature
+    - platform: state
+      entity_id:
+        - climate.living_room_air
+        - climate.master_bedroom_air
+        - climate.lincoln_air
+        - climate.lilly_air
   condition:
     - condition: template
       value_template: "{{ trigger.context.parent_id is none }}"
