@@ -36,6 +36,31 @@ def automations_data():
         except Exception as e:
             pytest.fail(f"Could not parse automations.yaml: {e}")
 
+def _action_calls_climate_set_hvac_mode_off(auto, expected_entity_id):
+    """
+    Helper function to verify if an automation's action block contains
+    a service call to set the given climate entity's hvac_mode to 'off'.
+    Supports 'action:' and 'service:' syntaxes.
+    """
+    actions = auto.get('action', auto.get('sequence', []))
+    for action in actions:
+        service_call = action.get('action') or action.get('service')
+        if service_call == 'climate.set_hvac_mode':
+            # Check target or data for the entity_id
+            target = action.get('target', {})
+            data = action.get('data', {})
+
+            entities = target.get('entity_id') or data.get('entity_id')
+            if isinstance(entities, str):
+                entities = [entities]
+            elif not entities:
+                entities = []
+
+            if expected_entity_id in entities:
+                if data.get('hvac_mode') == 'off':
+                    return True
+    return False
+
 def test_lr_runaway_cooling_cutoff_exists(automations_data):
     """
     Validates Section 3 Safety Invariant: Living Room runaway cooling cutoff at 60F.
@@ -56,6 +81,9 @@ def test_lr_runaway_cooling_cutoff_exists(automations_data):
                         break
 
             assert threshold_found, "LR runaway cutoff automation exists, but 60F threshold trigger is missing or modified."
+
+            action_found = _action_calls_climate_set_hvac_mode_off(auto, 'climate.living_room_air')
+            assert action_found, "LR runaway cutoff automation exists, but action to turn off climate.living_room_air is missing or modified."
             break
 
     assert found, "Living Room runaway cooling cutoff automation (v8_2_runaway_cooling_cutoff_lr) not found in automations.yaml"
@@ -82,6 +110,9 @@ def test_master_emergency_cooling_floor_exists(automations_data):
                         break
 
             assert threshold_found, "Master emergency floor automation exists, but 58F threshold trigger is missing or modified."
+
+            action_found = _action_calls_climate_set_hvac_mode_off(auto, 'climate.master_bedroom_air')
+            assert action_found, "Master emergency floor automation exists, but action to turn off climate.master_bedroom_air is missing or modified."
             break
 
     assert found, "Master emergency cooling floor automation (v8_2_master_emergency_floor) not found in automations.yaml"
