@@ -98,7 +98,7 @@ LINCOLN_FAN_EXCEPTION_ALLOWED_HVAC_MODES = {"fan_only", "off"}
 
 # Safety automations and the main supervisor must remain MSR-free.
 SAFETY_AUTOMATION_IDS = {
-    "v8_2_runaway_cooling_cutoff_lr",   # 60°F LR runaway cooling cutoff
+    "v8_2_lr_runaway_cooling_cutoff",   # 60°F LR runaway cooling cutoff
     "v8_2_master_emergency_floor",      # 58°F Master emergency cooling floor
     "v7_5_safety_ceiling_gates",        # 76°F all-season ceiling
 }
