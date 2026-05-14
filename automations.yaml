@@ -681,7 +681,7 @@
 # Under normal operation this automation should NEVER fire. If it fires,
 # investigate the controller, do not tune this threshold.
 # -----------------------------------------------------------------------------
-- id: v8_2_runaway_cooling_cutoff_lr
+- id: v8_2_lr_runaway_cooling_cutoff
   alias: "V8.2: Runaway Cooling Cutoff (LR Equipment Protection)"
   mode: single
   trigger:
