@@ -86,12 +86,53 @@ def test_master_emergency_cooling_floor_exists(automations_data):
 
     assert found, "Master emergency cooling floor automation (v8_2_master_emergency_floor) not found in automations.yaml"
 
-def test_cooling_not_permitted_below_safety_floor():
+def _has_numeric_state_below_trigger(auto, entity_id, below):
+    triggers = auto.get('trigger', [])
+    if not isinstance(triggers, list):
+        triggers = [triggers]
+    for trigger in triggers:
+        if trigger.get('platform') == 'numeric_state' and trigger.get('entity_id') == entity_id:
+            if trigger.get('below') == below:
+                return True
+    return False
+
+def _turns_climate_entity_off(auto, entity_id):
+    actions = auto.get('action', [])
+    if not isinstance(actions, list):
+        actions = [actions]
+
+    for action in actions:
+        action_name = action.get('action') or action.get('service')
+        if action_name == 'climate.set_hvac_mode':
+            target_entity = action.get('target', {}).get('entity_id') or action.get('data', {}).get('entity_id')
+            if target_entity == entity_id:
+                if action.get('data', {}).get('hvac_mode') == 'off':
+                    return True
+    return False
+
+def test_safety_floor_automations_force_climate_off(automations_data):
     """
-    Placeholder for future HA simulation test: Cooling should not be permitted below safety floor.
-    Currently, we only statically analyze YAML.
-    Full simulation would require mocking the climate entity state and observing it is forced 'off'.
+    Verifies that the safety floor automations exist and actually force the climate entity off.
     """
-    # TODO: Implement full HA runtime simulation to verify that the climate entity
-    # changes to 'off' when truth temp < 60F for LR and < 58F for Master.
-    pass
+    lr_found = False
+    master_found = False
+
+    for auto in automations_data:
+        # Check LR runaway cutoff
+        if auto.get('id') == 'v8_2_runaway_cooling_cutoff_lr':
+            lr_found = True
+            assert _has_numeric_state_below_trigger(auto, 'sensor.living_room_temperature_truth', 60), \
+                "LR runaway cutoff missing 60F threshold trigger."
+            assert _turns_climate_entity_off(auto, 'climate.living_room_air'), \
+                "LR runaway cutoff does not force climate.living_room_air off."
+
+        # Check Master emergency floor
+        if auto.get('id') == 'v8_2_master_emergency_floor':
+            master_found = True
+            assert _has_numeric_state_below_trigger(auto, 'sensor.master_bedroom_temperature_truth', 58), \
+                "Master emergency floor missing 58F threshold trigger."
+            assert _turns_climate_entity_off(auto, 'climate.master_bedroom_air'), \
+                "Master emergency floor does not force climate.master_bedroom_air off."
+
+    assert lr_found, "LR runaway cutoff automation not found"
+    assert master_found, "Master emergency floor automation not found"
