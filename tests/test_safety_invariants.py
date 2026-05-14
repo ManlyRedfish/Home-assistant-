@@ -23,6 +23,20 @@ MooseSafetyLoader.add_constructor('!input', yaml_input)
 MooseSafetyLoader.add_constructor('!include_dir_merge_list', include_dir_merge_list_constructor)
 MooseSafetyLoader.add_constructor('!include_dir_named', include_dir_merge_list_constructor)
 
+
+def _action_calls_climate_set_hvac_mode_off(auto, expected_entity_id):
+    actions = auto.get("action", [])
+    if isinstance(actions, dict):
+        actions = [actions]
+
+    return any(
+        isinstance(action, dict)
+        and (action.get("action") or action.get("service")) == "climate.set_hvac_mode"
+        and action.get("target", {}).get("entity_id") == expected_entity_id
+        and action.get("data", {}).get("hvac_mode") == "off"
+        for action in actions
+    )
+
 @pytest.fixture(scope="module")
 def automations_data():
     filepath = os.path.join(os.path.dirname(__file__), '..', 'automations.yaml')
@@ -43,7 +57,7 @@ def test_lr_runaway_cooling_cutoff_exists(automations_data):
     """
     found = False
     for auto in automations_data:
-        if auto.get('id') == 'v8_2_runaway_cooling_cutoff_lr':
+        if auto.get('id') == 'v8_2_lr_runaway_cooling_cutoff':
             found = True
 
             # Very conservative assertion: verify the 60F threshold is defined in the trigger
@@ -56,9 +70,13 @@ def test_lr_runaway_cooling_cutoff_exists(automations_data):
                         break
 
             assert threshold_found, "LR runaway cutoff automation exists, but 60F threshold trigger is missing or modified."
+
+            assert _action_calls_climate_set_hvac_mode_off(auto, 'climate.living_room_air'), (
+                "LR runaway cutoff automation must force climate.living_room_air to hvac_mode off."
+            )
             break
 
-    assert found, "Living Room runaway cooling cutoff automation (v8_2_runaway_cooling_cutoff_lr) not found in automations.yaml"
+    assert found, "Living Room runaway cooling cutoff automation (v8_2_lr_runaway_cooling_cutoff) not found in automations.yaml"
 
 def test_master_emergency_cooling_floor_exists(automations_data):
     """
@@ -82,16 +100,33 @@ def test_master_emergency_cooling_floor_exists(automations_data):
                         break
 
             assert threshold_found, "Master emergency floor automation exists, but 58F threshold trigger is missing or modified."
+
+            assert _action_calls_climate_set_hvac_mode_off(auto, 'climate.master_bedroom_air'), (
+                "Master emergency floor automation must force climate.master_bedroom_air to hvac_mode off."
+            )
             break
 
     assert found, "Master emergency cooling floor automation (v8_2_master_emergency_floor) not found in automations.yaml"
 
-def test_cooling_not_permitted_below_safety_floor():
+
+def test_required_safety_automations_are_present_by_unique_id(automations_data):
     """
-    Placeholder for future HA simulation test: Cooling should not be permitted below safety floor.
-    Currently, we only statically analyze YAML.
-    Full simulation would require mocking the climate entity state and observing it is forced 'off'.
+    Validates required Section 3 safety automations are present by unique ID.
+    This avoids false passes from raw match counts when duplicate IDs appear.
     """
-    # TODO: Implement full HA runtime simulation to verify that the climate entity
-    # changes to 'off' when truth temp < 60F for LR and < 58F for Master.
-    pass
+    required_automations = {
+        "v8_2_lr_runaway_cooling_cutoff",
+        "v8_2_master_emergency_floor",
+    }
+    seen_automation_ids = set()
+
+    for auto in automations_data:
+        auto_id = auto.get("id")
+        if auto_id in required_automations:
+            seen_automation_ids.add(auto_id)
+
+    missing_automation_ids = required_automations - seen_automation_ids
+    assert not missing_automation_ids, (
+        "Missing required safety automations: "
+        f"{sorted(missing_automation_ids)}"
+    )
