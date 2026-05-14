@@ -364,7 +364,11 @@
         #   temp ≤ off_at → off  (disengage)
         #   in between    → hold current state (deadband via HVAC mode)
         #
-        # The Samsung setpoint does the fine-grained work.
+        # Truth thresholds define comfort ON/OFF behavior (hysteresis).
+        # The commanded Samsung setpoint is actuator-demand, not comfort truth.
+        # Cooling setpoints are intentionally below OFF thresholds so units pull
+        # down decisively and reach truth-based shutdown instead of weak
+        # near-threshold long-run behavior.
         # The supervisor just decides ON vs OFF with hysteresis.
         # Safety backstops live in Section 3 (runaway cutoff, emergency
         # floor, ceiling gates). They operate independently of this logic.
@@ -380,14 +384,14 @@
 
             # ---------------------------------------------------------
             # MASTER BEDROOM
-            # 6pm-6am: Sleep mode (63°F set / off ≤62 / on >66)
-            # 6am-6pm: Normal    (68°F set / off ≤68 / on >72)
+            # 6pm-6am: Sleep mode (61°F set / off ≤62 / on >66)
+            # 6am-6pm: Normal    (66°F set / off ≤68 / on >72)
             # Away:    Relaxed   (74°F set / off ≤74 / on >76)
             # Runaway floor at 58°F lives in Section 3 (independent).
             # ---------------------------------------------------------
             - variables:
                 is_master_sleep: "{{ now().hour >= 18 or now().hour < 6 }}"
-                m_setpoint: "{{ 74 if away else (63 if is_master_sleep else 68) }}"
+                m_setpoint: "{{ 74 if away else (61 if is_master_sleep else 66) }}"
                 m_off_at: "{{ 74 if away else (62 if is_master_sleep else 68) }}"
                 m_on_at: "{{ 76 if away else (66 if is_master_sleep else 72) }}"
                 m_current: "{{ states('climate.master_bedroom_air') }}"
@@ -403,11 +407,11 @@
 
             # ---------------------------------------------------------
             # LINCOLN'S ROOM
-            # All hours: 68°F set / off ≤68 / on >72
+            # All hours: 66°F set / off ≤68 / on >72
             # Away:      74°F set / off ≤74 / on >76
             # ---------------------------------------------------------
             - variables:
-                l_setpoint: "{{ 74 if away else 68 }}"
+                l_setpoint: "{{ 74 if away else 66 }}"
                 l_off_at: "{{ 74 if away else 68 }}"
                 l_on_at: "{{ 76 if away else 72 }}"
                 l_current: "{{ states('climate.lincoln_air') }}"
@@ -423,11 +427,11 @@
 
             # ---------------------------------------------------------
             # LILLY'S ROOM
-            # All hours: 68°F set / off ≤68 / on >72
+            # All hours: 66°F set / off ≤68 / on >72
             # Away:      74°F set / off ≤74 / on >76
             # ---------------------------------------------------------
             - variables:
-                ly_setpoint: "{{ 74 if away else 68 }}"
+                ly_setpoint: "{{ 74 if away else 66 }}"
                 ly_off_at: "{{ 74 if away else 68 }}"
                 ly_on_at: "{{ 76 if away else 72 }}"
                 ly_current: "{{ states('climate.lilly_air') }}"
@@ -442,13 +446,13 @@
                 temperature: "{{ ly_setpoint }}"
 
             # ---------------------------------------------------------
-            # LIVING ROOM (V8.2: around-the-clock 68/72)
-            # All hours: 68°F set / off ≤68 / on >72
+            # LIVING ROOM (V8.2: around-the-clock 68/72 truth thresholds)
+            # All hours: 66°F set / off ≤68 / on >72
             # Away:      74°F set / off ≤74 / on >76
             # Runaway cutoff at 60°F lives in Section 3 (independent).
             # ---------------------------------------------------------
             - variables:
-                lr_setpoint: "{{ 74 if away else 68 }}"
+                lr_setpoint: "{{ 74 if away else 66 }}"
                 lr_off_at: "{{ 74 if away else 68 }}"
                 lr_on_at: "{{ 76 if away else 72 }}"
                 lr_current: "{{ states('climate.living_room_air') }}"
