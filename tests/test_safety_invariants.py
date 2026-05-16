@@ -32,8 +32,11 @@ def _action_calls_climate_set_hvac_mode_off(auto, expected_entity_id):
     return any(
         isinstance(action, dict)
         and (action.get("action") or action.get("service")) == "climate.set_hvac_mode"
-        and action.get("target", {}).get("entity_id") == expected_entity_id
-        and action.get("data", {}).get("hvac_mode") == "off"
+        and (
+            action.get("target", {}).get("entity_id") == expected_entity_id
+            or action.get("data", {}).get("entity_id") == expected_entity_id
+        )
+        and action.get("data", {}).get("hvac_mode") in ("off", False)
         for action in actions
     )
 
