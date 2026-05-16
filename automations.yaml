@@ -483,8 +483,30 @@
                       data:
                         hvac_mode: "{{ 'heat' if lr_temp < (58 if away else 65) else 'off' }}"
                         temperature: "{{ 58 if away else 65 }}"
+                    # ---------------------------------------------------------
+                    # Shoulder-night Master cooling escape (sleep comfort).
+                    # Outdoor temp may influence preferred climate strategy,
+                    # but a bedroom above the sleep cooling threshold must
+                    # still be allowed to cool. Thresholds mirror the
+                    # cooling-season Master sleep band so behavior is
+                    # consistent. Safety floor (58°F) lives in Section 3.
+                    # ---------------------------------------------------------
+                    - variables:
+                        m_sleep_on_at: "{{ 76 if away else 66 }}"
+                        m_sleep_off_at: "{{ 74 if away else 62 }}"
+                        m_sleep_setpoint: "{{ 74 if away else 61 }}"
+                        m_current: "{{ states('climate.master_bedroom_air') }}"
+                    - action: climate.set_temperature
+                      target: { entity_id: climate.master_bedroom_air }
+                      data:
+                        hvac_mode: >-
+                          {% if master_temp > m_sleep_on_at %}cool
+                          {% elif master_temp <= m_sleep_off_at %}off
+                          {% elif m_current == 'cool' %}cool
+                          {% else %}off{% endif %}
+                        temperature: "{{ m_sleep_setpoint }}"
                     - action: climate.set_hvac_mode
-                      target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                      target: { entity_id: [climate.lincoln_air, climate.lilly_air, climate.dining_room] }
                       data: { hvac_mode: "off" }
               default:
                 - choose:
