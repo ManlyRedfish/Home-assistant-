@@ -173,6 +173,49 @@ Apollo / MSR data (mmWave presence, CO2, DPS310 temperature/pressure, ESP temper
 
 There is one documented narrow exception: `binary_sensor.lincoln_msr_radar_zone_3_occupancy` is wrapped by `binary_sensor.lincoln_presence_debounced_v3` (configuration.yaml Section 2) and consumed by Section 6 (`v8_comfort_fan_destratification`) as the variable `lincoln_fan_allowed`. The exception only gates `climate.set_hvac_mode` for `climate.lincoln_air` between `fan_only` and `off`. It is setpoint-neutral and does not touch any safety surface. The full constraints are listed in `docs/apollo_msr_observability_checklist.md` §"Explicit Exception: Lincoln Fan-Only Destratification" and locked by `tests/test_msr_observability_boundary.py`. The exception is not a precedent and does not extend to other rooms or other control surfaces.
 
+### 7.8 Manual Override Contract
+
+`timer.manual_hvac_override` is the household's immediate comfort intent surface. The WAF watcher (`v7_5_waf_manual_override`) is the single legitimate immediate ingest: a parent-less context state change on any of the four climate entities starts the timer.
+
+The contract:
+
+- Comfort-policy automations **should** respect `timer.manual_hvac_override == idle`. Writing climate state while the timer is `active` is a contract violation per `docs/3_regression_appendix.md` §4.15.
+- True safety gates (equipment protection, not occupant comfort) **may** override manual intent.
+- Ambiguous interlocks require doctrine clarification before they are allowed to override manual intent. See `docs/v9_v10_goals.md` §2.3.
+
+The table below classifies every automation in `automations.yaml` that can write HVAC mode or setpoint (or that is otherwise relevant to override evaluation). Classifications are doctrine, not runtime changes — V9 simplification may move "ambiguous interlock" rows into a definitive class once telemetry evidence and doctrine clarification land, but no row changes runtime behavior in this PR.
+
+| Automation `id` | Section | Writes | Gates on `timer.manual_hvac_override`? | Classification |
+|---|---|---|---|---|
+| `v7_5_main_supervisor` | 2 | All four climate entities + Nest | Yes (top-level `idle` condition) | Comfort policy |
+| `v7_5_safety_ceiling_gates` | 3 | Triggering room (cool 68°F / fan_only) | Yes (`idle` condition) | Comfort policy (76°F is comfort ceiling, not equipment protection) |
+| `v8_2_lr_runaway_cooling_cutoff` | 3 | LR off | No | True safety gate (60°F LR equipment protection) |
+| `v8_2_master_emergency_floor` | 3 | Master off | No | True safety gate (58°F Master equipment protection) |
+| `v9_sleep_priority_interlock` | 3 | LR off when Master cool | No | Ambiguous interlock — content is comfort-policy (cross-mode contention) but it bypasses override. Needs doctrine clarification + telemetry per `docs/3_regression_appendix.md` §4.18 before any change. |
+| `v7_5_waf_manual_override` | 3 | Starts `timer.manual_hvac_override` | N/A (it *is* the contract source) | Manual-intent ingest |
+| `v7_5_ghost_assassin` | 4 | Lincoln off at 01:20 (non-heating season) | No | Integration-anomaly gate (Samsung phantom heat suppression). Classification consistency with Section 8 is pending. |
+| `v7_5_auto_season_mode` | 5 | `input_select.hvac_season_mode` only | No (downstream supervisor does) | Mode change (indirect). Override respect is via the supervisor's gate. |
+| `v8_comfort_fan_destratification` | 6 | fan_only / off on Master, Lincoln, Lilly | Yes | Comfort policy |
+| `v8_shade_night_privacy` | 7 | Shade tilt | Parallel `timer.shade_manual_override` | Comfort policy (separate shade contract) |
+| `v8_shade_morning_open` | 7 | Shade tilt | Parallel `timer.shade_manual_override` | Comfort policy (separate shade contract) |
+| `v8_shade_manual_override` | 7 | Starts `timer.shade_manual_override` | N/A (shade contract source) | Manual-intent ingest (shade) |
+| `v8_shade_afternoon_solar_rejection` | 7 | Shade tilt | Parallel `timer.shade_manual_override` | Comfort policy (separate shade contract) |
+| `v8_shade_solar_harvest` | 7B | Shade tilt | Parallel `timer.shade_manual_override` | Comfort policy (separate shade contract) |
+| `v8_samsung_auto_guardrail` | 8 | Forced off when Samsung auto is rogue | Yes | Integration-anomaly gate (respects manual intent). Classification consistency with Section 4 ghost assassin is pending. |
+| `v8_truth_count_alert` | 9 | None (notify only) | N/A | Observability only |
+| `v8_3_hvac_transition_log` | 11 | None (logbook only) | N/A | Observability only |
+| `v8_4_lr_heating_recovery_boost_engage` | 14 | LR heat@77 | Yes | Comfort policy |
+| `v8_4_lr_heating_recovery_boost_release` | 14 | LR off (skipped if override is concurrently active) | Triggers on override active; release action skips climate-off when override is active | Comfort policy (releases gracefully to manual intent) |
+| `v8_5_hvac_provenance_logger` | 15 | None (Google Sheets only) | N/A | Observability only |
+
+**Ambiguity status.** `v9_sleep_priority_interlock` (Section 3) and `v7_5_ghost_assassin` (Section 4) are the two paths whose authority over manual intent is currently unproven under the new doctrine. They are recorded here as **ambiguous interlocks** pending forensic recurrence evidence and explicit doctrine clarification per `docs/v9_v10_goals.md` §2.3 and §8. This table records the classification only; no runtime change is proposed in this PR.
+
+**Doctrine notes.**
+
+- The 76°F ceiling gate is comfort, not equipment protection. It correctly gates on override.
+- Samsung Auto Guardrail (Section 8) and Ghost Assassin (Section 4) are both integration-anomaly gates protecting against known device misbehavior, but they disagree on whether to gate on override. Picking a consistent rule is V9 doctrine work, not a runtime change.
+- Section 14 boost release is the canonical example of a comfort-policy automation that *yields* to manual intent rather than fighting it: when the override timer goes `active`, release fires and the release path skips the climate-off command if override is still active.
+
 ## 8. Runtime Change Rules
 
 Update this layer only when live implementation changes.

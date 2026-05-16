@@ -36,13 +36,15 @@ Degraded hardware does not automatically mean truth-layer failure if fallback lo
 Comfort logic and safety logic are separate on purpose.
 The current system should be judged by measured evidence, not theoretical elegance.
 5. Current Operating Doctrine
-5.1 Cooling / Comfort Doctrine
-Comfort logic is supervisory and deadband-focused, treating the house as a coupled volume (see Doc 5 / Runtime Layer for code specifics).
+5.1 Comfort Contract (Deadbands)
+Deadbands are the comfort contract. A deadband is the temperature range a room is allowed to float while not actively heating or cooling. Comfort logic is supervisory and deadband-focused, treating the house as a coupled volume (see Doc 5 / Runtime Layer for code specifics).
+Comfort complaints are forensic inputs, not automatic architecture triggers. A complaint such as "my room was too hot/cold last night" reconstructs into a contract-failure investigation per Doc / Comfort Failure Forensics, not into a redesign of the deadband. Repeated, telemetry-backed failures of the same mode are evidence for a targeted change; a single anecdote is not. See Doc 3 / Regression Appendix §4.12.
 Deadband philosophy: Comfort-first target ranges (e.g., setpoint 68, off ≤68, on >72).
 Room targeting philosophy: Rooms act as engines or spillways, not mathematically isolated zones.
 Bedroom sleep logic: Aggressive cool-down targeting a 62–66°F Master sleep window.
 Always-on comfort assumptions: Away modes relax targets (74–76°F) rather than fully abandoning control.
 V8.3 Heating Doctrine: Heating and shoulder daytime paths use a top-anchored deadband (target 68°F, off ≥68, on <64) to prevent compressor short-cycling. To passively mitigate stack-effect heating upstairs, the Living Room target drops to 64°F (deadband 62-64°F) during the bedtime window (18:00–22:00) when the house is occupied.
+Manual override contract: `timer.manual_hvac_override` is the household's immediate comfort intent. Comfort-policy automations gate on `idle`; only true safety gates (60°F LR runaway, 58°F Master floor) may override manual intent. See Doc 5 / Runtime Layer Manual Override Contract section and Doc 3 / Regression Appendix §4.15–§4.16.
 5.2 Safety Doctrine
 Safety logic operates independently of comfort optimization.
 Floor/ceiling protections: 58°F Master emergency cooling floor.
@@ -72,6 +74,14 @@ Offset Stacking Without Hard Boundary Discipline (Leads to limit strikes and har
 Naive Multi-Sensor Fusion Without Aggressive Rejection Logic (Averaging bad sensors ruins control)
 Treating Transport Degradation as Total Truth-Layer Failure (Fallbacks exist for a reason)
 Treating Historical Doctrine as Live Runtime Truth (YAML is truth)
+YAML for Every Discomfort Anecdote (Complaints are forensic inputs, not control specifications — §4.12)
+Permanent Comfort Surveys as a Control Mechanism (Surveys are forensic annotation, not a control loop — §4.13)
+Treating Human Discomfort as Immediate Automation Input (The WAF watcher is the single legitimate immediate ingest — §4.14)
+Letting Comfort-Policy Automation Override Manual Intent (Manual override wins for the override window — §4.15)
+Treating Outdoor / Season Logic as Stronger Than Manual Override (Season is one input, not a meta-authority — §4.16)
+Accepting Supervisor / Boost Collisions as Normal (Resolve or quantify; do not normalize — §4.17)
+Adding Arbitration Before Telemetry Proves the Need (Instrument first; arbitrate second — §4.18)
+Algorithmic Control Before Algorithmic Diagnosis (V10 is diagnosis, not control — §4.19)
 Closing Rule: Materially similar approaches are considered retired unless new evidence justifies reopening them.
 8. Live vs Historical Source Boundary
 (What counts as current truth)
@@ -94,6 +104,8 @@ For room-by-room topology and source precedence, use Doc 2 / Reference Map.
 For a record of failed approaches to avoid, use Doc 3 / Regression Appendix.
 For performance judgment and stability validation, use Doc 4 / Operations Sheet.
 For actual implementation behavior, use Doc 5 / Runtime Layer.
+For the forensic workflow that investigates comfort complaints against the deadband contract, use Doc / Comfort Failure Forensics (`comfort_failure_forensics.md`).
+For updated V9 / V10 direction (simplification, collision reduction, manual-override discipline, transition/latch clarity, provenance completeness; V10 diagnosis-only), use Doc / V9 / V10 Goals (`v9_v10_goals.md`).
 10. Startup Handoff Rule
 In a new session, begin with this document.
 Treat it as the authoritative memory layer for current system identity and doctrine.

@@ -93,6 +93,7 @@ This sheet does not redefine doctrine by itself. It evaluates whether doctrine i
 *   Manual setpoint changes
 *   “This feels gross” moments
 *   Number of times the house felt fussy, confusing, or clearly worse than intended
+*(Friction counts feed the forensic workflow in `comfort_failure_forensics.md`. A single friction event opens an investigation window; it does not by itself justify a runtime change. A targeted runtime change is justified only when repeated forensic notes show the same contract failure mode across independent investigations — see `3_regression_appendix.md` §4.12.)*
 
 ### 6.5 Capacity / Starvation KPIs
 *   Simultaneous heads cooling at the same time
@@ -238,6 +239,15 @@ Watch manual actions and direct experience.
 
 *(This section matters because a technically “working” system that people keep fighting is not operationally successful.)*
 
+### 12.1 Friction → Forensic Workflow Routing
+A friction event in this review is the entry point to the forensic workflow in [`./comfort_failure_forensics.md`](./comfort_failure_forensics.md), not an automatic redesign trigger. The expected handling is:
+
+1. Capture the friction event as a `comfort_complaint` row in `supervisor_state_log` (see [`./telemetry_confounders.md`](./telemetry_confounders.md) §6.3). If the household manually nudged a setpoint, also capture a `manual_setpoint_nudge` row.
+2. Open the standard 6–12 hour forensic window per [`./comfort_failure_forensics.md`](./comfort_failure_forensics.md) §6 and run the diagnostic workflow in §7.
+3. Classify the failure mode against [`./comfort_failure_forensics.md`](./comfort_failure_forensics.md) §8 (or "none — within contract"). Record the verdict.
+4. A targeted runtime change is justified only when repeated independent forensic notes show the **same** contract failure mode and no existing branch already addresses it. See [`./3_regression_appendix.md`](./3_regression_appendix.md) §4.12 (anecdote-driven YAML retired).
+5. Deadband changes are a separate, evidence-gated doctrine PR per [`./v9_v10_goals.md`](./v9_v10_goals.md) §10. They do not happen from a single friction event.
+
 ## 13. Capacity / Starvation Watch
 Use this section only when there are signs of shared-load strain, especially on hotter days.
 For each suspected event, record:
@@ -309,6 +319,8 @@ For each suspected event, record:
 
 ## 16. Action Thresholds
 
+*(These thresholds are decision aids, not automatic actions. "Tune" or "escalate" means "open a doctrine PR with forensic evidence," not "edit YAML tonight." Every threshold below assumes the forensic workflow in [`./comfort_failure_forensics.md`](./comfort_failure_forensics.md) has classified the underlying signal — counts alone are not classification.)*
+
 ### 16.1 Keep V8.2 As-Is If
 *   No safety backstops fire
 *   Manual annoyance drops materially
@@ -317,18 +329,20 @@ For each suspected event, record:
 *   Known deferred limitations remain tolerable rather than costly
 
 ### 16.2 Tune V8.2 If
-*   One room repeatedly hangs warm
-*   One room repeatedly overshoots cold
-*   Transition count is clearly excessive
-*   Manual annoyance remains noticeable
-*   One specific weakness is obvious without requiring a full architectural rethink
+*   One room repeatedly hangs warm — and forensic notes attribute the hang to a single classified failure mode per [`./comfort_failure_forensics.md`](./comfort_failure_forensics.md) §8
+*   One room repeatedly overshoots cold — same classification requirement
+*   Transition count is clearly excessive — with provenance evidence that the transitions are policy-driven, not integration noise
+*   Manual annoyance remains noticeable — with overlapping `comfort_complaint` annotations and a classified failure mode
+*   One specific weakness is obvious without requiring a full architectural rethink — and the smallest change that addresses the proven mode is preferred
 
 ### 16.3 Escalate to V9 If
-*   Deadband memory clearly misbehaves
-*   Command churn causes real integration weirdness
-*   Repeated hot-day multi-head starvation appears
-*   Safety backstops fire more than once
-*   Known deferred limitations stop being tolerable debt and become recurring operational cost
+*   Deadband memory clearly misbehaves — with telemetry showing device/controller divergence as a recurring class, not a single event ([`./5_runtime_layer.md`](./5_runtime_layer.md) §7.1)
+*   Command churn causes real integration weirdness — with provenance evidence that supervisor writes are colliding, not just frequent
+*   Repeated hot-day multi-head starvation appears — and the case is not a renamed §4.5 retired approach
+*   Safety backstops fire more than once — investigate the controller before tuning thresholds; safety gates do not become comfort dials per [`./v9_v10_goals.md`](./v9_v10_goals.md) §8
+*   Known deferred limitations stop being tolerable debt and become recurring operational cost — measured by classified forensic notes, not by the count of friction events
+
+V9 in any of these cases means the simplification / collision reduction / manual-override discipline / transition-latch clarity / provenance completeness scope defined in [`./v9_v10_goals.md`](./v9_v10_goals.md) §2. It does **not** mean new comfort branches or new aggressive setpoints; see [`./v9_v10_goals.md`](./v9_v10_goals.md) §3.
 
 ## 17. Active Validation TODOs
 *Keep this section limited to items that materially affect fair evaluation of V8.2.*
@@ -356,4 +370,4 @@ At the end of each review period, record a short executive judgment:
 **Action Taken:** Addressed stack-effect contention via V8.3 Tune. Implemented passive LR heat-source reduction (Target 64°F, 18:00–22:00) rather than active Master cooling, avoiding compressor mode-flips. Also introduced LR heating deadband to stop 0°F short-cycling, and patched Section 6 destratification turbo-stickiness.
 
 ## 19. Final Principle
-This sheet exists to decide whether the current doctrine is working, not whether a prettier theory exists.
+This sheet exists to decide whether the current doctrine is working, not whether a prettier theory exists. Deadbands are the comfort contract; complaints test the contract through the forensic workflow in [`./comfort_failure_forensics.md`](./comfort_failure_forensics.md); only repeated, classified, telemetry-backed failures justify a targeted runtime change.
