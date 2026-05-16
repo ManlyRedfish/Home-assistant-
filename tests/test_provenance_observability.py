@@ -185,6 +185,27 @@ def test_provenance_logger_uses_google_sheets_secret(provenance_logger):
     )
 
 
+
+
+def test_provenance_logger_includes_bedroom_climate_triggers(provenance_logger):
+    """Section 15 fan-out: bedroom climate state + setpoint trigger ids exist."""
+    triggers = provenance_logger.get("trigger") or []
+    trigger_ids = {t.get("id") for t in triggers if isinstance(t, dict)}
+
+    expected = {
+        "master_state",
+        "master_temp_attr",
+        "lincoln_state",
+        "lincoln_temp_attr",
+        "lilly_state",
+        "lilly_temp_attr",
+    }
+
+    missing = sorted(expected - trigger_ids)
+    assert not missing, (
+        "Provenance logger is missing bedroom fan-out trigger ids: "
+        f"{missing}"
+    )
 def test_provenance_logger_does_not_mutate_control(provenance_logger):
     """Action block must not call any control-surface service. The logger is
     observability-only — it may not change climate state, helpers, timers,

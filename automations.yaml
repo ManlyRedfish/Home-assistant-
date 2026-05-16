@@ -1737,6 +1737,27 @@
       attribute: temperature
       id: lr_temp_attr
     - platform: state
+      entity_id: climate.master_bedroom_air
+      id: master_state
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      attribute: temperature
+      id: master_temp_attr
+    - platform: state
+      entity_id: climate.lincoln_air
+      id: lincoln_state
+    - platform: state
+      entity_id: climate.lincoln_air
+      attribute: temperature
+      id: lincoln_temp_attr
+    - platform: state
+      entity_id: climate.lilly_air
+      id: lilly_state
+    - platform: state
+      entity_id: climate.lilly_air
+      attribute: temperature
+      id: lilly_temp_attr
+    - platform: state
       entity_id: timer.manual_hvac_override
       id: override_state
     - platform: state
