@@ -68,6 +68,15 @@ section. Two ambiguous interlocks (`v9_sleep_priority_interlock`,
 `v7_5_ghost_assassin`) require explicit doctrine clarification before any
 runtime change to their override authority.
 
+**Canonical worked example.** Section 3 `v9_sleep_priority_interlock` (SPI)
+is the canonical ambiguous interlock for V9/V10 doctrine work: it currently
+forces LR off on Master-cool/LR-heat contention but has no
+`timer.manual_hvac_override` gate and no dedicated fire provenance tag yet.
+Classification remains explicitly open between Position α (comfort policy),
+Position β (compressor/cross-mode protection), and Position γ
+(observability-only candidate). This decision is blocked on #88 telemetry and
+provenance fan-out; no runtime classification change is selected here.
+
 ### 2.4 Transition / Latch Clarity
 
 Replace mode-as-memory with explicit per-room latches when the V6

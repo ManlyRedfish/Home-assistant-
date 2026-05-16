@@ -191,7 +191,7 @@ The table below classifies every automation in `automations.yaml` that can write
 | `v7_5_safety_ceiling_gates` | 3 | Triggering room (cool 68°F / fan_only) | Yes (`idle` condition) | Comfort policy (76°F is comfort ceiling, not equipment protection) |
 | `v8_2_lr_runaway_cooling_cutoff` | 3 | LR off | No | True safety gate (60°F LR equipment protection) |
 | `v8_2_master_emergency_floor` | 3 | Master off | No | True safety gate (58°F Master equipment protection) |
-| `v9_sleep_priority_interlock` | 3 | LR off when Master cool | No | Ambiguous interlock — content is comfort-policy (cross-mode contention) but it bypasses override. Needs doctrine clarification + telemetry per `docs/3_regression_appendix.md` §4.18 before any change. |
+| `v9_sleep_priority_interlock` | 3 | LR off when Master cool | No | Canonical ambiguous interlock. Current runtime shape: state triggers (`master→cool`, `LR→heat`), conditions (`master==cool`, `LR==heat`, `LR truth > 60°F`), action (`climate.living_room_air -> off`). No `timer.manual_hvac_override` gate. No dedicated fire telemetry/logbook/provenance tag yet (tracked by #88). Doctrine question remains open: comfort policy, compressor-protection gate, or observability-only candidate. |
 | `v7_5_waf_manual_override` | 3 | Starts `timer.manual_hvac_override` | N/A (it *is* the contract source) | Manual-intent ingest |
 | `v7_5_ghost_assassin` | 4 | Lincoln off at 01:20 (non-heating season) | No | Integration-anomaly gate (Samsung phantom heat suppression). Classification consistency with Section 8 is pending. |
 | `v7_5_auto_season_mode` | 5 | `input_select.hvac_season_mode` only | No (downstream supervisor does) | Mode change (indirect). Override respect is via the supervisor's gate. |
@@ -209,6 +209,33 @@ The table below classifies every automation in `automations.yaml` that can write
 | `v8_5_hvac_provenance_logger` | 15 | None (Google Sheets only) | N/A | Observability only |
 
 **Ambiguity status.** `v9_sleep_priority_interlock` (Section 3) and `v7_5_ghost_assassin` (Section 4) are the two paths whose authority over manual intent is currently unproven under the new doctrine. They are recorded here as **ambiguous interlocks** pending forensic recurrence evidence and explicit doctrine clarification per `docs/v9_v10_goals.md` §2.3 and §8. This table records the classification only; no runtime change is proposed in this PR.
+
+
+#### SPI doctrine note (canonical ambiguous interlock)
+
+`v9_sleep_priority_interlock` is the canonical worked example of an ambiguous interlock and remains classification-only in doctrine.
+
+- **Current trigger shape:** state transitions on `climate.master_bedroom_air -> cool` and `climate.living_room_air -> heat`.
+- **Current conditions:** Master must be `cool`, LR must be `heat`, and `sensor.living_room_temperature_truth > 60°F`.
+- **Current action:** force `climate.living_room_air -> off`.
+- **Current omissions:** no `timer.manual_hvac_override` gate; no dedicated SPI fire telemetry/logbook/provenance tag yet. Observability/provenance hook is tracked in #88.
+- **Doctrine classification question (open):** is SPI (α) comfort policy, (β) compressor/cross-mode protection, or (γ) an observability-only candidate after measurement?
+
+**Candidate positions (no selection yet):**
+
+- **Position α:** SPI is comfort policy and should eventually respect `timer.manual_hvac_override`.
+- **Position β:** SPI is compressor/cross-mode protection and may remain authoritative over manual intent.
+- **Position γ:** SPI should become observability-only if telemetry shows intervention is rare or low-value.
+
+**Evidence required before choosing α/β/γ:**
+
+1. SPI fire frequency.
+2. Whether LR heat at fire time was manual or supervisor-driven.
+3. Whether Master cool at fire time was manual or supervisor-driven.
+4. Whether SPI correlates with measurable equipment or comfort benefit.
+5. At least 3 logged SPI fire events after the #88 observability/provenance hook lands.
+
+No runtime classification change is selected in this document, and no runtime PR is recommended until #88 telemetry exists.
 
 **Doctrine notes.**
 
