@@ -50,6 +50,24 @@ This plan is **not** a change request. It is an evidence gate before any modific
 
 > Bands are **nuisance triage bands**, not correctness bands. Crossing a nuisance band triggers review, not immediate runtime edits.
 
+### Shared Ratio Calculation Rule (applies to all ratio/percentage metrics)
+
+For any metric of the form `numerator / denominator` (including percentages, attribution splits, and per-day derived ratios):
+
+1. If `denominator = 0` and `numerator = 0`:
+   - Classify as `not_applicable_no_activity`.
+   - Exclude from median/percentile ratio calculations.
+   - Do **not** classify as nuisance.
+2. If `denominator = 0` and `numerator > 0`:
+   - Classify as `data_integrity_error`.
+   - Exclude from normal ratio-band classification.
+   - Flag for investigation (numerator cannot exceed a zero population denominator).
+3. For 7-day summaries:
+   - Report count of excluded `not_applicable_no_activity` days separately.
+   - Report count of `data_integrity_error` days separately.
+4. Do **not** coerce undefined ratios to `0`.
+5. Do **not** drop excluded days silently; exclusions must be explicitly reported.
+
 ### M1 — Provenance Row Volume (Section 15, bedroom fan-out impact)
 
 - **Metric name:** `m1_provenance_rows_per_day`
@@ -58,6 +76,7 @@ This plan is **not** a change request. It is an evidence gate before any modific
   - Count rows written per day.
   - Also compute bedroom-share `%` for rows where source entity is Master/Lincoln/Lilly.
   - Track 7-day median and max.
+  - Apply **Shared Ratio Calculation Rule** to bedroom-share `%` computation.
 - **Threshold bands (7-day):**
   - **Normal:** median ≤ 250 rows/day and max ≤ 400/day
   - **Watch:** median 251–450/day or any day 401–650
@@ -73,6 +92,7 @@ This plan is **not** a change request. It is an evidence gate before any modific
 - **How to calculate:**
   - Count transition events/day.
   - Compute ratio: `transition_events / total climate state changes observed`.
+  - Apply **Shared Ratio Calculation Rule** to this ratio.
 - **Threshold bands (7-day):**
   - **Normal:** 20–180/day and ratio 0.6–1.4
   - **Watch:** 181–300/day or ratio 1.41–1.8
@@ -103,6 +123,7 @@ This plan is **not** a change request. It is an evidence gate before any modific
 - **How to calculate:**
   - Count fires/day.
   - Compute `% followed by meaningful state correction within 2 minutes`.
+  - Apply **Shared Ratio Calculation Rule** to correction-rate `%`.
 - **Threshold bands (7-day):**
   - **Normal:** 0–3/day with correction-rate ≥ 70%
   - **Watch:** 4–8/day or correction-rate 40–69%
@@ -119,6 +140,7 @@ This plan is **not** a change request. It is an evidence gate before any modific
   - Count total shade commands/day.
   - Count no-op commands (`requested_state == current_state`).
   - Compute no-op rate = `no_op / total`.
+  - Apply **Shared Ratio Calculation Rule** to no-op rate.
 - **Threshold bands (7-day):**
   - **Normal:** total ≤ 24/day and no-op rate < 15%
   - **Watch:** total 25–40/day or no-op rate 15–30%
@@ -135,6 +157,7 @@ This plan is **not** a change request. It is an evidence gate before any modific
   - Count helper state transitions/day.
   - For each transition, classify whether it contributed to actionable interpretation of a boost cycle outcome (yes/no).
   - Compute signal-value rate = `actionable_transitions / total_transitions`.
+  - Apply **Shared Ratio Calculation Rule** to signal-value rate.
 - **Threshold bands (7-day):**
   - **Normal:** signal-value rate ≥ 60%
   - **Watch:** 35–59%
@@ -151,6 +174,7 @@ This plan is **not** a change request. It is an evidence gate before any modific
   - Count cooldown timer start/active/finish observations/day.
   - Count linked control decisions where cooldown reference appears in context.
   - Compute linkage ratio = `linked_decisions / cooldown_observations`.
+  - Apply **Shared Ratio Calculation Rule** to linkage ratio.
 - **Threshold bands (7-day):**
   - **Normal:** linkage ratio ≥ 50% with at least 1 observation on ≥ 4 days
   - **Watch:** linkage ratio 25–49% or observations on only 2–3 days
