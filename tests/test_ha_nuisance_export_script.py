@@ -58,3 +58,18 @@ def test_export_script_has_shade_discovery_and_token_redaction() -> None:
     assert 'cover.*shade*' in script
     assert 'Get-RedactedMessage' in script
     assert '[REDACTED_TOKEN]' in script
+
+
+def test_csv_mode_does_not_force_minimal_response() -> None:
+    script = _script_text()
+
+    assert "$useMinimalResponse = $Format -eq 'json'" in script
+    assert '-UseMinimalResponse $useMinimalResponse' in script
+
+
+def test_flattener_carries_forward_entity_id_for_minimal_rows() -> None:
+    script = _script_text()
+
+    assert '$seriesEntityId = $null' in script
+    assert '$effectiveEntityId' in script
+    assert 'entity_id     = $effectiveEntityId' in script

@@ -48,6 +48,14 @@ pwsh -File .\tools\export_ha_nuisance_evidence.ps1 \
 - `json`: write JSON history only
 - `csv`: write CSV history only
 
+## History API request mode and row contract
+
+- For `-Format csv` and `-Format both`, history requests intentionally **do not** include `minimal_response`.
+  - This preserves per-row metadata used for joins (`entity_id`, `last_updated`, and context fields).
+- For `-Format json`, the script may use `minimal_response` to reduce payload size for raw archival JSON.
+- `no_attributes` remains enabled in all modes to reduce payload size without dropping join-critical identity/timestamp/context fields.
+- CSV flattening includes an entity-id carry-forward guard so rows derived from minimal-style history points still emit a non-blank `entity_id`.
+
 ## Export scope
 
 The script exports history for:
