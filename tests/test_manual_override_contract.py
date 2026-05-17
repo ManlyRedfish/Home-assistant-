@@ -60,18 +60,56 @@ def _iter_nodes(node):
 
 
 def _has_manual_override_idle_condition(auto):
-    for node in _iter_nodes(auto.get("condition", [])):
-        if (
-            node.get("condition") == "state"
-            and node.get("entity_id") == "timer.manual_hvac_override"
-            and node.get("state") == "idle"
-        ):
-            return True
+    return _condition_tree_requires_manual_override_idle(auto.get("condition", []))
+
+
+def _is_manual_override_idle_leaf(node):
+    return (
+        isinstance(node, dict)
+        and node.get("condition") == "state"
+        and node.get("entity_id") == "timer.manual_hvac_override"
+        and node.get("state") == "idle"
+    )
+
+
+def _condition_tree_requires_manual_override_idle(node):
+    """Conservative structural check.
+
+    Returns True only when every satisfiable condition path requires
+    `timer.manual_hvac_override == idle`.
+    """
+    if isinstance(node, list):
+        # Home Assistant condition lists are conjunctions.
+        return any(_condition_tree_requires_manual_override_idle(item) for item in node)
+
+    if not isinstance(node, dict):
+        return False
+
+    if _is_manual_override_idle_leaf(node):
+        return True
+
+    condition_type = node.get("condition")
+    children = node.get("conditions", [])
+
+    if condition_type == "and":
+        # An AND implies idle if at least one conjunct implies idle.
+        return any(_condition_tree_requires_manual_override_idle(item) for item in children)
+
+    if condition_type == "or":
+        # An OR implies idle only if all branches imply idle.
+        return bool(children) and all(
+            _condition_tree_requires_manual_override_idle(item) for item in children
+        )
+
+    if condition_type == "not":
+        # Conservative: treat NOT forms as not proving idle.
+        return False
+
     return False
 
 
 def _has_any_manual_override_condition(auto):
-    for node in _iter_nodes(auto.get("condition", [])):
+    for node in _iter_nodes(auto):
         if node.get("entity_id") == "timer.manual_hvac_override":
             return True
     return False
@@ -192,3 +230,89 @@ def test_master_floor_does_not_gate_on_override(automations_data):
         "True safety gate v8_2_master_emergency_floor must not gate on "
         "timer.manual_hvac_override. See docs/5_runtime_layer.md §7.8."
     )
+
+
+def test_regression_or_branch_can_not_bypass_manual_override():
+    auto = {
+        "condition": {
+            "condition": "or",
+            "conditions": [
+                {
+                    "condition": "state",
+                    "entity_id": "timer.manual_hvac_override",
+                    "state": "idle",
+                },
+                {
+                    "condition": "state",
+                    "entity_id": "binary_sensor.some_other_gate",
+                    "state": "on",
+                },
+            ],
+        }
+    }
+    assert not _has_manual_override_idle_condition(auto)
+
+
+def test_regression_safety_automation_nested_choose_must_not_reference_override():
+    auto = {
+        "id": "fake_safety",
+        "condition": [],
+        "action": [
+            {
+                "choose": [
+                    {
+                        "conditions": [
+                            {
+                                "condition": "state",
+                                "entity_id": "timer.manual_hvac_override",
+                                "state": "idle",
+                            }
+                        ],
+                        "sequence": [{"action": "climate.turn_off"}],
+                    }
+                ]
+            }
+        ],
+    }
+    assert _has_any_manual_override_condition(auto)
+
+
+def test_regression_valid_and_or_structure_still_passes():
+    auto = {
+        "condition": {
+            "condition": "and",
+            "conditions": [
+                {
+                    "condition": "state",
+                    "entity_id": "sensor.occupancy",
+                    "state": "on",
+                },
+                {
+                    "condition": "or",
+                    "conditions": [
+                        {
+                            "condition": "state",
+                            "entity_id": "timer.manual_hvac_override",
+                            "state": "idle",
+                        },
+                        {
+                            "condition": "and",
+                            "conditions": [
+                                {
+                                    "condition": "state",
+                                    "entity_id": "timer.manual_hvac_override",
+                                    "state": "idle",
+                                },
+                                {
+                                    "condition": "state",
+                                    "entity_id": "sensor.window",
+                                    "state": "closed",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+    }
+    assert _has_manual_override_idle_condition(auto)
