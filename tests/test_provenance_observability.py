@@ -149,6 +149,32 @@ def _service_of(item):
     return item.get("action") or item.get("service")
 
 
+def _provenance_variable_templates(provenance_logger):
+    templates = {}
+    action = provenance_logger.get("action") or []
+    for item in _iter_action_items(action):
+        if not isinstance(item, dict):
+            continue
+        variables = item.get("variables")
+        if not isinstance(variables, dict):
+            continue
+        for key, value in variables.items():
+            if isinstance(value, str):
+                templates[key] = value
+    return templates
+
+
+def _provenance_variables_dict(provenance_logger):
+    action = provenance_logger.get("action") or []
+    for item in _iter_action_items(action):
+        if not isinstance(item, dict):
+            continue
+        variables = item.get("variables")
+        if isinstance(variables, dict):
+            return variables
+    return {}
+
+
 def test_provenance_logger_exists(provenance_logger):
     """Automation `v8_5_hvac_provenance_logger` exists with mode=parallel, max=20."""
     assert provenance_logger.get("id") == PROVENANCE_ID
@@ -205,6 +231,87 @@ def test_provenance_logger_includes_bedroom_climate_triggers(provenance_logger):
     assert not missing, (
         "Provenance logger is missing bedroom fan-out trigger ids: "
         f"{missing}"
+    )
+
+
+def test_temperature_attribute_triggers_use_temperature_provenance(
+    provenance_logger,
+):
+    """All climate setpoint attr triggers must be treated as `temperature`
+    attribute provenance, including bedroom heads and LR legacy behavior."""
+    templates = _provenance_variable_templates(provenance_logger)
+    variables = _provenance_variables_dict(provenance_logger)
+
+    for key in ("attribute_name", "old_raw", "new_raw"):
+        assert key in templates, f"Expected provenance variable template: {key}"
+    assert "temperature_attr_trigger_ids" in variables, (
+        "Expected provenance variable: temperature_attr_trigger_ids"
+    )
+
+    ids_template = variables["temperature_attr_trigger_ids"]
+    for trigger_id in (
+        "lr_temp_attr",
+        "master_temp_attr",
+        "lincoln_temp_attr",
+        "lilly_temp_attr",
+    ):
+        assert trigger_id in ids_template, (
+            f"{trigger_id} must be included in temperature_attr_trigger_ids."
+        )
+
+    assert "trigger.id in temperature_attr_trigger_ids" in templates["old_raw"], (
+        "old_raw must branch on temperature_attr_trigger_ids."
+    )
+    assert "trigger.id in temperature_attr_trigger_ids" in templates["new_raw"], (
+        "new_raw must branch on temperature_attr_trigger_ids."
+    )
+    assert "trigger.id in temperature_attr_trigger_ids" in templates["attribute_name"], (
+        "attribute_name must branch on temperature_attr_trigger_ids."
+    )
+    assert "attributes.temperature" in templates["old_raw"], (
+        "old_raw must use trigger.from_state.attributes.temperature for "
+        "temperature-attribute triggers."
+    )
+    assert "attributes.temperature" in templates["new_raw"], (
+        "new_raw must use trigger.to_state.attributes.temperature for "
+        "temperature-attribute triggers."
+    )
+    assert "temperature" in templates["attribute_name"], (
+        "attribute_name template must emit 'temperature' for setpoint attribute "
+        "triggers."
+    )
+
+
+def test_skip_identical_uses_temperature_attribute_for_all_climate_setpoint_triggers(
+    provenance_logger,
+):
+    """Dedupe/skip-identical logic must compare temperature attributes (not
+    climate state strings) for all setpoint attr trigger ids."""
+    conditions = provenance_logger.get("condition") or []
+    templates = [
+        c.get("value_template")
+        for c in conditions
+        if isinstance(c, dict) and isinstance(c.get("value_template"), str)
+    ]
+    dedupe = next((t for t in templates if "ov" in t and "nv" in t), "")
+    assert dedupe, "Could not locate skip-identical/dedupe value_template."
+
+    for trigger_id in (
+        "lr_temp_attr",
+        "master_temp_attr",
+        "lincoln_temp_attr",
+        "lilly_temp_attr",
+    ):
+        assert trigger_id in dedupe, (
+            f"Dedupe template must include {trigger_id} in temperature-attr branch."
+        )
+
+    assert "attributes.temperature" in dedupe, (
+        "Dedupe template must compare trigger.*.attributes.temperature for "
+        "climate setpoint attr triggers."
+    )
+    assert "from_state.state" in dedupe and "to_state.state" in dedupe, (
+        "Dedupe template must retain state fallback for non-attribute triggers."
     )
 
 
