@@ -43,3 +43,41 @@ Home Assistant entity registry cleanup is the runtime fix:
 3. Verify smoothed/control wrappers recover and Section 2/3 consumers stop seeing unknown truth.
 
 No YAML rewrite to `_2` should be performed; canonical IDs are the long-term contract.
+
+
+## Final confirmed cause
+
+Entity registry drift was caused by a `unique_id` slug mismatch between restored historical entries and current template definitions.
+
+Old restored canonical entries were using apostrophe-stripped `unique_id` values:
+
+- `lincolns_room_temperature_truth_v3`
+- `lillys_room_temperature_truth_v3`
+- `lincolns_room_humidity_truth_v3`
+- `lillys_room_humidity_truth_v3`
+- `lincolns_room_temperature_control_v3`
+- `lillys_room_temperature_control_v3`
+
+Current live template entities used corrected apostrophe-slug `unique_id` values:
+
+- `lincoln_s_room_temperature_truth_v3`
+- `lilly_s_room_temperature_truth_v3`
+- `lincoln_s_room_humidity_truth_v3`
+- `lilly_s_room_humidity_truth_v3`
+- `lincoln_s_room_temperature_control_v3`
+- `lilly_s_room_temperature_control_v3`
+
+Home Assistant treated those as different registry objects. That forced live entities to `*_2` entity IDs while restored ghosts retained the canonical IDs.
+
+## Verified runtime repair
+
+Runtime remediation that was executed in live Home Assistant:
+
+1. Deleted old restored canonical registry entries.
+2. Renamed live `*_2` entries back to canonical entity IDs.
+3. Re-ran the truth-chain verification export.
+
+Verification result after repair:
+
+- `overall_status: PASS`
+- `problems: []`
