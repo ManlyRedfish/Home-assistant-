@@ -1785,7 +1785,8 @@
     # Skip identical-value writes (noise control per design §8.2).
     - condition: template
       value_template: >-
-        {% if trigger.id == 'lr_temp_attr' %}
+        {% set temp_attr_ids = ['lr_temp_attr', 'master_temp_attr', 'lincoln_temp_attr', 'lilly_temp_attr'] %}
+        {% if trigger.id in temp_attr_ids %}
         {% set ov = trigger.from_state.attributes.temperature if trigger.from_state is not none else none %}
         {% set nv = trigger.to_state.attributes.temperature if trigger.to_state is not none else none %}
         {% elif trigger.id == 'spi_last_triggered' %}
@@ -1798,9 +1799,10 @@
         {{ (ov | string) != (nv | string) }}
   action:
     - variables:
-        attribute_name: "{% if trigger.id == 'lr_temp_attr' %}temperature{% elif trigger.id == 'spi_last_triggered' %}last_triggered{% else %}state{% endif %}"
+        temperature_attr_trigger_ids: ['lr_temp_attr', 'master_temp_attr', 'lincoln_temp_attr', 'lilly_temp_attr']
+        attribute_name: "{% if trigger.id in temperature_attr_trigger_ids %}temperature{% elif trigger.id == 'spi_last_triggered' %}last_triggered{% else %}state{% endif %}"
         old_raw: >-
-          {% if trigger.id == 'lr_temp_attr' %}
+          {% if trigger.id in temperature_attr_trigger_ids %}
           {{ trigger.from_state.attributes.temperature if trigger.from_state is not none else '' }}
           {% elif trigger.id == 'spi_last_triggered' %}
           {{ trigger.from_state.attributes.last_triggered if trigger.from_state is not none else '' }}
@@ -1808,7 +1810,7 @@
           {{ trigger.from_state.state if trigger.from_state is not none else '' }}
           {% endif %}
         new_raw: >-
-          {% if trigger.id == 'lr_temp_attr' %}
+          {% if trigger.id in temperature_attr_trigger_ids %}
           {{ trigger.to_state.attributes.temperature if trigger.to_state is not none else '' }}
           {% elif trigger.id == 'spi_last_triggered' %}
           {{ trigger.to_state.attributes.last_triggered if trigger.to_state is not none else '' }}
