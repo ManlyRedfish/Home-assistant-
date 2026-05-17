@@ -304,7 +304,12 @@ notes across many days may justify a separate envelope investigation.
 
 **Signature.** A cross-mode event (e.g., Master cool while LR heat)
 intersected the window. `v9_sleep_priority_interlock` may have fired
-(LR forced off) without an explicit logbook tag.
+(LR forced off). SPI fires can now be confirmed by looking for an
+`hvac_provenance_log` row tagged
+`automation_candidate = v9_sleep_priority_interlock` (Section 15
+`spi_last_triggered` observer, PR #98). A dedicated logbook tag for SPI
+fires does not exist yet, so for the logbook surface the fire is still
+inferred from the LR mode transition signature.
 
 **Diagnosis.** Either SPI fired correctly on a cross-mode contention,
 or a stack-effect interaction was visible, or a transient

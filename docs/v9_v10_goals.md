@@ -70,12 +70,17 @@ runtime change to their override authority.
 
 **Canonical worked example.** Section 3 `v9_sleep_priority_interlock` (SPI)
 is the canonical ambiguous interlock for V9/V10 doctrine work: it currently
-forces LR off on Master-cool/LR-heat contention but has no
-`timer.manual_hvac_override` gate and no dedicated fire provenance tag yet.
-Classification remains explicitly open between Position α (comfort policy),
-Position β (compressor/cross-mode protection), and Position γ
-(observability-only candidate). This decision is blocked on #88 telemetry and
-provenance fan-out; no runtime classification change is selected here.
+forces LR off on Master-cool/LR-heat contention and still has no
+`timer.manual_hvac_override` gate. SPI fire provenance is now visible
+through the Section 15 `spi_last_triggered` observer (PR #98, closing
+#88), which writes a row to `hvac_provenance_log` tagged
+`automation_candidate = v9_sleep_priority_interlock` on each fire; a
+dedicated logbook tag for SPI fires does not exist yet. Classification
+remains explicitly open between Position α (comfort policy), Position β
+(compressor/cross-mode protection), and Position γ (observability-only
+candidate). The decision is now blocked on accumulating enough
+`hvac_provenance_log` evidence — not on landing the provenance hook
+itself — and no runtime classification change is selected here.
 
 ### 2.4 Transition / Latch Clarity
 
