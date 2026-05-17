@@ -91,6 +91,22 @@ def _condition_tree_requires_manual_override_idle(node):
     condition_type = node.get("condition")
     children = node.get("conditions", [])
 
+    # Home Assistant shorthand logical forms:
+    #   - and: [...]
+    #   - or:  [...]
+    #   - not: [...]
+    # Normalize them to the same behavior as expanded form.
+    if condition_type is None:
+        if "and" in node:
+            condition_type = "and"
+            children = node.get("and", [])
+        elif "or" in node:
+            condition_type = "or"
+            children = node.get("or", [])
+        elif "not" in node:
+            condition_type = "not"
+            children = node.get("not", [])
+
     if condition_type == "and":
         # An AND implies idle if at least one conjunct implies idle.
         return any(_condition_tree_requires_manual_override_idle(item) for item in children)
@@ -316,3 +332,87 @@ def test_regression_valid_and_or_structure_still_passes():
         }
     }
     assert _has_manual_override_idle_condition(auto)
+
+
+def test_regression_shorthand_and_with_manual_override_guard_passes():
+    auto = {
+        "condition": {
+            "and": [
+                {
+                    "condition": "state",
+                    "entity_id": "binary_sensor.some_other_gate",
+                    "state": "on",
+                },
+                {
+                    "condition": "state",
+                    "entity_id": "timer.manual_hvac_override",
+                    "state": "idle",
+                },
+            ]
+        }
+    }
+    assert _has_manual_override_idle_condition(auto)
+
+
+def test_regression_shorthand_or_all_branches_require_override_passes():
+    auto = {
+        "condition": {
+            "or": [
+                {
+                    "condition": "state",
+                    "entity_id": "timer.manual_hvac_override",
+                    "state": "idle",
+                },
+                {
+                    "and": [
+                        {
+                            "condition": "state",
+                            "entity_id": "timer.manual_hvac_override",
+                            "state": "idle",
+                        },
+                        {
+                            "condition": "state",
+                            "entity_id": "sensor.window",
+                            "state": "closed",
+                        },
+                    ]
+                },
+            ]
+        }
+    }
+    assert _has_manual_override_idle_condition(auto)
+
+
+def test_regression_shorthand_or_branch_can_bypass_manual_override():
+    auto = {
+        "condition": {
+            "or": [
+                {
+                    "condition": "state",
+                    "entity_id": "timer.manual_hvac_override",
+                    "state": "idle",
+                },
+                {
+                    "condition": "state",
+                    "entity_id": "binary_sensor.some_other_gate",
+                    "state": "on",
+                },
+            ]
+        }
+    }
+    assert not _has_manual_override_idle_condition(auto)
+
+
+def test_regression_shorthand_not_does_not_prove_manual_override_guard():
+    auto = {
+        "condition": {
+            "not": [
+                {
+                    "condition": "state",
+                    "entity_id": "timer.manual_hvac_override",
+                    "state": "idle",
+                }
+            ]
+        }
+    }
+    assert not _has_manual_override_idle_condition(auto)
