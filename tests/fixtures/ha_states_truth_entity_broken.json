@@ -1,0 +1,22 @@
+[
+  {"entity_id":"sensor.lincoln_s_room_temperature_truth","state":"unavailable","attributes":{"restored":true}},
+  {"entity_id":"sensor.lincoln_s_room_temperature_truth_2","state":"71.2","attributes":{"restored":false}},
+  {"entity_id":"sensor.lincoln_s_room_humidity_truth_2","state":"43.5","attributes":{"restored":false}},
+  {"entity_id":"sensor.lincoln_s_room_temperature_smoothed","state":"unknown","attributes":{"source_entity_id":"sensor.lincoln_s_room_temperature_truth"}},
+  {"entity_id":"sensor.lincoln_s_room_temperature_control","state":"unavailable","attributes":{"restored":false}},
+
+  {"entity_id":"sensor.lilly_s_room_temperature_truth","state":"unavailable","attributes":{"restored":true}},
+  {"entity_id":"sensor.lilly_s_room_temperature_truth_2","state":"70.1","attributes":{"restored":false}},
+  {"entity_id":"sensor.lilly_s_room_humidity_truth_2","state":"45.0","attributes":{"restored":false}},
+  {"entity_id":"sensor.lilly_s_room_temperature_smoothed","state":"unknown","attributes":{"source_entity_id":"sensor.lilly_s_room_temperature_truth"}},
+  {"entity_id":"sensor.lilly_s_room_temperature_control","state":"unavailable","attributes":{"restored":false}},
+
+  {"entity_id":"sensor.lincoln_s_temp_temperature","state":"71.4","attributes":{}},
+  {"entity_id":"sensor.lincoln_s_room_temperature_temperature","state":"71.1","attributes":{}},
+  {"entity_id":"sensor.lincoln_temp_temperature","state":"71.3","attributes":{}},
+  {"entity_id":"sensor.lincoln_air_temperature","state":"71.0","attributes":{}},
+  {"entity_id":"sensor.lilly_temperature","state":"70.0","attributes":{}},
+  {"entity_id":"sensor.lilly_room_temperature_temperature","state":"70.2","attributes":{}},
+  {"entity_id":"sensor.lilly_temp_temperature_2","state":"70.3","attributes":{}},
+  {"entity_id":"sensor.lilly_air_temperature","state":"69.9","attributes":{}}
+]
