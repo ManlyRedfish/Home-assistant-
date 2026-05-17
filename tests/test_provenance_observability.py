@@ -206,6 +206,68 @@ def test_provenance_logger_includes_bedroom_climate_triggers(provenance_logger):
         "Provenance logger is missing bedroom fan-out trigger ids: "
         f"{missing}"
     )
+
+
+def test_provenance_logger_observes_spi_last_triggered(provenance_logger):
+    """Section 15 (issue #88): observes `automation.v9_sleep_priority_interlock`
+    `last_triggered` so SPI fires generate provenance rows.
+
+    The trigger must be a state platform on the SPI automation entity, scoped
+    to the `last_triggered` attribute, with id `spi_last_triggered`. The
+    classifier branch is verified separately."""
+    triggers = provenance_logger.get("trigger") or []
+
+    matches = [
+        t
+        for t in triggers
+        if isinstance(t, dict)
+        and t.get("platform") == "state"
+        and t.get("entity_id") == "automation.v9_sleep_priority_interlock"
+        and t.get("attribute") == "last_triggered"
+        and t.get("id") == "spi_last_triggered"
+    ]
+
+    assert len(matches) == 1, (
+        "Section 15 must contain exactly one SPI fire observer trigger: "
+        "platform=state, entity_id=automation.v9_sleep_priority_interlock, "
+        "attribute=last_triggered, id=spi_last_triggered (issue #88; see "
+        "docs/5_runtime_layer.md §7.8 and docs/v9_v10_goals.md §2.5). "
+        f"Found {len(matches)} matching trigger(s)."
+    )
+
+
+def test_provenance_classifier_includes_spi(provenance_logger):
+    """Section 15 (issue #88): the automation_candidate classifier emits the
+    string `v9_sleep_priority_interlock` so SPI fires are tagged distinctly
+    from supervisor and Section 14 writes in `hvac_provenance_log`."""
+    action = provenance_logger.get("action") or []
+    classifier_templates = []
+    for item in _iter_action_items(action):
+        if not isinstance(item, dict):
+            continue
+        variables = item.get("variables")
+        if not isinstance(variables, dict):
+            continue
+        candidate_template = variables.get("automation_candidate_v")
+        if isinstance(candidate_template, str):
+            classifier_templates.append(candidate_template)
+
+    assert classifier_templates, (
+        "Section 15 must define an `automation_candidate_v` variable so SPI "
+        "fires can be classified."
+    )
+
+    spi_label = "v9_sleep_priority_interlock"
+    spi_trigger_id = "spi_last_triggered"
+    assert any(
+        spi_label in t and spi_trigger_id in t for t in classifier_templates
+    ), (
+        "automation_candidate_v classifier must label `spi_last_triggered` "
+        f"trigger fires as `{spi_label}` (issue #88). Found templates: "
+        f"{classifier_templates}"
+    )
+
+
 def test_provenance_logger_does_not_mutate_control(provenance_logger):
     """Action block must not call any control-surface service. The logger is
     observability-only — it may not change climate state, helpers, timers,
