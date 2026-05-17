@@ -1763,6 +1763,15 @@
     - platform: state
       entity_id: input_boolean.lr_heating_recovery_boost_active
       id: boost_state
+    # Section 3 Sleep Priority Interlock (SPI) fire observer (issue #88).
+    # Observes the `last_triggered` attribute of `automation.v9_sleep_priority_interlock`
+    # so each SPI fire generates a row in `hvac_provenance_log`. Observability
+    # only — does not gate, change, or interrupt SPI's trigger, condition, or
+    # `climate.set_hvac_mode` action.
+    - platform: state
+      entity_id: automation.v9_sleep_priority_interlock
+      attribute: last_triggered
+      id: spi_last_triggered
   condition:
     # Issue #69: skip when fired manually — manual runs do not provide
     # trigger.from_state / trigger.to_state / trigger.entity_id / trigger.id.
@@ -1779,6 +1788,9 @@
         {% if trigger.id == 'lr_temp_attr' %}
         {% set ov = trigger.from_state.attributes.temperature if trigger.from_state is not none else none %}
         {% set nv = trigger.to_state.attributes.temperature if trigger.to_state is not none else none %}
+        {% elif trigger.id == 'spi_last_triggered' %}
+        {% set ov = trigger.from_state.attributes.last_triggered if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.attributes.last_triggered if trigger.to_state is not none else none %}
         {% else %}
         {% set ov = trigger.from_state.state if trigger.from_state is not none else none %}
         {% set nv = trigger.to_state.state if trigger.to_state is not none else none %}
@@ -1786,16 +1798,20 @@
         {{ (ov | string) != (nv | string) }}
   action:
     - variables:
-        attribute_name: "{% if trigger.id == 'lr_temp_attr' %}temperature{% else %}state{% endif %}"
+        attribute_name: "{% if trigger.id == 'lr_temp_attr' %}temperature{% elif trigger.id == 'spi_last_triggered' %}last_triggered{% else %}state{% endif %}"
         old_raw: >-
           {% if trigger.id == 'lr_temp_attr' %}
           {{ trigger.from_state.attributes.temperature if trigger.from_state is not none else '' }}
+          {% elif trigger.id == 'spi_last_triggered' %}
+          {{ trigger.from_state.attributes.last_triggered if trigger.from_state is not none else '' }}
           {% else %}
           {{ trigger.from_state.state if trigger.from_state is not none else '' }}
           {% endif %}
         new_raw: >-
           {% if trigger.id == 'lr_temp_attr' %}
           {{ trigger.to_state.attributes.temperature if trigger.to_state is not none else '' }}
+          {% elif trigger.id == 'spi_last_triggered' %}
+          {{ trigger.to_state.attributes.last_triggered if trigger.to_state is not none else '' }}
           {% else %}
           {{ trigger.to_state.state if trigger.to_state is not none else '' }}
           {% endif %}
@@ -1830,11 +1846,17 @@
           {% else %}unknown
           {% endif %}
         # Best-effort automation candidate hint per design doc §6 — forensic guidance only.
+        # SPI branch is checked before the origin_kind gate because a
+        # `last_triggered` state change on `automation.v9_sleep_priority_interlock`
+        # is itself the evidence the automation fired; defensive labelling here
+        # avoids losing the candidate hint if HA stamps the update with a null
+        # context.
         automation_candidate_v: >-
           {% set ok = (origin_kind_v | trim) %}
           {% set m = now().minute %}
           {% set ts = trigger.to_state.state if trigger.to_state is not none else '' %}
-          {% if ok != 'automation_or_script' %}
+          {% if trigger.id == 'spi_last_triggered' %}v9_sleep_priority_interlock
+          {% elif ok != 'automation_or_script' %}
           {% elif trigger.entity_id == 'timer.manual_hvac_override' and ts == 'active' %}v7_5_waf_manual_override
           {% elif trigger.entity_id == 'input_boolean.lr_heating_recovery_boost_active' and ts == 'on' %}v8_4_lr_heating_recovery_boost_engage
           {% elif trigger.entity_id == 'input_boolean.lr_heating_recovery_boost_active' and ts == 'off' %}v8_4_lr_heating_recovery_boost_release
