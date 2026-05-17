@@ -138,7 +138,9 @@ before classification.
 3. **Read the deadband contract** for the affected room and time-of-day
    from [`./5_runtime_layer.md`](./5_runtime_layer.md) §6.1 and the live
    YAML. Write down the expected ON-at, OFF-at, and setpoint values for
-   that branch.
+   that branch. For a precomputed per-branch ON-at / OFF-at / setpoint
+   table transcribed from current `automations.yaml` Section 2, see the
+   Section 2 branch expectation table immediately after §8.6.
 4. **Pull truth, mode, and setpoint columns** for the room from
    `VTherm_Launch_Data_v5_5`. Compare expected ON/OFF/setpoint to actual
    mode/setpoint at each 15-minute tick. Note every tick where actual
@@ -267,6 +269,289 @@ For the latter, see the shoulder-night Master cooling escape (commit
 `e00013d`) as the reference shape. Do not generalize without forensic
 recurrence per [`./3_regression_appendix.md`](./3_regression_appendix.md)
 §4.16.
+
+### Section 2 branch expectation table
+
+Use this table only to compare observed telemetry/provenance against what
+Section 2 currently commands. If this table conflicts with
+`automations.yaml`, `automations.yaml` wins and this table is stale.
+
+This subsection is reference material for §7 step 3. It is descriptive,
+not authoritative. The source of truth for current branch behavior is
+`automations.yaml` Section 2 (`v7_5_main_supervisor`). Every numeric value
+below was transcribed from the live YAML at the time of writing; no value
+was inferred or invented. See "Maintenance" at the end for the update
+contract. Independent safety backstops (LR runaway 60°F, Master emergency
+floor 58°F, ceiling gates) live in `automations.yaml` Section 3 and are
+not modeled here.
+
+#### Top-level filter
+
+| Property | Value (`automations.yaml` reference) |
+|---|---|
+| Automation id | `v7_5_main_supervisor` |
+| Schedule trigger | Every 15 minutes on `:00 / :15 / :30 / :45` (`time_pattern minutes: "/15"`). |
+| Edge trigger | State change of `input_select.hvac_season_mode`. |
+| Concurrency | `mode: single`. |
+| Top-level gate | `condition: state` on `timer.manual_hvac_override == idle`. The supervisor does **not** run while a manual override timer is active. |
+| `outdoor` | `sensor.deck_temperature_truth`, fallback `50` if unavailable. |
+| `lr_temp` | `sensor.living_room_temperature_truth`, fallback `70`. |
+| `master_temp` | `sensor.master_bedroom_temperature_truth`, fallback `70`. |
+| `lincoln_temp` | `sensor.lincoln_s_room_temperature_truth`, fallback `70`. |
+| `lilly_temp` | `sensor.lilly_s_room_temperature_truth`, fallback `70`. |
+| `is_night` | `now().hour >= 22 or now().hour < 6` (22:00–06:00). |
+| `season` | `input_select.hvac_season_mode` (`cooling` / `shoulder` / `heating`). |
+| `lr_night_primary` | `input_boolean.night_mode_lr_primary == 'on'`. |
+| `away` | `input_boolean.away_mode == 'on'`. |
+
+The truth fallback to `70` is a graceful-degradation sentinel: if a room's
+truth sensor is unavailable, the supervisor will see `70` and most
+branches will resolve to `off`. The `outdoor` fallback of `50` selects a
+shoulder/heating outdoor split as if conditions were mild. Fallbacks are
+not setpoints.
+
+Cooling and a small set of heating/shoulder paths use full hysteresis
+(separate `ON-at`, `OFF-at`, and `Setpoint`). The simple single-threshold
+paths set `hvac_mode` based on one comparison and use the threshold as
+the setpoint; their `ON-at` and `Setpoint` columns share a value and
+there is no hold-current-mode behavior.
+
+#### Cooling season branches
+
+`season == 'cooling'`. Nest (`climate.dining_room`) is forced `off` for
+the entire branch in a one-shot at the top. All four mini-splits run a
+hysteresis loop: `cool` when truth `>` on-at, `off` when truth `≤`
+off-at, otherwise hold current `hvac_mode`.
+
+| Room | Condition | ON-at (`>`) | OFF-at (`≤`) | Setpoint |
+|---|---|---|---|---|
+| Master | Sleep (`hour >= 18 or hour < 6`), not away | 66 | 62 | 61 |
+| Master | Sleep, away | 76 | 74 | 74 |
+| Master | Day (`6 ≤ hour < 18`), not away | 72 | 68 | 66 |
+| Master | Day, away | 76 | 74 | 74 |
+| Lincoln | Any hour, not away | 72 | 68 | 66 |
+| Lincoln | Any hour, away | 76 | 74 | 74 |
+| Lilly | Any hour, not away | 72 | 68 | 66 |
+| Lilly | Any hour, away | 76 | 74 | 74 |
+| Living Room | Any hour, not away | 72 | 68 | 66 |
+| Living Room | Any hour, away | 76 | 74 | 74 |
+| Nest (Dining Room) | All cooling | — | — | forced `off` |
+
+The Master cooling sleep window (`hour >= 18 or hour < 6`, i.e.
+18:00–06:00) is broader than the global `is_night` (22:00–06:00). Master
+enters its cooling sleep band four hours earlier than other rooms enter
+any night-specific behavior in other seasons.
+
+#### Shoulder season branches
+
+`season == 'shoulder'`. Shoulder branches split first by `is_night`, then
+(during day) by `outdoor > 70 or lr_temp > 71` (warm), then by
+`outdoor < 55` (cold), with the remainder as a mild-day default.
+
+**Shoulder night** (`is_night`, 22:00–06:00)
+
+| Room | Condition | ON-at | OFF-at | Setpoint | Hysteresis |
+|---|---|---|---|---|---|
+| Living Room | Not away | heat if `lr_temp < 65` | else `off` | 65 | No (single threshold) |
+| Living Room | Away | heat if `lr_temp < 58` | else `off` | 58 | No (single threshold) |
+| Master | Cooling escape, not away | 66 (`>`) | 62 (`≤`) | 61 | Yes (cool / off / hold) |
+| Master | Cooling escape, away | 76 (`>`) | 74 (`≤`) | 74 | Yes (cool / off / hold) |
+| Lincoln | All shoulder-night | — | — | forced `off` | — |
+| Lilly | All shoulder-night | — | — | forced `off` | — |
+| Nest | All shoulder-night | — | — | forced `off` | — |
+
+See the "Shoulder-night Master cooling escape" callout below for the
+full escape rationale and cross-references.
+
+**Shoulder day, warm path** (`not is_night` AND (`outdoor > 70` OR `lr_temp > 71`))
+
+| Room | Behavior | Setpoint |
+|---|---|---|
+| Master | cool if `master_temp > 70` else `off` | 70 |
+| Lincoln | cool if `lincoln_temp > 70` else `off` | 70 |
+| Lilly | cool if `lilly_temp > 70` else `off` | 70 |
+| Living Room | forced `off` | — |
+| Nest | forced `off` | — |
+
+The warm path does **not** check `away`; the same `70/70` numbers apply
+regardless of `away_mode` state.
+
+**Shoulder day, cold path** (`not is_night` AND `outdoor < 55` AND not warm path)
+
+| Row | Condition | ON-at (heat if `<`) | OFF-at (off if `≥`) | Setpoint |
+|---|---|---|---|---|
+| 1 | LR, bedtime (`hour >= 18 and hour < 22`) AND not away | 62 | 64 | 64 |
+| 2 | LR, away (any time, this path) | 58 | 62 | 62 |
+| 3 | LR, not away, not bedtime | 64 | 68 | 68 |
+
+LR runs full hysteresis (heat / off / hold). Master, Lincoln, Lilly, and
+Nest are forced `off`. The `away` branch in the template shadows
+`is_bedtime` — when away is true, the away row applies regardless of
+hour.
+
+**Shoulder day, mild path** (default: `not is_night` AND `outdoor ≤ 70` AND `lr_temp ≤ 71` AND `outdoor ≥ 55`)
+
+LR, Master, Lincoln, Lilly, and Nest are all forced `off`. No setpoint or
+threshold to compare.
+
+#### Heating season branches
+
+`season == 'heating'`. Heating branches split first by `is_night`, then
+(during night) by `outdoor < 38`, then (when `outdoor >= 38` at night) by
+`lr_night_primary`. Heating-day uses an LR-only top-anchored deadband
+with outdoor split at `45`.
+
+**Heating night, cold** (`is_night` AND `outdoor < 38`)
+
+| Room | Condition | ON-at (heat if `<`) | Setpoint |
+|---|---|---|---|
+| Living Room | Not away | 71 | 71 |
+| Living Room | Away | 65 | 65 |
+| Master | All cold heating night | 62 | 62 |
+| Lincoln | All cold heating night | 62 | 62 |
+| Lilly | All cold heating night | 62 | 62 |
+| Nest (Dining Room) | All cold heating night | 68 | 68 |
+
+This is the only branch in the entire supervisor where Nest is commanded
+`heat`. Every other branch forces Nest `off`. All rows in this table use
+single-threshold logic (no hold).
+
+**Heating night, warmer, LR primary** (`is_night` AND `outdoor >= 38` AND `lr_night_primary == on`)
+
+| Room | Condition | ON-at (heat if `<`) | Setpoint |
+|---|---|---|---|
+| Living Room | Not away | 65 | 65 |
+| Living Room | Away | 58 | 58 |
+| Master | All | — | forced `off` |
+| Lincoln | All | — | forced `off` |
+| Lilly | All | — | forced `off` |
+| Nest | All | — | forced `off` |
+
+**Heating night, warmer, LR not primary** (`is_night` AND `outdoor >= 38` AND `lr_night_primary == off`)
+
+This is the failure-shape signature called out in §8.6: per-bedroom
+heating with LR backstopped at 60°F.
+
+| Room | Condition | ON-at (heat if `<`) | Setpoint |
+|---|---|---|---|
+| Master | All non-primary heating night | 67 | 67 |
+| Lincoln | All non-primary heating night | 67 | 67 |
+| Lilly | All non-primary heating night | 67 | 67 |
+| Living Room | All non-primary heating night | 60 | 60 |
+| Nest | All non-primary heating night | — | forced `off` |
+
+`away` does **not** alter this branch — Master, Lincoln, Lilly, and LR
+all use the same numeric thresholds whether or not the household is away.
+
+**Heating day** (`not is_night`)
+
+LR runs full hysteresis (`heat` / `off` / hold). Master, Lincoln, Lilly,
+and Nest are all forced `off`.
+
+| Row | Condition | ON-at (heat if `<`) | OFF-at (off if `≥`) | Setpoint |
+|---|---|---|---|---|
+| 1 | LR, bedtime (`hour >= 18 and hour < 22`) AND not away | 62 | 64 | 64 |
+| 2 | LR, away AND `outdoor < 45` | 61 | 65 | 65 |
+| 3 | LR, away AND `outdoor >= 45` | 58 | 62 | 62 |
+| 4 | LR, not away, not bedtime, `outdoor < 45` | 67 | 71 | 71 |
+| 5 | LR, not away, not bedtime, `outdoor >= 45` | 64 | 68 | 68 |
+
+As in the shoulder-cold-day path, `away` in the template shadows
+`is_bedtime` — the away rows apply regardless of hour during heating day.
+
+#### Bulk-off behavior summary
+
+The following list records which rooms Section 2 explicitly forces `off`
+per branch. Rooms that happen to land in `off` through hysteresis or a
+single-threshold comparison are not listed as "forced off" — only
+unconditional `hvac_mode: off` writes count.
+
+| Branch | Rooms force-off |
+|---|---|
+| Cooling season (any time) | Nest |
+| Shoulder night | Lincoln, Lilly, Nest |
+| Shoulder day, warm path | Living Room, Nest |
+| Shoulder day, cold path | Master, Lincoln, Lilly, Nest |
+| Shoulder day, mild path (default) | Living Room, Master, Lincoln, Lilly, Nest |
+| Heating night, cold (`outdoor < 38`) | (none — all five climate entities receive a heat-or-off decision) |
+| Heating night, warmer, `lr_night_primary` on | Master, Lincoln, Lilly, Nest |
+| Heating night, warmer, `lr_night_primary` off | Nest |
+| Heating day | Master, Lincoln, Lilly, Nest |
+
+#### Shoulder-night Master cooling escape
+
+Documented exception. Section 2 explicitly preserves manual cooling
+intent on Master during shoulder-night by running a full hysteresis loop
+that mirrors the cooling-season Master sleep band, even though every
+other bedroom is forced `off` and LR is in heating mode.
+
+| Variable | Not away | Away |
+|---|---|---|
+| `m_sleep_on_at` | 66 | 76 |
+| `m_sleep_off_at` | 62 | 74 |
+| `m_sleep_setpoint` | 61 | 74 |
+
+Decision shape (transcribed from `automations.yaml` Section 2):
+
+```
+{% if master_temp > m_sleep_on_at %}cool
+{% elif master_temp <= m_sleep_off_at %}off
+{% elif m_current == 'cool' %}cool
+{% else %}off{% endif %}
+```
+
+Reference shape per [`./3_regression_appendix.md`](./3_regression_appendix.md)
+§4.16 (commit `e00013d`). The Section 3 Master emergency cooling floor
+at 58°F lives independently of this branch and is not gated by it.
+
+#### Non-doctrinal setpoint contrast
+
+A row in `VTherm_Launch_Data_v5_5` showing a setpoint outside the
+doctrinal set for the matching branch above is, by construction, not a
+Section 2 command for that branch. Common explanations are operator
+manual writes, Section 14 V8.4 boost engagement (LR `SP=77`), or
+stale-artifact carry-over.
+
+Setpoints Section 2 will command across all branches in the tables above:
+
+| Room | Setpoints Section 2 can command |
+|---|---|
+| Living Room | `58`, `60`, `62`, `64`, `65`, `66`, `68`, `71`, `74` |
+| Master | `61`, `62`, `66`, `67`, `70`, `74` |
+| Lincoln | `62`, `66`, `67`, `70`, `74` |
+| Lilly | `62`, `66`, `67`, `70`, `74` |
+| Nest (Dining Room) | `68` only (heating night cold). All other branches force `off`. |
+
+Cross-reference: [`./telemetry_confounders.md`](./telemetry_confounders.md)
+§4.3 is the existing classifier surface for non-doctrinal LR setpoint
+signatures (`SP=77` Section 14 boost vs. operator manual; `SP=75`/`SP=80`
+operator manual emulation). The table above is room-complete and
+forensic-aid only; the §4.3 classifier remains the authoritative window
+classifier. Master `cool/61` overnight outside the cooling-season sleep
+band or the shoulder-night cooling escape (e.g., during heating season)
+is the canonical Master manual-override signature.
+
+This contrast is descriptive only. The decision tree in
+[`./telemetry_confounders.md`](./telemetry_confounders.md) §4.5 and the
+operator-annotation join guidance in §6.4 remain the authoritative
+window-classification surfaces.
+
+#### Maintenance
+
+When `automations.yaml` Section 2 changes, this forensic branch table
+must be updated in the same PR or before the runtime change ships.
+`automations.yaml` Section 2 (`v7_5_main_supervisor`) remains the source
+of truth for current branch behavior; this subsection is a forensic aid
+copied from the YAML. If this subsection contradicts the live YAML, the
+live YAML wins and the subsection is stale.
+
+This subsection deliberately:
+
+- Does not introduce new branch names that the YAML does not implement.
+- Does not claim any branch is optimal or effective.
+- Does not propose threshold, deadband, or setpoint changes.
+- Does not modify `automations.yaml`, `configuration.yaml`, tests,
+  helpers, or any runtime behavior.
 
 ### 8.7 Sensor Truth Degraded
 
