@@ -51,6 +51,29 @@ function Invoke-HAGet {
     }
 }
 
+function New-HistoryUri {
+    param(
+        [string]$ApiBase,
+        [string]$StartIso,
+        [string]$EndIso,
+        [string[]]$EntityIds,
+        [bool]$UseMinimalResponse
+    )
+
+    $entityParam = [uri]::EscapeDataString(($EntityIds -join ','))
+    $queryParts = @(
+        "end_time=$EndIso",
+        "filter_entity_id=$entityParam",
+        'no_attributes'
+    )
+
+    if ($UseMinimalResponse) {
+        $queryParts += 'minimal_response'
+    }
+
+    return "$ApiBase/api/history/period/$StartIso?" + ($queryParts -join '&')
+}
+
 function Convert-HistoryResponseToRows {
     param(
         [object]$HistoryResponse,
@@ -64,10 +87,23 @@ function Convert-HistoryResponseToRows {
     }
 
     foreach ($entitySeries in $HistoryResponse) {
+        $seriesEntityId = $null
+
         foreach ($statePoint in $entitySeries) {
+            if (-not [string]::IsNullOrWhiteSpace($statePoint.entity_id)) {
+                $seriesEntityId = $statePoint.entity_id
+            }
+
+            $effectiveEntityId = if (-not [string]::IsNullOrWhiteSpace($statePoint.entity_id)) {
+                $statePoint.entity_id
+            }
+            else {
+                $seriesEntityId
+            }
+
             $rows += [pscustomobject]@{
                 category      = $Category
-                entity_id     = $statePoint.entity_id
+                entity_id     = $effectiveEntityId
                 state         = $statePoint.state
                 last_changed  = $statePoint.last_changed
                 last_updated  = $statePoint.last_updated
@@ -95,8 +131,8 @@ function Export-Category {
         [string]$Token
     )
 
-    $entityParam = [uri]::EscapeDataString(($EntityIds -join ','))
-    $historyUri = "$ApiBase/api/history/period/$StartIso?end_time=$EndIso&filter_entity_id=$entityParam&minimal_response&no_attributes"
+    $useMinimalResponse = $Format -eq 'json'
+    $historyUri = New-HistoryUri -ApiBase $ApiBase -StartIso $StartIso -EndIso $EndIso -EntityIds $EntityIds -UseMinimalResponse $useMinimalResponse
 
     $history = Invoke-HAGet -Uri $historyUri -Headers $Headers -Token $Token
 
