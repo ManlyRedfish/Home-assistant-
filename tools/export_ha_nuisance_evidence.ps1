@@ -71,10 +71,10 @@ function Convert-HistoryResponseToRows {
         [string]$Category
     )
 
-    $rows = @()
+    $rows = [System.Collections.Generic.List[object]]::new()
 
     if ($null -eq $HistoryResponse) {
-        return $rows
+        return $rows.ToArray()
     }
 
     foreach ($entitySeries in $HistoryResponse) {
@@ -92,7 +92,7 @@ function Convert-HistoryResponseToRows {
                 $seriesEntityId
             }
 
-            $rows += [pscustomobject]@{
+            $rows.Add([pscustomobject]@{
                 category      = $Category
                 entity_id     = $effectiveEntityId
                 state         = $statePoint.state
@@ -102,11 +102,11 @@ function Convert-HistoryResponseToRows {
                 context_user  = $statePoint.context.user_id
                 context_parent = $statePoint.context.parent_id
                 attributes_json = ($statePoint.attributes | ConvertTo-Json -Depth 10 -Compress)
-            }
+            })
         }
     }
 
-    return $rows
+    return $rows.ToArray()
 }
 
 function Export-Category {
