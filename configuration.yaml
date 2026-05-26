@@ -151,7 +151,7 @@ template:
         state: "{{ states('climate.lilly_air') not in ['off', 'unavailable', 'unknown'] }}"
 
       # =========================================================
-      # DEBOUNCED PRESENCE (V6 FIX — V6.1 TUNED)
+      # DEBOUNCED PRESENCE — V6.1 TUNED SETTINGS
       # =========================================================
       - name: "Living Room Presence Debounced"
         unique_id: lr_presence_debounced_v3

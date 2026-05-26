@@ -783,9 +783,9 @@
 - id: v7_5_safety_ceiling_gates
   alias: "V7.5: Safety Ceiling Gates (All-Season)"
   description: >
-    V3.1 FIX: Now active in ALL seasons including cooling. During cooling
+    V3.1 behavior: Active in all seasons including cooling. During cooling
     season, forces aggressive cool at 68°F for 45 min. During heating/shoulder,
-    uses fan_only for 45 min (original destratification behavior).
+    uses fan_only for 45 min.
   mode: parallel
   trigger:
     - platform: numeric_state

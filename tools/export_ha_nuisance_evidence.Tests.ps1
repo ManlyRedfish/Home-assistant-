@@ -1,9 +1,6 @@
 Describe "Get-RedactedMessage" {
     BeforeAll {
-        $scriptContent = Get-Content -Path "tools/export_ha_nuisance_evidence.ps1" -Raw
-        $ast = [System.Management.Automation.Language.Parser]::ParseInput($scriptContent, [ref]$null, [ref]$null)
-        $functionAst = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]}, $true) | Where-Object { $_.Name -eq 'Get-RedactedMessage' }
-        Invoke-Expression $functionAst.Extent.Text
+        . "$PSScriptRoot/export_ha_nuisance_evidence.ps1"
     }
 
     It "redacts an access token from a message" {
@@ -42,15 +39,11 @@ Describe "Get-RedactedMessage" {
     }
 }
 
-BeforeAll {
-    # Extract and run the function definition only
-    $scriptContent = Get-Content -Path "tools/export_ha_nuisance_evidence.ps1" -Raw
-    $ast = [System.Management.Automation.Language.Parser]::ParseInput($scriptContent, [ref]$null, [ref]$null)
-    $functionAst = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]}, $true) | Where-Object { $_.Name -eq 'Convert-HistoryResponseToRows' }
-    Invoke-Expression $functionAst.Extent.Text
-}
-
 Describe "Convert-HistoryResponseToRows" {
+    BeforeAll {
+        . "$PSScriptRoot/export_ha_nuisance_evidence.ps1"
+    }
+
     It "returns an empty array when HistoryResponse is null" {
         $result = Convert-HistoryResponseToRows -HistoryResponse $null -Category "test"
         $result.GetType().Name | Should -Be "Object[]"
