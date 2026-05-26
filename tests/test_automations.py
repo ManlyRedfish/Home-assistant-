@@ -1,6 +1,7 @@
 import yaml
 import pytest
 import os
+from pathlib import Path
 
 
 class MooseAutomationLoader(yaml.SafeLoader):
@@ -99,17 +100,27 @@ def test_google_sheets_actions_use_secrets(automations_data):
         for action in actions:
             check_action(action)
 
-def test_slugified_entities_check():
+def test_apostrophe_room_entities_use_slugified_names():
     """
-    Ensure entities correctly handle apostrophes by checking common 'lilly_s_room'
-    pattern instead of 'lillys_room' as per memory instructions.
+    Ensure entities correctly handle apostrophes by checking common 'lilly_s_room' and 'lincoln_s_room'
+    patterns instead of 'lillys_room' and 'lincolns_room' as per memory instructions.
     """
-    file_path = os.path.join(os.path.dirname(__file__), '..', 'automations.yaml')
-    with open(file_path, 'r') as f:
-        content = f.read()
+    active_yaml_files = [
+        Path("automations.yaml"),
+        Path("configuration.yaml"),
+    ]
 
-    # Check that lillys_room doesn't exist, it should be lilly_s_room
-    assert "lillys_room" not in content.lower(), "Found non-slugified 'lillys_room', should be 'lilly_s_room' per conventions"
+    forbidden_tokens = {
+        "lillys_room": "lilly_s_room",
+        "lincolns_room": "lincoln_s_room",
+    }
+
+    for path in active_yaml_files:
+        content = path.read_text(encoding="utf-8").lower()
+        for bad, good in forbidden_tokens.items():
+            assert bad not in content, (
+                f"{path} contains non-slugified '{bad}', expected '{good}'"
+            )
 
 def test_all_automations_have_mode(automations_data):
     for a in automations_data:
