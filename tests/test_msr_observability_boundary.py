@@ -455,8 +455,9 @@ def test_msr_pattern_sweep_finds_no_unknown_tokens(automations_data):
         # (no msr/apollo/dps310/mmwave/ld2410/scd40/radar_zone/co2 substring),
         # so no allow-list stripping is needed here. If a future allow-list
         # entry happens to match the pattern, strip it before .findall().
-        matches = sorted(set(m.lower() for m in MSR_PATTERN.findall(rendered)))
-        if matches:
+        raw_matches = MSR_PATTERN.findall(rendered)
+        if raw_matches:
+            matches = sorted({m.lower() for m in raw_matches})
             failures.append(f"{auto_id}: tokens={matches}")
 
     assert not failures, (
