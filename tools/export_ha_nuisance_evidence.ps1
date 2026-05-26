@@ -92,7 +92,7 @@ function Convert-HistoryResponseToRows {
                 $seriesEntityId
             }
 
-            $rows.Add([pscustomobject]@{
+            [void]$rows.Add([pscustomobject]@{
                 category        = $Category
                 entity_id       = $effectiveEntityId
                 state           = $statePoint.state

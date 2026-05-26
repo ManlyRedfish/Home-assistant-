@@ -50,6 +50,11 @@ Describe "Convert-HistoryResponseToRows" {
         $result.Count | Should -Be 0
     }
 
+    It "returns no rows when HistoryResponse is empty" {
+        $result = @(Convert-HistoryResponseToRows -HistoryResponse @() -Category "test")
+        $result.Count | Should -Be 0
+    }
+
     It "converts normal state points to rows" {
         $mockResponse = @(
             ,(
@@ -111,6 +116,44 @@ Describe "Convert-HistoryResponseToRows" {
         $result[0].entity_id | Should -Be "sensor.minimal"
         $result[1].entity_id | Should -Be "sensor.minimal"
         $result[1].state | Should -Be "off"
+    }
+
+    It "emits only row objects and no List.Add indexes" {
+        $mockResponse = @(
+            ,(
+                [pscustomobject]@{
+                    entity_id = "sensor.test"
+                    state = "on"
+                    last_changed = "2023-01-01"
+                    last_updated = "2023-01-01"
+                    context = [pscustomobject]@{
+                        id = "1"
+                        user_id = "user1"
+                        parent_id = "parent1"
+                    }
+                    attributes = @{}
+                },
+                [pscustomobject]@{
+                    entity_id = $null
+                    state = "off"
+                    last_changed = "2023-01-02"
+                    last_updated = "2023-01-02"
+                    context = [pscustomobject]@{
+                        id = "2"
+                        user_id = "user2"
+                        parent_id = "parent2"
+                    }
+                    attributes = @{}
+                }
+            )
+        )
+
+        $result = @(Convert-HistoryResponseToRows -HistoryResponse $mockResponse -Category "test")
+
+        $result.Count | Should -Be 2
+        @($result | Where-Object { $_ -is [int] }).Count | Should -Be 0
+        $result[0].entity_id | Should -Be "sensor.test"
+        $result[1].entity_id | Should -Be "sensor.test"
     }
 
     It "applies the category to every row" {
