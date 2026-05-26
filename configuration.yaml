@@ -35,7 +35,7 @@
 # CHANGELOG:
 #   V3-FIX:   Corrected entity_id slugification for Lincoln's/Lilly's
 #             apostrophe names (lincolns → lincoln_s, lillys → lilly_s)
-#   V6.1-FIX: LR delay_off 3min → 20min, Lincoln delay_off 3min → 15min
+#   V6.1:     LR delay_off tuned 3min → 20min; Lincoln 3min → 15min
 #   V3.1:     Full audit against HA device registry + telemetry (see below)
 #   STEP 2:   Surgical trim of legacy/fallback sensors from weighted truth
 #
@@ -151,7 +151,7 @@ template:
         state: "{{ states('climate.lilly_air') not in ['off', 'unavailable', 'unknown'] }}"
 
       # =========================================================
-      # DEBOUNCED PRESENCE (V6 FIX — V6.1 TUNED)
+      # DEBOUNCED PRESENCE — V6.1 TUNED SETTINGS
       # =========================================================
       - name: "Living Room Presence Debounced"
         unique_id: lr_presence_debounced_v3

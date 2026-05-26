@@ -1,6 +1,7 @@
 import yaml
 import pytest
 import os
+from pathlib import Path
 
 
 class MooseAutomationLoader(yaml.SafeLoader):
@@ -99,17 +100,27 @@ def test_google_sheets_actions_use_secrets(automations_data):
         for action in actions:
             check_action(action)
 
-def test_slugified_entities_check():
+def test_apostrophe_room_entities_use_slugified_names():
     """
-    Ensure entities correctly handle apostrophes by checking common 'lilly_s_room'
-    pattern instead of 'lillys_room' as per memory instructions.
+    Ensure entities correctly handle apostrophes by checking common 'lilly_s_room' and 'lincoln_s_room'
+    patterns instead of 'lillys_room' and 'lincolns_room' as per memory instructions.
     """
-    file_path = os.path.join(os.path.dirname(__file__), '..', 'automations.yaml')
-    with open(file_path, 'r') as f:
-        content = f.read()
+    active_yaml_files = [
+        Path("automations.yaml"),
+        Path("configuration.yaml"),
+    ]
 
-    # Check that lillys_room doesn't exist, it should be lilly_s_room
-    assert "lillys_room" not in content.lower(), "Found non-slugified 'lillys_room', should be 'lilly_s_room' per conventions"
+    forbidden_tokens = {
+        "lillys_room": "lilly_s_room",
+        "lincolns_room": "lincoln_s_room",
+    }
+
+    for path in active_yaml_files:
+        content = path.read_text(encoding="utf-8").lower()
+        for bad, good in forbidden_tokens.items():
+            assert bad not in content, (
+                f"{path} contains non-slugified '{bad}', expected '{good}'"
+            )
 
 def test_all_automations_have_mode(automations_data):
     for a in automations_data:
@@ -176,3 +187,46 @@ def test_waf_manual_override_has_mode_and_setpoint_triggers(automations_data):
         and a.get("target", {}).get("entity_id") == "timer.manual_hvac_override"
         for a in actions
     ), "Expected action to start timer.manual_hvac_override"
+
+def test_ghost_assassin_suppresses_lincoln_phantom_heat(automations_data):
+    ghost = next(
+        (a for a in automations_data if a.get("id") == "v7_5_ghost_assassin"),
+        None,
+    )
+
+    assert ghost is not None, "Ghost Assassin automation must remain present"
+    assert ghost.get("mode") == "single"
+
+    triggers = ghost.get("trigger", [])
+    assert any(
+        trigger.get("platform") == "time" and trigger.get("at") == "01:20:00"
+        for trigger in triggers
+    ), "Ghost Assassin must run at the known 01:20 Samsung/SmartThings ghost window"
+
+    conditions = ghost.get("condition", [])
+    assert any(
+        condition.get("condition") == "state"
+        and condition.get("entity_id") == "climate.lincoln_air"
+        and condition.get("state") == "heat"
+        for condition in conditions
+    ), "Ghost Assassin must only suppress Lincoln when it is in phantom heat"
+
+    assert any(
+        condition.get("condition") == "template"
+        and "input_select.hvac_season_mode" in condition.get("value_template", "")
+        and "!= 'heating'" in condition.get("value_template", "")
+        for condition in conditions
+    ), "Ghost Assassin must not block intentional heating-season heat"
+
+    actions = ghost.get("action", [])
+    assert any(
+        (action.get("action") or action.get("service")) == "climate.set_hvac_mode"
+        and action.get("target", {}).get("entity_id") == "climate.lincoln_air"
+        and action.get("data", {}).get("hvac_mode") == "off"
+        for action in actions
+    ), "Ghost Assassin must force Lincoln head unit off"
+
+    assert any(
+        (action.get("action") or action.get("service")) == "notify.notify"
+        for action in actions
+    ), "Ghost Assassin should notify when it blocks phantom heat"

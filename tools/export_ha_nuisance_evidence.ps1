@@ -1,23 +1,14 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
     [string]$BaseUrl,
-
-    [Parameter(Mandatory = $true)]
     [string]$AccessToken,
-
-    [Parameter(Mandatory = $true)]
     [datetime]$StartDate,
-
-    [Parameter(Mandatory = $true)]
     [datetime]$EndDate,
-
-    [Parameter(Mandatory = $true)]
     [string]$OutputFolder,
-
     [ValidateSet('json', 'csv', 'both')]
     [string]$Format = 'both'
 )
+
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -149,13 +140,20 @@ function Export-Category {
 }
 
 function Invoke-HaNuisanceEvidenceExport {
+    [CmdletBinding()]
     param(
-        $BaseUrl,
-        $AccessToken,
-        $StartDate,
-        $EndDate,
-        $OutputFolder,
-        $Format
+        [Parameter(Mandatory = $true)]
+        [string]$BaseUrl,
+        [Parameter(Mandatory = $true)]
+        [string]$AccessToken,
+        [Parameter(Mandatory = $true)]
+        [datetime]$StartDate,
+        [Parameter(Mandatory = $true)]
+        [datetime]$EndDate,
+        [Parameter(Mandatory = $true)]
+        [string]$OutputFolder,
+        [ValidateSet('json', 'csv', 'both')]
+        [string]$Format = 'both'
     )
 
     $normalizedBase = $BaseUrl.TrimEnd('/')
@@ -228,11 +226,5 @@ function Invoke-HaNuisanceEvidenceExport {
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-HaNuisanceEvidenceExport `
-        -BaseUrl $BaseUrl `
-        -AccessToken $AccessToken `
-        -StartDate $StartDate `
-        -EndDate $EndDate `
-        -OutputFolder $OutputFolder `
-        -Format $Format
+    Invoke-HaNuisanceEvidenceExport @PSBoundParameters
 }
