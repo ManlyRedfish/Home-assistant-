@@ -38,3 +38,20 @@ Describe "Get-RedactedMessage" {
             Should -Be "token [REDACTED_TOKEN] leaked"
     }
 }
+
+
+Describe "Convert-HistoryResponseToRows" {
+    BeforeAll {
+        . "$PSScriptRoot/export_ha_nuisance_evidence.ps1"
+    }
+
+    It "returns no rows when HistoryResponse is null" {
+        $result = @(Convert-HistoryResponseToRows -HistoryResponse $null -Category "test")
+        $result.Count | Should -Be 0
+    }
+
+    It "returns no rows when HistoryResponse is empty" {
+        $result = @(Convert-HistoryResponseToRows -HistoryResponse @() -Category "test")
+        $result.Count | Should -Be 0
+    }
+}
