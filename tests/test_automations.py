@@ -176,3 +176,46 @@ def test_waf_manual_override_has_mode_and_setpoint_triggers(automations_data):
         and a.get("target", {}).get("entity_id") == "timer.manual_hvac_override"
         for a in actions
     ), "Expected action to start timer.manual_hvac_override"
+
+def test_ghost_assassin_suppresses_lincoln_phantom_heat(automations_data):
+    ghost = next(
+        (a for a in automations_data if a.get("id") == "v7_5_ghost_assassin"),
+        None,
+    )
+
+    assert ghost is not None, "Ghost Assassin automation must remain present"
+    assert ghost.get("mode") == "single"
+
+    triggers = ghost.get("trigger", [])
+    assert any(
+        trigger.get("platform") == "time" and trigger.get("at") == "01:20:00"
+        for trigger in triggers
+    ), "Ghost Assassin must run at the known 01:20 Samsung/SmartThings ghost window"
+
+    conditions = ghost.get("condition", [])
+    assert any(
+        condition.get("condition") == "state"
+        and condition.get("entity_id") == "climate.lincoln_air"
+        and condition.get("state") == "heat"
+        for condition in conditions
+    ), "Ghost Assassin must only suppress Lincoln when it is in phantom heat"
+
+    assert any(
+        condition.get("condition") == "template"
+        and "input_select.hvac_season_mode" in condition.get("value_template", "")
+        and "!= 'heating'" in condition.get("value_template", "")
+        for condition in conditions
+    ), "Ghost Assassin must not block intentional heating-season heat"
+
+    actions = ghost.get("action", [])
+    assert any(
+        (action.get("action") or action.get("service")) == "climate.set_hvac_mode"
+        and action.get("target", {}).get("entity_id") == "climate.lincoln_air"
+        and action.get("data", {}).get("hvac_mode") == "off"
+        for action in actions
+    ), "Ghost Assassin must force Lincoln head unit off"
+
+    assert any(
+        (action.get("action") or action.get("service")) == "notify.notify"
+        for action in actions
+    ), "Ghost Assassin should notify when it blocks phantom heat"
