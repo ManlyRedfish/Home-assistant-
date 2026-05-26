@@ -65,9 +65,9 @@ def _shoulder_night_sequence(supervisor):
     for step in shoulder.get("sequence", []):
         if isinstance(step, dict) and "choose" in step:
             for sub in step["choose"]:
-                conds = sub.get("conditions", [])
-                if any("is_night" in c.get("value_template", "") for c in conds):
-                    return sub.get("sequence", [])
+                for cond in sub.get("conditions", []):
+                    if "is_night" in cond.get("value_template", ""):
+                        return sub.get("sequence", [])
     pytest.fail("Could not find the shoulder-night sub-branch")
 
 
@@ -125,7 +125,11 @@ def test_shoulder_night_bulk_off_excludes_master(supervisor):
 
 def test_shoulder_night_bulk_off_still_covers_lincoln_lilly_dining(supervisor):
     targets = _bulk_off_targets(_shoulder_night_sequence(supervisor))
-    for entity_id in ("climate.lincoln_air", "climate.lilly_air", "climate.dining_room"):
+    for entity_id in (
+        "climate.lincoln_air",
+        "climate.lilly_air",
+        "climate.dining_room",
+    ):
         assert entity_id in targets, (
             f"Shoulder-night bulk-off list must still include {entity_id}; "
             f"only master_bedroom_air is intentionally excluded."
@@ -151,9 +155,9 @@ def test_shoulder_night_lr_heating_preserved(supervisor):
         "Shoulder-night LR heat/off decision must still gate on "
         "lr_temp < (58 if away else 65)."
     )
-    assert data.get("temperature") == "{{ 58 if away else 65 }}", (
-        "Shoulder-night LR commanded temperature must still be 58/65."
-    )
+    assert (
+        data.get("temperature") == "{{ 58 if away else 65 }}"
+    ), "Shoulder-night LR commanded temperature must still be 58/65."
 
 
 def test_shoulder_night_master_setpoint_below_off_threshold(supervisor):
@@ -162,7 +166,9 @@ def test_shoulder_night_master_setpoint_below_off_threshold(supervisor):
     assert step is not None
 
     variable_steps = [
-        s for s in sequence if isinstance(s, dict) and isinstance(s.get("variables"), dict)
+        s
+        for s in sequence
+        if isinstance(s, dict) and isinstance(s.get("variables"), dict)
     ]
     merged = {}
     for vs in variable_steps:
@@ -173,5 +179,9 @@ def test_shoulder_night_master_setpoint_below_off_threshold(supervisor):
     setpoint = merged.get("m_sleep_setpoint", "")
 
     assert "if away else 66" in on_at, f"m_sleep_on_at template unexpected: {on_at!r}"
-    assert "if away else 62" in off_at, f"m_sleep_off_at template unexpected: {off_at!r}"
-    assert "if away else 61" in setpoint, f"m_sleep_setpoint template unexpected: {setpoint!r}"
+    assert (
+        "if away else 62" in off_at
+    ), f"m_sleep_off_at template unexpected: {off_at!r}"
+    assert (
+        "if away else 61" in setpoint
+    ), f"m_sleep_setpoint template unexpected: {setpoint!r}"
