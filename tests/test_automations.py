@@ -56,6 +56,17 @@ def test_automation_ids_are_unique(automations_data):
     duplicates = [x for x in ids if x in seen or seen.add(x)]
     assert len(duplicates) == 0, f"Duplicate automation IDs found: {duplicates}"
 
+NESTED_ACTION_KEYS = {
+    "choose",
+    "if",
+    "repeat",
+    "parallel",
+    "default",
+    "then",
+    "else",
+    "sequence",
+}
+
 def test_google_sheets_actions_use_secrets(automations_data):
     """Ensure any google_sheets.append_sheet action uses !secret for config_entry"""
     for automation in automations_data:
@@ -64,30 +75,26 @@ def test_google_sheets_actions_use_secrets(automations_data):
             actions = [actions]
 
         def check_action(action_item):
-            if isinstance(action_item, dict):
-                # Check direct action
-                if action_item.get('action') == 'google_sheets.append_sheet' or action_item.get('service') == 'google_sheets.append_sheet':
-                    data = action_item.get('data', {})
-                    config_entry = data.get('config_entry')
-                    assert config_entry and config_entry.startswith('SECRET_'), \
-                        f"Automation '{automation.get('alias')}' uses google_sheets without !secret for config_entry"
+            if not isinstance(action_item, dict):
+                return
 
-                # Recursively check nested actions (choose, if, repeat, parallel)
-                for key in ['choose', 'if', 'repeat', 'parallel', 'default', 'then', 'else', 'sequence']:
-                    if key in action_item:
-                        nested = action_item[key]
-                        if isinstance(nested, list):
-                            for n in nested:
-                                check_action(n)
-                        elif isinstance(nested, dict):
-                            # For choose blocks
-                            if key == 'choose':
-                                for choice in action_item[key]:
-                                    if 'sequence' in choice:
-                                        for n in choice['sequence']:
-                                            check_action(n)
-                            else:
-                                check_action(nested)
+            # Check direct action
+            if action_item.get('action') == 'google_sheets.append_sheet' or action_item.get('service') == 'google_sheets.append_sheet':
+                data = action_item.get('data', {})
+                config_entry = data.get('config_entry')
+                assert config_entry and config_entry.startswith('SECRET_'), \
+                    f"Automation '{automation.get('alias')}' uses google_sheets without !secret for config_entry"
+
+            # Recursively check nested actions
+            for key, nested in action_item.items():
+                if key not in NESTED_ACTION_KEYS:
+                    continue
+
+                if isinstance(nested, list):
+                    for item in nested:
+                        check_action(item)
+                elif isinstance(nested, dict):
+                    check_action(nested)
 
         for action in actions:
             check_action(action)
