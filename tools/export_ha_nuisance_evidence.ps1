@@ -148,70 +148,91 @@ function Export-Category {
     }
 }
 
-$normalizedBase = $BaseUrl.TrimEnd('/')
-$apiBase = $normalizedBase
-
-if ($StartDate -ge $EndDate) {
-    throw 'StartDate must be earlier than EndDate.'
-}
-
-$headers = @{ Authorization = "Bearer $AccessToken" }
-
-$startUtc = $StartDate.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-$endUtc = $EndDate.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-
-New-Item -ItemType Directory -Path $OutputFolder -Force | Out-Null
-
-$automationEntities = @(
-    'automation.v8_3_hvac_transition_log',
-    'automation.v8_samsung_auto_guardrail',
-    'automation.v7_5_ghost_assassin',
-    'automation.v9_sleep_priority_interlock'
-)
-
-$climateEntities = @(
-    'climate.living_room_air',
-    'climate.master_bedroom_air',
-    'climate.lincoln_air',
-    'climate.lilly_air'
-)
-
-$timerEntities = @(
-    'timer.lr_compressor_cooldown',
-    'timer.master_compressor_cooldown',
-    'timer.lincoln_compressor_cooldown',
-    'timer.lilly_compressor_cooldown'
-)
-
-$stateUri = "$apiBase/api/states"
-$allStates = Invoke-HAGet -Uri $stateUri -Headers $headers -Token $AccessToken
-$shadeEntities = @($allStates | Where-Object { $_.entity_id -like 'cover.*shade*' } | ForEach-Object { $_.entity_id })
-
-$manifest = [pscustomobject]@{
-    generated_utc = (Get-Date).ToUniversalTime().ToString('o')
-    start_utc = $startUtc
-    end_utc = $endUtc
-    base_url = $normalizedBase
-    categories = [pscustomobject]@{
-        climates = $climateEntities
-        automations = $automationEntities
-        timers = $timerEntities
-        shades = $shadeEntities
-    }
-    notes = @(
-        'Read-only API usage: GET /api/states, GET /api/history/period, GET /api/logbook',
-        'No POST/PUT/PATCH/DELETE requests are used by this script.'
+function Invoke-HaNuisanceEvidenceExport {
+    param(
+        $BaseUrl,
+        $AccessToken,
+        $StartDate,
+        $EndDate,
+        $OutputFolder,
+        $Format
     )
+
+    $normalizedBase = $BaseUrl.TrimEnd('/')
+    $apiBase = $normalizedBase
+
+    if ($StartDate -ge $EndDate) {
+        throw 'StartDate must be earlier than EndDate.'
+    }
+
+    $headers = @{ Authorization = "Bearer $AccessToken" }
+
+    $startUtc = $StartDate.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $endUtc = $EndDate.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+
+    New-Item -ItemType Directory -Path $OutputFolder -Force | Out-Null
+
+    $automationEntities = @(
+        'automation.v8_3_hvac_transition_log',
+        'automation.v8_samsung_auto_guardrail',
+        'automation.v7_5_ghost_assassin',
+        'automation.v9_sleep_priority_interlock'
+    )
+
+    $climateEntities = @(
+        'climate.living_room_air',
+        'climate.master_bedroom_air',
+        'climate.lincoln_air',
+        'climate.lilly_air'
+    )
+
+    $timerEntities = @(
+        'timer.lr_compressor_cooldown',
+        'timer.master_compressor_cooldown',
+        'timer.lincoln_compressor_cooldown',
+        'timer.lilly_compressor_cooldown'
+    )
+
+    $stateUri = "$apiBase/api/states"
+    $allStates = Invoke-HAGet -Uri $stateUri -Headers $headers -Token $AccessToken
+    $shadeEntities = @($allStates | Where-Object { $_.entity_id -like 'cover.*shade*' } | ForEach-Object { $_.entity_id })
+
+    $manifest = [pscustomobject]@{
+        generated_utc = (Get-Date).ToUniversalTime().ToString('o')
+        start_utc = $startUtc
+        end_utc = $endUtc
+        base_url = $normalizedBase
+        categories = [pscustomobject]@{
+            climates = $climateEntities
+            automations = $automationEntities
+            timers = $timerEntities
+            shades = $shadeEntities
+        }
+        notes = @(
+            'Read-only API usage: GET /api/states, GET /api/history/period, GET /api/logbook',
+            'No POST/PUT/PATCH/DELETE requests are used by this script.'
+        )
+    }
+    $manifest | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path $OutputFolder 'ha_export_manifest.json') -Encoding utf8
+
+    Export-Category -Category 'climates' -EntityIds $climateEntities -StartIso $startUtc -EndIso $endUtc -ApiBase $apiBase -Headers $headers -OutputFolder $OutputFolder -Format $Format -Token $AccessToken
+    Export-Category -Category 'automations' -EntityIds $automationEntities -StartIso $startUtc -EndIso $endUtc -ApiBase $apiBase -Headers $headers -OutputFolder $OutputFolder -Format $Format -Token $AccessToken
+    Export-Category -Category 'timers' -EntityIds $timerEntities -StartIso $startUtc -EndIso $endUtc -ApiBase $apiBase -Headers $headers -OutputFolder $OutputFolder -Format $Format -Token $AccessToken
+
+    $logbookUri = "$apiBase/api/logbook/$startUtc?end_time=$endUtc"
+    $logbook = Invoke-HAGet -Uri $logbookUri -Headers $headers -Token $AccessToken
+    $logbook | ConvertTo-Json -Depth 20 | Out-File -FilePath (Join-Path $OutputFolder 'ha_logbook.json') -Encoding utf8
+
+    Write-Host "Export complete. Output folder: $OutputFolder"
+    Write-Host "Shade entities discovered: $($shadeEntities.Count)"
 }
-$manifest | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path $OutputFolder 'ha_export_manifest.json') -Encoding utf8
 
-Export-Category -Category 'climates' -EntityIds $climateEntities -StartIso $startUtc -EndIso $endUtc -ApiBase $apiBase -Headers $headers -OutputFolder $OutputFolder -Format $Format -Token $AccessToken
-Export-Category -Category 'automations' -EntityIds $automationEntities -StartIso $startUtc -EndIso $endUtc -ApiBase $apiBase -Headers $headers -OutputFolder $OutputFolder -Format $Format -Token $AccessToken
-Export-Category -Category 'timers' -EntityIds $timerEntities -StartIso $startUtc -EndIso $endUtc -ApiBase $apiBase -Headers $headers -OutputFolder $OutputFolder -Format $Format -Token $AccessToken
-
-$logbookUri = "$apiBase/api/logbook/$startUtc?end_time=$endUtc"
-$logbook = Invoke-HAGet -Uri $logbookUri -Headers $headers -Token $AccessToken
-$logbook | ConvertTo-Json -Depth 20 | Out-File -FilePath (Join-Path $OutputFolder 'ha_logbook.json') -Encoding utf8
-
-Write-Host "Export complete. Output folder: $OutputFolder"
-Write-Host "Shade entities discovered: $($shadeEntities.Count)"
+if ($MyInvocation.InvocationName -ne '.') {
+    Invoke-HaNuisanceEvidenceExport `
+        -BaseUrl $BaseUrl `
+        -AccessToken $AccessToken `
+        -StartDate $StartDate `
+        -EndDate $EndDate `
+        -OutputFolder $OutputFolder `
+        -Format $Format
+}
