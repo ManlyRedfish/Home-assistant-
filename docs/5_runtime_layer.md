@@ -259,6 +259,14 @@ actuator demand, not comfort truth — it already is in the live supervisor
 (`automations.yaml` Section 2 comments), and the planned model keeps it that
 way. Samsung's preferred 72–75°F is not comfort truth for this house.
 
+**Runtime shove command scope.** Section 2 now uses Samsung saturation command
+setpoints on existing mini-split command paths only: cooling commands shove to
+61°F and heating commands shove to 79°F. The room is not intended to reach those
+values; the existing Moose House room-truth start/stop thresholds still decide
+when to run and when to shut down. Runtime house-wide arbitration,
+destratification changes, comfort profiles, watchdog changes, and live truth
+confidence/status sensors remain deferred.
+
 **Comfort bands are preferences; safety gates are physical protection.** Comfort
 bands are tunable household preference. Section 3 safety gates (LR runaway
 60°F, Master emergency floor 58°F) are absolute equipment protection and stay

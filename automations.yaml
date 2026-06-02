@@ -391,7 +391,7 @@
             # ---------------------------------------------------------
             - variables:
                 is_master_sleep: "{{ now().hour >= 18 or now().hour < 6 }}"
-                m_setpoint: "{{ 74 if away else (61 if is_master_sleep else 66) }}"
+                m_setpoint: "{{ 61 }}"
                 m_off_at: "{{ 74 if away else (62 if is_master_sleep else 68) }}"
                 m_on_at: "{{ 76 if away else (66 if is_master_sleep else 72) }}"
                 m_current: "{{ states('climate.master_bedroom_air') }}"
@@ -411,7 +411,7 @@
             # Away:      74°F set / off ≤74 / on >76
             # ---------------------------------------------------------
             - variables:
-                l_setpoint: "{{ 74 if away else 66 }}"
+                l_setpoint: "{{ 61 }}"
                 l_off_at: "{{ 74 if away else 68 }}"
                 l_on_at: "{{ 76 if away else 72 }}"
                 l_current: "{{ states('climate.lincoln_air') }}"
@@ -431,7 +431,7 @@
             # Away:      74°F set / off ≤74 / on >76
             # ---------------------------------------------------------
             - variables:
-                ly_setpoint: "{{ 74 if away else 66 }}"
+                ly_setpoint: "{{ 61 }}"
                 ly_off_at: "{{ 74 if away else 68 }}"
                 ly_on_at: "{{ 76 if away else 72 }}"
                 ly_current: "{{ states('climate.lilly_air') }}"
@@ -452,7 +452,7 @@
             # Runaway cutoff at 60°F lives in Section 3 (independent).
             # ---------------------------------------------------------
             - variables:
-                lr_setpoint: "{{ 74 if away else 66 }}"
+                lr_setpoint: "{{ 61 }}"
                 lr_off_at: "{{ 74 if away else 68 }}"
                 lr_on_at: "{{ 76 if away else 72 }}"
                 lr_current: "{{ states('climate.living_room_air') }}"
@@ -482,7 +482,7 @@
                       target: { entity_id: climate.living_room_air }
                       data:
                         hvac_mode: "{{ 'heat' if lr_temp < (58 if away else 65) else 'off' }}"
-                        temperature: "{{ 58 if away else 65 }}"
+                        temperature: 79
                     # ---------------------------------------------------------
                     # Shoulder-night Master cooling escape (sleep comfort).
                     # Outdoor temp may influence preferred climate strategy,
@@ -494,7 +494,7 @@
                     - variables:
                         m_sleep_on_at: "{{ 76 if away else 66 }}"
                         m_sleep_off_at: "{{ 74 if away else 62 }}"
-                        m_sleep_setpoint: "{{ 74 if away else 61 }}"
+                        m_sleep_setpoint: "{{ 61 }}"
                         m_current: "{{ states('climate.master_bedroom_air') }}"
                     - action: climate.set_temperature
                       target: { entity_id: climate.master_bedroom_air }
@@ -516,13 +516,13 @@
                       sequence:
                         - action: climate.set_temperature
                           target: { entity_id: climate.master_bedroom_air }
-                          data: { hvac_mode: "{{ 'cool' if master_temp > 70 else 'off' }}", temperature: 70 }
+                          data: { hvac_mode: "{{ 'cool' if master_temp > 70 else 'off' }}", temperature: 61 }
                         - action: climate.set_temperature
                           target: { entity_id: climate.lincoln_air }
-                          data: { hvac_mode: "{{ 'cool' if lincoln_temp > 70 else 'off' }}", temperature: 70 }
+                          data: { hvac_mode: "{{ 'cool' if lincoln_temp > 70 else 'off' }}", temperature: 61 }
                         - action: climate.set_temperature
                           target: { entity_id: climate.lilly_air }
-                          data: { hvac_mode: "{{ 'cool' if lilly_temp > 70 else 'off' }}", temperature: 70 }
+                          data: { hvac_mode: "{{ 'cool' if lilly_temp > 70 else 'off' }}", temperature: 61 }
                         - action: climate.set_hvac_mode
                           target: { entity_id: [climate.living_room_air, climate.dining_room] }
                           data: { hvac_mode: "off" }
@@ -537,6 +537,7 @@
                             lr_on_at: >-
                               {% if is_bedtime and not away %}62{% elif away %}{{ 58 }}{% else %}64{% endif %}
                             lr_off_at: "{{ target_lr }}"
+                            lr_heat_command_setpoint: 79
                             lr_current: "{{ states('climate.living_room_air') }}"
                         - action: climate.set_temperature
                           target: { entity_id: climate.living_room_air }
@@ -546,7 +547,7 @@
                               {% elif lr_temp >= (lr_off_at | int) %}off
                               {% elif lr_current == 'heat' %}heat
                               {% else %}off{% endif %}
-                            temperature: "{{ target_lr }}"
+                            temperature: "{{ lr_heat_command_setpoint }}"
                         - action: climate.set_hvac_mode
                           target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
                           data: { hvac_mode: "off" }
@@ -576,16 +577,16 @@
                               target: { entity_id: climate.living_room_air }
                               data:
                                 hvac_mode: "{{ 'heat' if lr_temp < (65 if away else 71) else 'off' }}"
-                                temperature: "{{ 65 if away else 71 }}"
+                                temperature: 79
                             - action: climate.set_temperature
                               target: { entity_id: climate.master_bedroom_air }
-                              data: { hvac_mode: "{{ 'heat' if master_temp < 62 else 'off' }}", temperature: 62 }
+                              data: { hvac_mode: "{{ 'heat' if master_temp < 62 else 'off' }}", temperature: 79 }
                             - action: climate.set_temperature
                               target: { entity_id: climate.lincoln_air }
-                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 62 else 'off' }}", temperature: 62 }
+                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 62 else 'off' }}", temperature: 79 }
                             - action: climate.set_temperature
                               target: { entity_id: climate.lilly_air }
-                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 62 else 'off' }}", temperature: 62 }
+                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 62 else 'off' }}", temperature: 79 }
                             - action: climate.set_hvac_mode
                               target: { entity_id: climate.dining_room }
                               data: { hvac_mode: "{{ 'heat' if lr_temp < 68 else 'off' }}" }
@@ -602,23 +603,23 @@
                                   target: { entity_id: climate.living_room_air }
                                   data:
                                     hvac_mode: "{{ 'heat' if lr_temp < (58 if away else 65) else 'off' }}"
-                                    temperature: "{{ 58 if away else 65 }}"
+                                    temperature: 79
                                 - action: climate.set_hvac_mode
                                   target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
                                   data: { hvac_mode: "off" }
                           default:
                             - action: climate.set_temperature
                               target: { entity_id: climate.master_bedroom_air }
-                              data: { hvac_mode: "{{ 'heat' if master_temp < 67 else 'off' }}", temperature: 67 }
+                              data: { hvac_mode: "{{ 'heat' if master_temp < 67 else 'off' }}", temperature: 79 }
                             - action: climate.set_temperature
                               target: { entity_id: climate.lincoln_air }
-                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 67 else 'off' }}", temperature: 67 }
+                              data: { hvac_mode: "{{ 'heat' if lincoln_temp < 67 else 'off' }}", temperature: 79 }
                             - action: climate.set_temperature
                               target: { entity_id: climate.lilly_air }
-                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 67 else 'off' }}", temperature: 67 }
+                              data: { hvac_mode: "{{ 'heat' if lilly_temp < 67 else 'off' }}", temperature: 79 }
                             - action: climate.set_temperature
                               target: { entity_id: climate.living_room_air }
-                              data: { hvac_mode: "{{ 'heat' if lr_temp < 60 else 'off' }}", temperature: 60 }
+                              data: { hvac_mode: "{{ 'heat' if lr_temp < 60 else 'off' }}", temperature: 79 }
                             - action: climate.set_hvac_mode
                               target: { entity_id: climate.dining_room }
                               data: { hvac_mode: "off" }
@@ -630,6 +631,7 @@
                     lr_on_at: >-
                       {% if is_bedtime and not away %}62{% elif away %}{{ 61 if outdoor < 45 else 58 }}{% else %}{{ 67 if outdoor < 45 else 64 }}{% endif %}
                     lr_off_at: "{{ target_lr }}"
+                    lr_heat_command_setpoint: 79
                     lr_current: "{{ states('climate.living_room_air') }}"
                 - action: climate.set_temperature
                   target: { entity_id: climate.living_room_air }
@@ -639,7 +641,7 @@
                       {% elif lr_temp >= (lr_off_at | int) %}off
                       {% elif lr_current == 'heat' %}heat
                       {% else %}off{% endif %}
-                    temperature: "{{ target_lr }}"
+                    temperature: "{{ lr_heat_command_setpoint }}"
                 - action: climate.set_hvac_mode
                   target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
                   data: { hvac_mode: "off" }
