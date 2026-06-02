@@ -76,10 +76,10 @@ def _extract_cooling_variable_templates(actions):
 def test_section2_cooling_setpoint_and_threshold_doctrine():
     templates = _extract_cooling_variable_templates(_load_main_supervisor_actions())
 
-    assert templates['m_setpoint'] == "{{ 74 if away else (61 if is_master_sleep else 66) }}"
-    assert templates['l_setpoint'] == "{{ 74 if away else 66 }}"
-    assert templates['ly_setpoint'] == "{{ 74 if away else 66 }}"
-    assert templates['lr_setpoint'] == "{{ 74 if away else 66 }}"
+    assert templates['m_setpoint'] == "{{ 61 }}"
+    assert templates['l_setpoint'] == "{{ 61 }}"
+    assert templates['ly_setpoint'] == "{{ 61 }}"
+    assert templates['lr_setpoint'] == "{{ 61 }}"
 
     assert templates['m_off_at'] == "{{ 74 if away else (62 if is_master_sleep else 68) }}"
     assert templates['m_on_at'] == "{{ 76 if away else (66 if is_master_sleep else 72) }}"

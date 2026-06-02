@@ -155,9 +155,10 @@ def test_shoulder_night_lr_heating_preserved(supervisor):
         "Shoulder-night LR heat/off decision must still gate on "
         "lr_temp < (58 if away else 65)."
     )
-    assert (
-        data.get("temperature") == "{{ 58 if away else 65 }}"
-    ), "Shoulder-night LR commanded temperature must still be 58/65."
+    assert data.get("temperature") == 79, (
+        "Shoulder-night LR heat command must shove to 79 while the 58/65 "
+        "truth threshold remains in hvac_mode."
+    )
 
 
 def test_shoulder_night_master_setpoint_below_off_threshold(supervisor):
@@ -182,6 +183,7 @@ def test_shoulder_night_master_setpoint_below_off_threshold(supervisor):
     assert (
         "if away else 62" in off_at
     ), f"m_sleep_off_at template unexpected: {off_at!r}"
-    assert (
-        "if away else 61" in setpoint
-    ), f"m_sleep_setpoint template unexpected: {setpoint!r}"
+    assert setpoint == "{{ 61 }}", (
+        "Shoulder-night Master cooling command must shove to 61 while the "
+        "sleep on/off thresholds remain unchanged."
+    )
