@@ -170,7 +170,7 @@ All line numbers are against `main` at the post-#124 merge (`867d720`).
 | `idle` | Inside band; do nothing | `cool_off_at < truth < heat... ` i.e. within band | unit `off` |
 | `heat_recovery` | Room below band; needs heat | `truth < heat_on_at` | `heat` @ `heat_command_setpoint` (79) |
 | `cool_recovery` | Room above band; needs cool | `truth > cool_on_at` | `cool` @ `cool_command_setpoint` (61) |
-| `destratification` | Air movement / layering / over-warm room, often in heating season | room over-warm vs house, or stratification signal; **bounded** | `fan_only` (preferred) or `cool`@61 where fan-only insufficient — see Open Questions |
+| `destratification` | Air movement / layering / over-warm room, often in heating season | room over-warm vs house, or stratification signal; **bounded** | **fan-first-then-cool** (Eric): Stage 1 `fan_only` (10–15 min trial); Stage 2 `cool`@61 only if fan-only is unavailable/ineffective or room still too warm. Stop by truth threshold, never by Samsung setpoint. |
 | `safety` | A Section 3 gate is asserting | runaway/floor/ceiling | Section 3 owns it; comfort yields |
 
 Hysteresis is mandatory: a room that entered `heat_recovery` stays in it until
@@ -220,16 +220,25 @@ threshold it returns to `idle` (off).
 
 ## Proposed Helper / Variable Model
 
-**Recommendation: shove constants as `input_number` helpers, bands/timers as a
-mix (see rationale).** Reasoning:
+**Decision (Eric): shove constants are `input_number` helpers, treated as
+locked actuator constants.** Bands/timers are a mix (see rationale).
 
-- **Shove constants (`61`/`79`) → `input_number` helpers.** They are physical
-  device limits that (a) you may need to tune once if a firmware/model changes,
-  and (b) benefit from being observable in the UI and exportable to telemetry so
-  a forensic note can confirm "we actually commanded 61." They are read in many
-  places; a helper avoids 12 copies of a literal. They carry **no** control
-  authority by themselves (a setpoint is inert until a mode is commanded), so
-  introducing them early (PR B) is low-risk.
+- **Shove constants (`61`/`79`) → `input_number` helpers, bounded so they cannot
+  drift.** They are physical device limits that (a) you may tune once if a
+  firmware/model changes, and (b) benefit from being observable in the UI and
+  exportable to telemetry so a forensic note can confirm "we actually commanded
+  61." They are read in many places; a helper avoids ~12 copies of a literal.
+  They carry **no** control authority by themselves (a setpoint is inert until a
+  mode is commanded), so introducing them early (PR B) is low-risk.
+  - These are **not comfort settings** — they are Samsung saturation/shove
+    commands. The helper `min`/`max` must effectively **lock** each value
+    (`cool` around 61, `heat` around 79) so the UI cannot nudge them into
+    comfort-target territory. A deliberate future PR is required to change the
+    bound, and a PR B test asserts the locked values + bounds.
+  - **Fallback (documented, not preferred):** if helpers prove to add too much
+    risk or UI clutter, hard YAML constants (`{% set cool_command = 61 %}` /
+    `{% set heat_command = 79 %}` in the supervisor) are an acceptable
+    substitute. The preferred future path remains helpers-with-tests.
 - **Band thresholds → start as supervisor YAML variables, migrate to profile
   helpers later (the comfort-profile PR F).** Keeping bands as named variables
   first lets PR C do a pure setpoint refactor without entangling the profile
@@ -240,9 +249,9 @@ mix (see rationale).** Reasoning:
 Proposed names (final names TBD with Eric):
 
 ```
-# Actuator shove constants (PR B) — inert until consumed
-input_number.moose_cool_command_setpoint   # = 61   (Samsung cooling floor)
-input_number.moose_heat_command_setpoint   # = 79   (Samsung heating ceiling)
+# Actuator shove constants (PR B) — inert until consumed; bounds LOCK the value
+input_number.moose_cool_command_setpoint   # = 61  min:61 max:61 step:1 (Samsung cooling floor)
+input_number.moose_heat_command_setpoint   # = 79  min:79 max:79 step:1 (Samsung heating ceiling)
 
 # Band thresholds (PR C as YAML vars; PR F as per-profile helpers)
 heat_on_at        # room < this  -> heat_recovery
@@ -250,12 +259,13 @@ heat_off_at       # room >= this -> stop heating
 cool_off_at       # room <= this -> stop cooling
 cool_on_at        # room >  this -> cool_recovery
 
-# Watchdog / arbitration (PR D / PR E)
-input_number.moose_max_run_minutes
-input_number.moose_minimum_progress_required          # °F over the progress window
-input_number.moose_minimum_mode_hold_minutes
-input_number.moose_opposite_mode_lockout_minutes
-input_number.moose_equipment_settle_seconds
+# Watchdog / arbitration (PR D / PR E) — proposed default values in the table below
+input_number.moose_max_run_minutes                    # 45
+input_number.moose_minimum_progress_required          # 0.5 °F toward stop threshold
+input_number.moose_minimum_progress_check_minutes     # 15
+input_number.moose_minimum_mode_hold_minutes          # 10
+input_number.moose_opposite_mode_lockout_minutes      # 20
+input_number.moose_equipment_settle_minutes           # 3
 # plus per-room latch/pending memory, e.g.
 input_text.moose_<room>_call_state          # idle|heat_recovery|cool_recovery|destrat|safety
 input_text.moose_house_arbitration_state
@@ -266,6 +276,37 @@ timer.moose_opposite_mode_lockout
 `heat_on_at < heat_off_at ≤ cool_off_at < cool_on_at` is an invariant; and all
 band thresholds must stay strictly inside the Section 3 floors (heat_on_at > 60°F
 LR runaway, > 58°F Master floor) so comfort never aliases safety.
+
+### Initial per-profile band defaults (Eric — doctrine starting values, NOT live)
+
+Documented intent only. **Not implemented in this PR.** Subject to tuning after
+live observation. PR C keeps the *current* live bands; these land with the
+comfort-profile work (PR F).
+
+| Profile | `heat_on_at` | `heat_off_at` | `cool_off_at` | `cool_on_at` | Notes |
+|---|---|---|---|---|---|
+| `eric_cold` | 58 | 61 | 64 | 66 | Coldest; Eric's default. |
+| `family_normal` | 64 | 66 | 68 | 70 | Closest to current live bands. |
+| `sleep_cold` | 58 | 61 | 64 | 66 | Mirrors `eric_cold` (room-specific application deferred). |
+| `away_relaxed` | 55 | 58 | 74 | 76 | House protection / energy, not comfort. |
+| `safety_only` | — | — | — | — | No comfort heat/cool; only Section 3 protection active. |
+
+All five satisfy `heat_on_at < heat_off_at ≤ cool_off_at < cool_on_at` and stay
+strictly above the 60°F/58°F Section 3 floors (note `away_relaxed` heat_on_at=55
+is below the LR 60°F runaway by design — it is a *protection* setpoint while away,
+still above the 58°F Master floor; Section 3 remains the absolute backstop and is
+never gated by comfort).
+
+### Watchdog / lockout default values (Eric — proposed starting values)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `equipment_settle_minutes` | 3 | After turning a mode off, wait before starting the opposite mode. |
+| `minimum_mode_hold_minutes` | 10 | Once a mode starts, do not reverse it for this long unless safety or a severe preempt applies. |
+| `opposite_mode_lockout_minutes` | 20 | After a direction stops, block the opposite direction house-wide for this long. |
+| `max_run_minutes` | 45 | Hard cap on a single recovery/destrat run → off + alert. |
+| `minimum_progress_check_minutes` | 15 | Progress window. |
+| `minimum_progress_required` | 0.5 °F | Truth must move ≥ this toward the stop threshold within the progress window, else flag stalled recovery/destrat. |
 
 ---
 
@@ -286,9 +327,13 @@ holds in all of them.
    Compute winner by priority (below). Turn the **loser's** mode `off` first,
    start `equipment_settle_delay`, then start the winner if it still qualifies.
    Loser's request becomes **pending** (remembered), not erased.
-6. **Severe out-of-band room (e.g. bedroom 81°F).** Severity = distance past the
-   band edge. A room far out of band (e.g. ≥ N°F past `cool_on_at`) outranks a
-   marginal opposite call. Bedroom 81°F wins; LR heat becomes pending.
+6. **Severe out-of-band room (e.g. bedroom 81°F).** A request is **urgent** if
+   (absolute OR margin):
+   - Cooling/too-hot: `truth ≥ 78°F` **OR** `truth ≥ cool_on_at + 4`.
+   - Heating/too-cold: `truth ≤ heat_on_at − 4` (and Section 3 owns true safety
+     floors below that).
+   An urgent request outranks a marginal opposite call. Bedroom 81°F is urgent
+   (≥78) and wins; LR heat becomes **pending**, not erased.
 7. **Active heat, urgent cool request appears.** If the new cool request's
    severity beats the running heat (and `minimum_mode_hold_minutes` has elapsed
    **or** the request is safety-severe), preempt: stop heat → settle → start
@@ -304,10 +349,19 @@ holds in all of them.
     returns to `idle` (off) immediately on the stop threshold; this can release
     a lockout timer that in turn lets a pending opposite request be re-evaluated.
 
-**Priority ordering (proposed, tunable):** `safety` (Section 3) > severity
-(distance past band edge, with a configurable preempt margin) > room priority
-(e.g. occupied bedroom at night) > current-active-mode incumbency (ties favor
-the already-running mode to avoid flapping).
+**Priority ordering (Eric — severity first, fixed priority only for ties):**
+
+1. Safety condition (Section 3 owns it).
+2. Greatest **absolute severity** outside its band (urgency rules in scenario 6).
+3. Occupied sleeping room / bedroom.
+4. Children's bedrooms.
+5. Master bedroom.
+6. Living Room / common area.
+7. Observability-only / non-control rooms.
+
+Fixed room priority (3–7) only breaks ties; it must **not** override a much more
+severe room — a bedroom at 81°F beats a mild Living Room heat demand. Incumbency
+(favor the already-running mode) is the final tie-break to avoid flapping.
 
 ---
 
@@ -416,27 +470,37 @@ Stop and re-review if any PR:
 
 ---
 
-## Open Questions for Eric
+## Decisions (answered by Eric — recorded as doctrine)
 
-1. **Shove constants — helpers or YAML constants?** Spec recommends
-   `input_number` helpers (tunable + observable + telemetry-visible). Confirm,
-   or prefer hard YAML constants for immutability?
-2. **Exact comfort bands per profile.** Final `heat_on_at` / `heat_off_at` /
-   `cool_off_at` / `cool_on_at` numbers for at least `eric_cold` and
-   `family_normal` (PR F needs these; PR C just needs the *current* bands kept).
-3. **Opposite-mode lockout duration.** What value for
-   `opposite_mode_lockout_minutes` (compressor protection vs responsiveness)?
-   And `minimum_mode_hold_minutes` / `equipment_settle_delay`?
-4. **Preempt severity.** How far past the band edge must a room be (e.g. the
-   81°F bedroom) to preempt an already-running opposite mode — a fixed °F
-   margin, and/or an absolute "always preempt above X°F"?
-5. **Destratification actuator.** Should destrat use `fan_only` only, `cool`@61
-   only, or fan-first-then-cool where fan-only fails to make progress? (Affects
-   whether destrat can ever create an opposing-compressor situation, and thus
-   how hard PR D must work.)
-6. **Room priority.** Is there a fixed room-priority order (e.g. occupied
-   bedroom at night > Living Room) for tie-breaks, or should severity alone
-   decide?
+All initial values are starting doctrine, still subject to tuning after live
+observation. **None are implemented in this PR.**
+
+1. **Shove constants → `input_number` helpers, bound-locked** (`cool` at 61,
+   `heat` at 79). Not comfort settings. Hard YAML constants are the documented
+   fallback if helpers add risk/clutter. See Helper / Variable Model.
+2. **Per-profile band defaults** recorded in the Helper / Variable Model table
+   (`eric_cold` 58/61/64/66, `family_normal` 64/66/68/70, `sleep_cold`
+   58/61/64/66, `away_relaxed` 55/58/74/76, `safety_only` none). Documented as
+   intended starting values only.
+3. **Watchdog/lockout defaults:** settle 3 min, mode-hold 10 min, opposite-mode
+   lockout 20 min, max-run 45 min, progress check 15 min, progress required
+   0.5°F. See the watchdog table.
+4. **Preempt severity = absolute OR margin:** too-hot urgent at `≥78°F` or
+   `≥ cool_on_at + 4`; too-cold urgent at `≤ heat_on_at − 4` (Section 3 owns
+   true floors). See arbitration scenario 6.
+5. **Destratification actuator = fan-first-then-cool:** Stage 1 `fan_only`
+   (10–15 min trial), Stage 2 `cool`@61 only if needed; always stop on the truth
+   threshold. **Destrat must not land before the house-wide arbiter (PR D).**
+6. **Priority = severity first, fixed order only for ties** (safety > absolute
+   severity > sleeping room > children's > Master > Living Room/common >
+   observability-only). Fixed priority never overrides a much more severe room.
+
+### Remaining items to confirm during implementation (not blockers)
+
+- Whether `sleep_cold` becomes a per-room (Master) override vs a whole-house
+  profile (deferred to PR F).
+- Exact `fan_only` "improved enough" stop signal for destrat Stage 1 (needs the
+  stratification metric defined when PR E is scoped).
 
 ---
 
