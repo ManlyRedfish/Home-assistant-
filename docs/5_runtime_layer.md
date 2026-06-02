@@ -243,6 +243,82 @@ No runtime classification change is selected in this document, and no runtime PR
 - Samsung Auto Guardrail (Section 8) and Ghost Assassin (Section 4) are both integration-anomaly gates protecting against known device misbehavior, but they disagree on whether to gate on override. Picking a consistent rule is V9 doctrine work, not a runtime change.
 - Section 14 boost release is the canonical example of a comfort-policy automation that *yields* to manual intent rather than fighting it: when the override timer goes `active`, release fires and the release path skips the climate-off command if override is still active.
 
+### 7.9 Planned Comfort-Profile and Truth-Confidence Model (NOT YET LIVE)
+
+This subsection records *planned* doctrine from
+[`comfort_band_and_truth_confidence_plan.md`](comfort_band_and_truth_confidence_plan.md)
+(accepted in PR #122). **None of it is live runtime.** It is documented here so
+the runtime boundary is explicit and future agents do not mistake the plan for
+implementation. The live control layer remains V8.3 and the live truth layer
+remains V3.1, exactly as described in §5 and §6 above.
+
+**Comfort bands, not thermostat targets.** Moose House controls with comfort
+bands / deadbands. The system holds while room truth is inside the active band
+and acts only on band exit. The commanded Samsung / mini-split setpoint is an
+actuator demand, not comfort truth — it already is in the live supervisor
+(`automations.yaml` Section 2 comments), and the planned model keeps it that
+way. Samsung's preferred 72–75°F is not comfort truth for this house.
+
+**Comfort bands are preferences; safety gates are physical protection.** Comfort
+bands are tunable household preference. Section 3 safety gates (LR runaway
+60°F, Master emergency floor 58°F) are absolute equipment protection and stay
+separate. A comfort band may never be defined as a safety gate, and a comfort
+threshold may never alias a safety floor. The 76°F ceiling is a comfort ceiling
+(see §7.8 doctrine notes), not a safety invariant.
+
+**Planned comfort profiles (single global selector first; per-room deferred):**
+
+| Profile | Intent |
+|---|---|
+| `eric_cold` | Meat-locker; coldest comfort profile; Eric's default preference. |
+| `family_normal` | Normal household comfort. Closest to the current live bands. |
+| `sleep_cold` | Sleep-window cold profile; room-specific (Master) application deferred. |
+| `away_relaxed` | House protection / energy savings, not comfort optimization. |
+| `safety_only` | Comfort bands disabled; only Section 3 emergency cutoffs and structural protection remain. |
+
+Draft band numbers in the plan doc are non-binding. A band-number change is a
+separate, evidence-gated runtime PR per [`v9_v10_goals.md`](v9_v10_goals.md) §10.
+
+**Planned truth-confidence outputs (per room, not yet built):**
+`sensor.<room>_temperature_truth_confidence` (numeric) and
+`sensor.<room>_temperature_truth_status` with the four-state ladder:
+
+| Status | Rule |
+|---|---|
+| `healthy` | 2+ valid **primary** sources (Matter / Bluetooth / SmartThings) fresh and within tolerance. |
+| `degraded` | exactly one valid primary source, or primary + fallback only. |
+| `fallback` | only Samsung/mini-split internal or held-last-good remains. **Never `healthy`.** |
+| `failed` | no usable source. |
+
+Source classes: **primary** = human-space Matter / BT / SmartThings (current
+weight 0.9–1.0); **fallback** = Samsung internal thermistor (weight 0.20,
+always biased); **experimental / observability-only** = Apollo / MSR / ESP
+temperature, DPS310, CO2, radar, pressure — these never feed the weighted value
+and never raise confidence to `healthy`, preserving the §7.7 observability
+boundary.
+
+**Three invariants that are doctrine now (runtime deferred):**
+
+1. Samsung/mini-split-only truth must never be `healthy` (today's
+   `availability` cliff counts the Samsung internal as a valid source, which is
+   the gap this model closes).
+2. An unavailable ESP/Apollo source must not equal total truth failure when
+   Matter / Bluetooth / SmartThings remain available — partial degradation must
+   not collapse into `failed` (consistent with Startup Canon §4 and §6).
+3. A stable temperature sensor must not be treated as stale merely because its
+   value did not change. Today's truth templates use `last_changed` + a 2-hour
+   `max_age`, which false-stales an unchanging-but-reporting sensor. The planned
+   correction is to use report time (`last_reported` / `last_updated`). **This
+   migration is deferred to its own runtime PR** because it changes the live
+   `availability` of every truth sensor.
+
+**Regression guardrails (this PR, docs/tests only):**
+`tests/test_comfort_band_safety_separation.py` locks the comfort-vs-safety
+separation and the 60°F/58°F floors; `tests/test_truth_confidence_model_contract.py`
+locks the four-state ladder as a pure model contract, with the
+`last_reported` freshness expectation against live config marked `xfail`
+(reason: runtime freshness migration deferred to later PR).
+
 ## 8. Runtime Change Rules
 
 Update this layer only when live implementation changes.
