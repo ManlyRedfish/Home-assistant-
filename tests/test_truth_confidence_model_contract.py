@@ -82,8 +82,9 @@ def is_report_fresh(last_changed_age_s, last_reported_age_s, max_age_s=7200):
 
 
 def is_value_change_fresh(last_changed_age_s, max_age_s=7200):
-    """The CURRENT (live) freshness rule, modelled here only to document the
-    bug the proposed model fixes. Not a target — see the xfail test below."""
+    """The OLD freshness rule (value-change time), modelled here only to
+    document the bug the report-time model fixes. Not a target; the live
+    config now uses report-time freshness (see the report-time tests below)."""
     return last_changed_age_s < max_age_s
 
 
