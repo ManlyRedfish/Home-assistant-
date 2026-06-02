@@ -82,8 +82,9 @@ def is_report_fresh(last_changed_age_s, last_reported_age_s, max_age_s=7200):
 
 
 def is_value_change_fresh(last_changed_age_s, max_age_s=7200):
-    """The CURRENT (live) freshness rule, modelled here only to document the
-    bug the proposed model fixes. Not a target — see the xfail test below."""
+    """The OLD freshness rule (value-change time), modelled here only to
+    document the bug the report-time model fixes. Not a target; the live
+    config now uses report-time freshness (see the report-time tests below)."""
     return last_changed_age_s < max_age_s
 
 
@@ -209,42 +210,45 @@ def test_plan_doc_documents_status_ladder():
 
 
 # --------------------------------------------------------------------------- #
-# Deferred runtime expectation — xfail until the freshness migration lands.
+# Runtime expectation — the freshness migration has landed (see
+# claude/truth-freshness-last-reported). These were xfail in PR #123 and are
+# now hard assertions: truth freshness is measured by report time.
 # --------------------------------------------------------------------------- #
 
-@pytest.mark.xfail(
-    reason="runtime freshness migration deferred to later PR", strict=False
-)
-def test_live_truth_templates_use_report_time_freshness():
-    """FUTURE CONTRACT (currently expected to fail).
-
-    The live truth templates in configuration.yaml should use report-time
-    freshness (last_reported / last_updated) instead of last_changed, so a
-    stable-but-reporting sensor is not false-staled. Today they use
-    last_changed, so this assertion fails and is marked xfail. When the
-    freshness-migration PR lands, this will xpass and can be promoted to a
-    hard assertion.
-    """
+def _read_config_text():
     path = os.path.join(os.path.dirname(__file__), "..", "configuration.yaml")
     if not os.path.exists(path):
         pytest.skip("configuration.yaml not found.")
     with open(path, "r", encoding="utf-8") as fh:
-        config_text = fh.read()
+        return fh.read()
+
+
+def test_live_truth_templates_use_report_time_freshness():
+    """The live truth templates use report-time freshness (last_reported /
+    last_updated) so a stable-but-reporting sensor is not false-staled."""
+    config_text = _read_config_text()
     assert "last_reported" in config_text or "last_updated" in config_text, (
-        "Truth templates should use report-time freshness (deferred runtime PR)."
+        "Truth templates must use report-time freshness (last_reported / "
+        "last_updated)."
     )
 
 
-def test_live_truth_templates_currently_use_last_changed():
-    """Documents current reality (PASSES today): live freshness is last_changed.
+def test_live_truth_freshness_clock_is_not_last_changed():
+    """Regression guard: last_changed must not be used as the freshness clock
+    for truth templates. The freshness-check shape is
+    `(now() - <state>.<clock>).total_seconds() < max_age`; that clock must be
+    report-time, never value-change time.
 
-    Paired with the xfail above, this makes the deferred migration explicit:
-    when freshness moves to report-time, update both tests together."""
-    path = os.path.join(os.path.dirname(__file__), "..", "configuration.yaml")
-    if not os.path.exists(path):
-        pytest.skip("configuration.yaml not found.")
-    with open(path, "r", encoding="utf-8") as fh:
-        config_text = fh.read()
-    assert "last_changed" in config_text, (
-        "Current runtime is expected to still use last_changed freshness."
+    Note: this asserts on configuration.yaml only. automations.yaml legitimately
+    uses climate.*.last_changed for state-duration logic (how long a unit has
+    been in a mode), which is a value-transition measurement, not freshness."""
+    config_text = _read_config_text()
+    assert ".last_changed).total_seconds()" not in config_text, (
+        "configuration.yaml truth freshness must not use last_changed as its "
+        "max_age clock; use last_reported (report-time freshness)."
+    )
+    # And the report-time clock must actually be the one wired into the
+    # freshness comparison.
+    assert ".last_reported).total_seconds()" in config_text, (
+        "configuration.yaml truth freshness must compare against last_reported."
     )

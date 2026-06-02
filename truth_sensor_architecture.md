@@ -56,6 +56,14 @@ Standard staleness threshold:
 
 Stale sensors are excluded from weighted calculations.
 
+Freshness is measured by **report time** (`last_reported`), not value-change
+time (`last_changed`). A stable sensor that keeps reporting the same temperature
+for hours is still fresh; only a sensor that has stopped reporting (or is
+`unavailable`/`unknown`, or fails value-sanity) is treated as stale. Using
+`last_changed` here would false-stale a healthy but thermally stable room. See
+`docs/comfort_band_and_truth_confidence_plan.md` and `docs/5_runtime_layer.md`
+§7.9.
+
 ---
 
 # Weighting Philosophy
