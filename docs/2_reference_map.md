@@ -26,6 +26,7 @@ hierarchy:
 - **V6 Telemetry Schema Proposal** — `v6_telemetry_schema_proposal.md` — proposed `VTherm_Launch_Data_v6` schema (planning only; V5 remains active).
 - **V6 Observability Roadmap** — `v6_observability_roadmap.md` — phase order and guardrails for V5 → V6 observability work.
 - **V8.4 LR Boost V5 Evidence Review** — `analysis/v8_4_lr_boost_v5_evidence_review.md` — tab-by-tab forensic review of Section 14 (V8.4) boost cycles in `VTherm_Launch_Data_v5` and prior versioned tabs. Verdict: effectiveness remains unmeasured; #49 close criteria not met.
+- **Comfort Band & Truth-Confidence Plan** — `comfort_band_and_truth_confidence_plan.md` — planned comfort-profile model (`eric_cold` / `family_normal` / `sleep_cold` / `away_relaxed` / `safety_only`) and graded truth-confidence ladder (`healthy` / `degraded` / `fallback` / `failed`). Planning + doctrine only; runtime deferred. Doctrine integrated into Doc 1 §5.1/§6 and Doc 5 §7.9; guardrails in `tests/test_comfort_band_safety_separation.py` and `tests/test_truth_confidence_model_contract.py`.
 - **Postmortems** — `postmortems/` — historical incidents.
 
 If a new session needs to know **which sensor feeds which truth calculation,
@@ -85,6 +86,7 @@ For the topology and routing slices Doc 2 is meant to cover, current sources are
 | V6 telemetry schema (proposed) | [`v6_telemetry_schema_proposal.md`](v6_telemetry_schema_proposal.md) | Planning only. V5 remains active. |
 | V6 observability roadmap (proposed) | [`v6_observability_roadmap.md`](v6_observability_roadmap.md) | Phase order and guardrails. |
 | V8.4 LR boost V5 evidence review | [`analysis/v8_4_lr_boost_v5_evidence_review.md`](analysis/v8_4_lr_boost_v5_evidence_review.md) | Forensic review of Section 14 boost cycles in `VTherm_Launch_Data_v5`. Verdict: effectiveness unmeasured; #49 not yet closeable. |
+| Comfort-profile + truth-confidence model (planned) | [`comfort_band_and_truth_confidence_plan.md`](comfort_band_and_truth_confidence_plan.md) | Planning + doctrine only. Comfort profiles and the `healthy/degraded/fallback/failed` truth ladder. Runtime (supervisor rewire, live `_confidence`/`_status` sensors, `last_changed`→`last_reported`) deferred to later PRs. |
 
 ## 5. Conflict rule
 
