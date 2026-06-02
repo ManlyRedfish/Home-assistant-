@@ -306,18 +306,24 @@ boundary.
    Matter / Bluetooth / SmartThings remain available — partial degradation must
    not collapse into `failed` (consistent with Startup Canon §4 and §6).
 3. A stable temperature sensor must not be treated as stale merely because its
-   value did not change. Today's truth templates use `last_changed` + a 2-hour
-   `max_age`, which false-stales an unchanging-but-reporting sensor. The planned
-   correction is to use report time (`last_reported` / `last_updated`). **This
-   migration is deferred to its own runtime PR** because it changes the live
-   `availability` of every truth sensor.
+   value did not change. **LANDED:** the live truth templates now measure
+   freshness by report time (`last_reported`) instead of value-change time
+   (`last_changed`), so an unchanging-but-reporting sensor is no longer
+   false-staled. The 2-hour (`max_age = 7200`) temperature/humidity window and
+   the 3-hour (`10800`) CO2 window are unchanged; only the freshness clock
+   moved. `last_updated` was rejected as the clock because it also fails to
+   advance when a stable sensor reports an unchanged value with unchanged
+   attributes. `automations.yaml` still uses `climate.*.last_changed` for
+   state-duration (how long a unit has held a mode) — that is value-transition
+   measurement, not reporting freshness, and is correctly left unchanged.
 
-**Regression guardrails (this PR, docs/tests only):**
+**Regression guardrails:**
 `tests/test_comfort_band_safety_separation.py` locks the comfort-vs-safety
 separation and the 60°F/58°F floors; `tests/test_truth_confidence_model_contract.py`
-locks the four-state ladder as a pure model contract, with the
-`last_reported` freshness expectation against live config marked `xfail`
-(reason: runtime freshness migration deferred to later PR).
+locks the four-state ladder as a pure model contract and asserts the live
+config uses report-time freshness; `tests/test_truth_freshness_report_time.py`
+locks the freshness clock (config uses `last_reported`, never `last_changed`;
+`automations.yaml` untouched; CO2/temperature windows and weights preserved).
 
 ## 8. Runtime Change Rules
 
