@@ -77,3 +77,25 @@ If architecture assumptions are unclear:
 ```bash
 python -m pytest tests/
 ```
+
+## Docs-only pull request guardrail
+
+Pull requests intended to change documentation only should use the exact GitHub label `docs-only`. Apply the label from the pull request sidebar; the guard re-runs when the label is added or removed.
+
+When `docs-only` is present, CI obtains the complete changed-file list from the GitHub API and checks it using trusted code from the pull request's base branch. The guard never checks out or executes code from the pull request head.
+
+The guard permits Markdown documentation and documentation assets, including images stored beneath `docs/**`.
+
+It blocks files and paths that can affect Home Assistant runtime behavior, executable logic, tests, CI, configuration, automations, or dependencies, including:
+
+- `*.yaml` and `*.yml`
+- `*.py`, `*.ps1`, and `*.sh`
+- `configuration.yaml`, `automations.yaml`, `scripts.yaml`, `scenes.yaml`, and `secrets.yaml`
+- `custom_components/**`, `packages/**`, and `blueprints/**`
+- `tools/**` and `tests/**`
+- `.github/workflows/**`
+- dependency and executable configuration such as `requirements*.txt`, `pyproject.toml`, lock files, and `Dockerfile`
+
+If a docs-only PR touches any blocked path, the failed check prints every prohibited changed path. Remove the `docs-only` label or move runtime changes to a normal PR.
+
+Normal pull requests without the `docs-only` label are unaffected. This guard is a repository-safety scope check only and does not replace normal pytest CI.
