@@ -1,6 +1,6 @@
 # =============================================================================
 # MOOSE HOUSE CLIMATE — COMPLETE CONFIGURATION.YAML
-# Last Updated: May 6, 2026
+# Last Updated: June 5, 2026
 # Architecture: V3.1 — Audited Truth / Smoothed / Control
 # =============================================================================
 #
@@ -85,11 +85,13 @@
 #   - sensor.lilly_temp_temperature_2           (Lilly,  Matter, w=1.0)
 #   - sensor.lilly_temp_humidity_2              (Lilly,  Matter, w=1.0)
 #
-# REMOVED — disabled/no-state Living Room secondary SwitchBot Hub 2
-#           transport (telemetry col LR_Temp/Hum_RoomProbe_BT_Secondary);
-#           still logged for observability, no longer in truth:
-#   - sensor.hub_2_tempsensor_temperature       (LR temp)
-#   - sensor.hub_2_humisensor_humidity          (LR humidity)
+# REMOVED — Living Room Matter route (per the live HA entity registry),
+#           disabled_by:user with no live state, excluded from truth. It is
+#           historically logged under telemetry cols
+#           LR_Temp/Hum_RoomProbe_BT_Secondary — a historical export label that
+#           does NOT make this a Bluetooth route. Telemetry cols are preserved:
+#   - sensor.hub_2_tempsensor_temperature       (LR temp, Matter, disabled)
+#   - sensor.hub_2_humisensor_humidity          (LR humidity, Matter, disabled)
 #
 # CONTRIBUTOR COUNTS AFTER SYNC (verified live 2026-06-05):
 #   Living Room 3 · Master 4 · Lincoln 4 (unchanged) · Lilly 4
@@ -213,7 +215,7 @@ template:
       #     gates (meatlocker/overcool), and the smoothed control sensor.
       #     Without this, the supervisor loses its primary first-floor input.
       #
-      # ACTIVE SENSORS (V3.1; secondary route pulled 2026-06-05 live-sync):
+      # ACTIVE SENSORS (V3.1; disabled Matter route pulled 2026-06-05 live-sync):
       #   hub_temperature          (SwitchBot Hub 2 — BT)        w=1.0   [BT]
       #   hub_temperature_2        (SwitchBot Hub 2 — ST)        w=0.9   [ST]
       #   living_room_air_temperature  (Samsung internal, -10°F) w=0.20
@@ -221,17 +223,20 @@ template:
       #
       # TRANSPORT NOTE: hub_temperature [BT] and hub_temperature_2 [ST] are
       #   alternate transports of the SAME physical SwitchBot room probe, not
-      #   independent thermometers (telemetry cols LR_Temp_RoomProbe_BT_Primary /
-      #   _ST). Samsung internal is separate hardware (low weight, biased).
-      #   Full inventory: docs/2_reference_map.md §7. (Older comments labeled
-      #   hub_temperature_2 "WonderLabs Hub"; the telemetry ST label is canonical.)
+      #   independent thermometers. The room probe's Matter transport is the
+      #   disabled route listed under REMOVED below. Samsung internal is separate
+      #   hardware (low weight, biased). Full inventory: docs/2_reference_map.md §7.
+      #   AUTHORITY: live HA registry/platform metadata defines transport identity;
+      #   automations.yaml telemetry column names are historical/export labels.
       #
       # REMOVED:
-      #   hub_2_tempsensor_temperature — disabled/no-state secondary SwitchBot
-      #     Hub 2 transport (telemetry col LR_Temp_RoomProbe_BT_Secondary);
-      #     pulled from truth + active-count in the 2026-06-05 live-sync. The
-      #     telemetry column still logs it (observability only).
-      #   hub_2_humisensor_humidity   — humidity counterpart of the above; pulled.
+      #   hub_2_tempsensor_temperature — Living Room MATTER route per the live HA
+      #     entity registry; disabled_by:user, has no live state, excluded from
+      #     truth + active-count (pulled in the 2026-06-05 live-sync). Historically
+      #     logged under telemetry column LR_Temp_RoomProbe_BT_Secondary — a
+      #     historical label that does NOT make this a Bluetooth route.
+      #   hub_2_humisensor_humidity   — humidity counterpart; same disabled Matter
+      #     route, no live state (telemetry col LR_Hum_RoomProbe_BT_Secondary).
       #   living_room_temperature_temperature — phantom, never existed (V3.1)
       #   living_room_msr_dps310_temperature  — hardware failure (V3.1)
       # =========================================================

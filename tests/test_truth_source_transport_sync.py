@@ -16,8 +16,9 @@ Verified-live facts being locked (see configuration.yaml "LIVE-SYNC CHANGES
   * Lilly truth includes the Matter transport copy of the Lilly room probe:
         sensor.lilly_temp_temperature_2            (temperature)
         sensor.lilly_temp_humidity_2               (humidity)
-  * The disabled/no-state Living Room secondary SwitchBot Hub 2 transport is
-    EXCLUDED from active truth:
+  * The disabled Living Room Matter route (Matter per the live HA entity
+    registry; disabled_by:user, no live state; historically logged under the
+    telemetry column name LR_*_RoomProbe_BT_Secondary) is EXCLUDED from truth:
         sensor.hub_2_tempsensor_temperature        (temperature)
         sensor.hub_2_humisensor_humidity           (humidity)
   * Active temperature/humidity contributor counts:
@@ -145,10 +146,10 @@ def test_lilly_truth_includes_matter_temp_and_humidity():
 
 
 # --------------------------------------------------------------------------- #
-# Exclusion: disabled Living Room secondary route is out of active truth
+# Exclusion: disabled Living Room Matter route is out of active truth
 # --------------------------------------------------------------------------- #
 
-def test_living_room_truth_excludes_disabled_secondary_routes():
+def test_living_room_truth_excludes_disabled_matter_route():
     sensors = _template_sensors()
 
     temp = sensors[LR_T]
@@ -164,7 +165,7 @@ def test_living_room_truth_excludes_disabled_secondary_routes():
 
 def test_living_room_diagnostics_exclude_disabled_route():
     """The Contributors list and Active Count diagnostic must also drop the
-    disabled secondary route so the live count of 3 is reported."""
+    disabled Matter route so the live count of 3 is reported."""
     sensors = _template_sensors()
 
     contributors = sensors["Living Room Temperature Truth Contributors"]["state"]
@@ -209,7 +210,7 @@ def test_new_matter_routes_weighted_one_point_zero():
 def test_existing_weights_unchanged_for_synced_rooms():
     """Guard the 'do not redesign weighting' rule: pre-existing source weights
     in the touched rooms are untouched (Samsung internal low-weight; ST/legacy
-    secondary at 0.9; primaries at 1.0)."""
+    transports at 0.9; primaries at 1.0)."""
     sensors = _template_sensors()
 
     # Samsung internal stays low-weight everywhere it was.
@@ -264,5 +265,5 @@ def test_reference_map_documents_transports_and_matter_entities():
         "sensor.lilly_temp_humidity_2",
     ):
         assert entity in doc, f"Reference map missing synced Matter entity {entity}."
-    # The removed Living Room secondary route is documented as excluded.
+    # The excluded Living Room Matter route is documented.
     assert "hub_2_tempsensor_temperature" in doc

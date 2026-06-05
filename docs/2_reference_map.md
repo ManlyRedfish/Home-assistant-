@@ -85,7 +85,7 @@ For the topology and routing slices Doc 2 is meant to cover, current sources are
 | Live truth/control/telemetry versions | [`5_runtime_layer.md`](5_runtime_layer.md) §5, §6 | V8.3 control, V3.1 truth, V5 telemetry. |
 | Helper inventory (live) | [`5_runtime_layer.md`](5_runtime_layer.md) §6.5 + `automations.yaml` header | Helpers required for runtime. |
 | Sensor exclusions (MSR-2 DPS310 etc.) | `configuration.yaml` Sections 3–9 (live source); summarized in [`5_runtime_layer.md`](5_runtime_layer.md) §7.5 | Live config wins. |
-| Physical-device / source-path (transport) inventory | §7 below; sourced from `automations.yaml` Section 1 telemetry columns + `configuration.yaml` Sections 3–6 | Per-room BT/ST/Matter transports of one physical probe. |
+| Physical-device / source-path (transport) inventory | §7 below; live HA registry authoritative for transport identity; `configuration.yaml` Sections 3–6 for truth membership; `automations.yaml` Section 1 for historical telemetry column names | Per-room BT/ST/Matter transports of one physical probe. |
 | Telemetry worksheet / column names | `automations.yaml` Section 1 (`vtherm_mega_tracker_v5`) | Worksheet `VTherm_Launch_Data_v5`. |
 | Operator-suppressed window classification | [`telemetry_confounders.md`](telemetry_confounders.md) | Read before joining columns to behavior. |
 | Apollo MSR observability validation (proposed) | [`apollo_msr_observability_checklist.md`](apollo_msr_observability_checklist.md) | Observability-only; not a control authority. The single documented narrow exception is the legacy Lincoln fan-only destratification path (`climate.lincoln_air` `fan_only`/`off` only); locked by `tests/test_msr_observability_boundary.py`. |
@@ -140,12 +140,24 @@ this inventory:
   observability only; the DPS310 units are hardware-failed and excluded.
 - **Office anchor** = Netatmo; **Dining** = Nest. Different devices, not SwitchBot.
 
-The transport identity (BT / ST / Matter) is **canonically defined by the
-telemetry column names** in `automations.yaml` Section 1
-(`*_RoomProbe_BT`, `*_RoomProbe_ST`, `*_RoomProbe_Matter`,
-`*_HVAC_Samsung`). Some older inline `configuration.yaml` comments use legacy
-hardware labels ("WonderLabs Hub", "Wyze cam sensor") that predate the
-transport taxonomy; where they disagree, **the telemetry transport label wins**.
+**Authority for transport identity:**
+
+- **Live HA registry / platform metadata is authoritative** for a route's current
+  integration / transport identity — whether a route is Matter, Bluetooth, or
+  SmartThings, plus its `disabled_by` / availability state.
+- **`automations.yaml` telemetry column names** (`*_RoomProbe_BT`, `*_RoomProbe_ST`,
+  `*_RoomProbe_Matter`, `*_HVAC_Samsung`) document **historical / export naming**,
+  not current platform identity.
+- **Where a telemetry label disagrees with the live registry, preserve the
+  telemetry field name** (it is a stable observability column) **but document the
+  live registry identity.** The clearest example is the Living Room disabled route
+  (§7.3): the live registry identifies it as **Matter**, while its historical
+  telemetry column is named `LR_*_RoomProbe_BT_Secondary`. The column name does
+  not make the route Bluetooth.
+
+Some older inline `configuration.yaml` comments also use legacy hardware labels
+("WonderLabs Hub", "Wyze cam sensor") that predate this taxonomy; treat them as
+historical, not authoritative.
 
 ### 7.2 Current truth model (and the deferred question)
 
@@ -173,12 +185,16 @@ weighted contributor.
 |---|---|---|---|---|
 | Bluetooth (BT, primary) | `sensor.hub_temperature` | `sensor.hub_humidity` | ✅ | 1.0 |
 | SmartThings (ST) | `sensor.hub_temperature_2` | `sensor.hub_humidity_2` | ✅ | 0.9 |
-| BT secondary (disabled/no-state) | `sensor.hub_2_tempsensor_temperature` | `sensor.hub_2_humisensor_humidity` | ❌ removed 2026-06-05 | — |
+| Matter (disabled, per live registry) | `sensor.hub_2_tempsensor_temperature` | `sensor.hub_2_humisensor_humidity` | ❌ excluded 2026-06-05 | — |
 | Samsung internal | `sensor.living_room_air_temperature` | `sensor.living_room_air_humidity` | ✅ | 0.20 / 0.25 |
 
-The disabled secondary route is still emitted to telemetry
-(`LR_Temp/Hum_RoomProbe_BT_Secondary`) for observability; it is no longer a
-truth contributor or counted in `sensor.living_room_temperature_truth_active_count`.
+`sensor.hub_2_tempsensor_temperature` / `sensor.hub_2_humisensor_humidity` are the
+Living Room **Matter route in the live HA entity registry**. They are historically
+logged under the telemetry column name `LR_*_RoomProbe_BT_Secondary` — a historical
+label that does **not** redefine the route as Bluetooth. The route is
+`disabled_by:user`, has no live state, and is excluded from truth and from
+`sensor.living_room_temperature_truth_active_count`. The telemetry column name is
+preserved as a stable observability field.
 
 **Master Bedroom** — physical probe: SwitchBot I/O Meter (7C3F). Active temp contributors: **4**.
 
@@ -237,7 +253,8 @@ telemetry columns:
 - **2026-06-05** — Repo ↔ live truth-source sync. Added Master Matter
   (`master_bedroom_temp_temperature_3`, `master_bedroom_temp_humidity_3`) and
   Lilly Matter (`lilly_temp_temperature_2`, `lilly_temp_humidity_2`) to weighted
-  truth (w=1.0). Removed the disabled Living Room secondary route
-  (`hub_2_tempsensor_temperature`, `hub_2_humisensor_humidity`) from truth +
-  active count. Counts after sync: Living Room 3 · Master 4 · Lincoln 4 · Lilly 4.
+  truth (w=1.0). Excluded the disabled Living Room Matter route — per the live HA
+  registry — (`hub_2_tempsensor_temperature`, `hub_2_humisensor_humidity`,
+  `disabled_by:user`, no live state) from truth + active count. Counts after
+  sync: Living Room 3 · Master 4 · Lincoln 4 · Lilly 4.
   Locked by `tests/test_truth_source_transport_sync.py`.
