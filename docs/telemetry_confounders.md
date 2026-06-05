@@ -185,6 +185,11 @@ are:
 
 - Current `VTherm_Launch_Data_v5` / `VTherm_Launch_Data_v5_5` rows land at
   15-minute boundaries (`:00`, `:15`, `:30`, `:45`).
+- V5.5 rows include direct supervisor/manual-override observability:
+  `Supervisor_Enabled`, `Manual_Override_State`, and
+  `Manual_Override_Remaining_Sec`. `Supervisor_Enabled` is sourced from the
+  verified live automation entity `automation.v7_5_main_supervisor`; do not
+  infer the entity id from the YAML `id:` alone.
 - An annotation **applies to any telemetry row whose timestamp overlaps the
   `[start_local, end_local]` window**.
 - If only `start_local` is known (point annotation), join the annotation to the
@@ -218,7 +223,9 @@ V8.5 provenance logger (`automations.yaml` Section 15,
 provenance log tags each tracked HVAC state/setpoint change with an
 `origin_kind` (`manual_user`, `automation_or_script`,
 `integration_or_device`, `system_restore`, `unknown`) derived from
-`trigger.to_state.context`. See
+`trigger.to_state.context`. It also observes enable/disable transitions on
+`automation.v7_5_main_supervisor` so operator-suppressed windows have both
+wide-row state and event-level provenance. See
 [`docs/hvac_provenance_logger_design.md`](hvac_provenance_logger_design.md)
 for the schema and classification rules, and
 [`docs/operator_annotation_design.md`](operator_annotation_design.md) §4.0

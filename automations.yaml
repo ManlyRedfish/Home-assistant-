@@ -87,13 +87,19 @@
 #
 #     V5.5 NOTE (issue #62, observability-only):
 #       v5.5 is a wide-table interim schema that extends V5 with Section 14
-#       boost-state observability columns (sub-block 14 below). It preserves
-#       the V5 row model and column conventions; v5.5 begins the Section 14
-#       observability era while v5 remains historical and unchanged. The
-#       future event-oriented telemetry work is V6 — this is not V6.
+#       boost-state observability columns (sub-block 14 below) plus explicit
+#       Section 2 / manual-override provenance context (sub-block 15 below).
+#       It preserves the V5 row model and column conventions; v5.5 begins the
+#       Section 14 observability era while v5 remains historical and unchanged.
+#       The future event-oriented telemetry work is V6 — this is not V6.
+#
+#     VERIFIED RUNTIME ENTITY IDS (2026-06-05 repo/live-doc audit):
+#       Main supervisor automation entity is automation.v7_5_main_supervisor.
+#       Do not derive this from the YAML id alone; keep this explicit because
+#       Home Assistant automation entity_ids can diverge from YAML ids.
 #
 #     ⚠️  DEPLOYMENT: the live Google Sheets worksheet header row for
-#       VTherm_Launch_Data_v5_5 must include the new sub-block-14 columns
+#       VTherm_Launch_Data_v5_5 must include the new sub-block-14/15 columns
 #       (in the order they appear below) before the first export tick after
 #       this change ships, otherwise rows will be misaligned. The previous
 #       VTherm_Launch_Data_v5 worksheet remains as historical-only evidence
@@ -298,6 +304,25 @@
         Section14_Truth_Available: >-
           {% set v = states('sensor.living_room_temperature_truth') %}
           {% if v in ['unknown', 'unavailable'] %}false{% elif v | float(none) is none %}false{% else %}true{% endif %}
+
+        # 15. SUPERVISOR / MANUAL OVERRIDE OBSERVABILITY (v5.5)
+        # Observability-only. These fields exist to classify operator-suppressed
+        # experiments and manual comfort-intent windows after the fact. They are
+        # not read by control automations and do not affect truth, thresholds,
+        # setpoints, Section 2, Section 3, or Section 14 behavior.
+        # Verified live main-supervisor entity_id: automation.v7_5_main_supervisor.
+        Supervisor_Enabled: >-
+          {% set v = states('automation.v7_5_main_supervisor') %}
+          {% if v in ['unknown', 'unavailable'] %}{% elif v == 'on' %}true{% else %}false{% endif %}
+        Manual_Override_State: >-
+          {% set v = states('timer.manual_hvac_override') %}
+          {{ '' if v in ['unknown', 'unavailable'] else v }}
+        Manual_Override_Remaining_Sec: >-
+          {% set t = states('timer.manual_hvac_override') %}
+          {% set finishes = state_attr('timer.manual_hvac_override', 'finishes_at') %}
+          {% if t == 'active' and finishes not in [none, 'unknown', 'unavailable'] %}
+          {{ [((as_datetime(finishes) - now()).total_seconds()) | int, 0] | max }}
+          {% else %}{% endif %}
 
 
 # =============================================================================
@@ -1762,6 +1787,12 @@
     - platform: state
       entity_id: timer.manual_hvac_override
       id: override_state
+    # Observes operator/admin enable-disable transitions of the live Section 2
+    # supervisor. Verified runtime entity_id: automation.v7_5_main_supervisor.
+    # Forensic-only; does not turn the supervisor on/off or influence control.
+    - platform: state
+      entity_id: automation.v7_5_main_supervisor
+      id: supervisor_enabled_state
     - platform: state
       entity_id: input_boolean.lr_heating_recovery_boost_active
       id: boost_state
@@ -1860,6 +1891,7 @@
           {% set m = now().minute %}
           {% set ts = trigger.to_state.state if trigger.to_state is not none else '' %}
           {% if trigger.id == 'spi_last_triggered' %}v9_sleep_priority_interlock
+          {% elif trigger.entity_id == 'automation.v7_5_main_supervisor' %}v7_5_main_supervisor
           {% elif ok != 'automation_or_script' %}
           {% elif trigger.entity_id == 'timer.manual_hvac_override' and ts == 'active' %}v7_5_waf_manual_override
           {% elif trigger.entity_id == 'input_boolean.lr_heating_recovery_boost_active' and ts == 'on' %}v8_4_lr_heating_recovery_boost_engage
