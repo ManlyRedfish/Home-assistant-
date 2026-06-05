@@ -1,0 +1,81 @@
+# Deferred-Until-Telemetry Register
+
+**Doc Date:** 2026-06-05
+**Document Role:** Canonical register for Moose House proposals and runtime
+changes that are deferred pending telemetry, blocked on doctrine or dependency,
+or retired with explicit reopen conditions.
+**Status:** Living documentation. Update only when the owning source-of-truth
+issue or doctrine document changes a gate, resolves a gate, or retires/reopens
+an item.
+**Scope:** Documentation only. This register does not change Home Assistant
+runtime behavior, YAML, Python, tests, tools, workflows, dependencies, helpers,
+thresholds, setpoints, truth weights, telemetry schema, or safety gates.
+
+This register is a tripwire against premature implementation. It is **not** a
+roadmap, priority list, implementation queue, or authorization surface. Runtime
+work must never be attached directly to this register.
+
+## Current issue and guardrail state reviewed
+
+Reviewed on 2026-06-05:
+
+- PR #131, "Add secure CI guardrail for docs-only pull requests," is still open
+  and has not merged. This register therefore does not rely on, recreate,
+  modify, or duplicate that guardrail.
+- The repository label list does not currently expose an exact `docs-only`
+  label. Existing issue labels include `documentation`, `observability`,
+  `diagnostic`, and related defaults.
+- Issue #87, Sleep Priority Interlock doctrine classification, remains open.
+- Issue #88, Sleep Priority Interlock observability / provenance hook, is closed
+  by PR #98. The observer dependency is complete; the remaining SPI evidence
+  gate is accumulation and review of at least three real SPI fires.
+- Issue #89, Ghost Assassin vs. Samsung Auto Guardrail doctrine, remains open.
+- Issue #91, Section 14 supervisor / boost collision quantifier, remains open.
+- Issue #92, this register, remains open until this docs-only PR lands.
+
+## Register rules
+
+1. An item remains blocked until **every** named gate in this register and its
+   owning source-of-truth document is satisfied.
+2. A single complaint, unusual temperature, unusual setpoint, or isolated
+   anecdote does not satisfy a telemetry gate.
+3. Operator-directed windows and windows where the supervisor is disabled must
+   be excluded from autonomous-controller evidence.
+4. Meeting a gate does **not** authorize direct implementation.
+5. Once all gates are met, the item becomes eligible only for forensic review,
+   doctrine update, regression-appendix review, and a separately scoped
+   implementation issue or pull request.
+6. Runtime work must never be attached directly to this register.
+7. The register assigns no implementation priority.
+
+## Explicit exclusions
+
+This register does not cover or authorize:
+
+- routine deadband retuning;
+- safety-floor weakening;
+- truth-weight changes;
+- automatic AI control;
+- runtime implementation;
+- telemetry-to-control feedback;
+- any automation reading `hvac_provenance_log` or `supervisor_state_log`.
+
+Deadband changes retain their separate evidence and doctrine path under
+[`v9_v10_goals.md`](v9_v10_goals.md) §10.
+
+## Register
+
+| Deferred or retired item | Classification | Current gate | Evidence or decision required | Owning issue | Source-of-truth document | What happens after the gate is satisfied | Last reviewed |
+|---|---|---|---|---|---|---|---|
+| Targeted Pre-Chill: Master cooling shove to 61°F, Turbo/high fan, approximately 17:00 pre-occupancy start | `DEFERRED — TELEMETRY` | Repeated forensic notes must identify a Master pre-occupancy thermal-mass failure that is not adequately handled by the existing 18:00–06:00 Master cooling deadband. | At least the forensic recurrence required by the regression appendix for anecdote-driven YAML, with the failure classified as the same Master pre-occupancy thermal-mass mode and no existing branch responsible. | #92 | [`6_proposals.md`](6_proposals.md) Targeted Pre-Chill; [`3_regression_appendix.md`](3_regression_appendix.md) §4.12 | Eligible only for forensic review, doctrine review, regression-appendix review, and a separately scoped proposal/implementation issue. No implementation is proposed here. | 2026-06-05 |
+| Multi-head capacity arbitration | `DEFERRED — TELEMETRY` | Telemetry must demonstrate genuine room starvation or capacity contention under load. | Live telemetry and operations review must show repeatable starvation, conflict, or capacity contention that simpler doctrine cannot resolve. Simultaneous calls alone do not prove starvation. | #92 | [`3_regression_appendix.md`](3_regression_appendix.md) §4.5 | Eligible only for doctrine and regression review before any separately scoped runtime issue. | 2026-06-05 |
+| New manual-vs-policy or cross-mode arbitration beyond the already identified ambiguous interlocks | `DEFERRED — TELEMETRY` | Provenance plus telemetry must show repeated cross-mode contention that cannot be explained by the supervisor's normal mode-flip cadence or an operator-directed window. | The evidence must identify the targeted conflict class and include a doctrine clarification of the arbiter's authority over manual intent. This is distinct from the already identified ambiguous interlocks in [`5_runtime_layer.md`](5_runtime_layer.md) §7.8, which remain doctrine questions on their own terms. | #92 | [`3_regression_appendix.md`](3_regression_appendix.md) §4.18; [`5_runtime_layer.md`](5_runtime_layer.md) §7.8 | Eligible only for doctrine clarification, regression review, and a separately scoped issue if the conflict recurs outside excluded windows. | 2026-06-05 |
+| Apollo MSR promotion into control beyond the documented Lincoln fan-only exception | `BLOCKED — DOCTRINE` | The current observability-only boundary remains sovereign. Any control use beyond the Lincoln fan-only exception requires a doctrine update, a matching explicit allow-list update in `tests/test_msr_observability_boundary.py`, and evidence that the specific entity is stable and useful. | The specific entity must be observed as reliable and useful; the doctrine must approve the exact control use; the boundary test allow-list must be updated in the same separately scoped PR. | #92 | [`apollo_msr_observability_checklist.md`](apollo_msr_observability_checklist.md) | Eligible only for a separate doctrine-and-test PR. This register does not promote any MSR entity into control. | 2026-06-05 |
+| Comfort survey as a Home Assistant control mechanism | `RETIRED — REOPEN ONLY IF` | Reopen only if the survey is strictly forensic annotation, write-only to a Sheets tab, never read by HA, and never gates any automation. | The forbidden-path discipline from operator annotations must be preserved without modification. Surveys must not become a control-loop input. | #92 | [`3_regression_appendix.md`](3_regression_appendix.md) §4.13 | Eligible only for forensic-annotation design review. It remains forbidden as a control mechanism. | 2026-06-05 |
+| Autonomous AI comfort control | `RETIRED — REOPEN ONLY IF` | Reopen only if provenance covers every climate entity, every safety surface, and every season-mode change for at least one full season; V10 diagnosis has produced a labeled forensic archive; Eric's deadband contract is preserved; and a separate case for control authority beyond V9 deadbands exists. | The prohibition against autonomous HVAC control remains intact. Diagnosis surfaces may help classify forensic windows; they must not command climate state. | #92 | [`3_regression_appendix.md`](3_regression_appendix.md) §4.19; [`v9_v10_goals.md`](v9_v10_goals.md) V10 non-goals and future-intelligence sections | Eligible only for doctrine debate after all reopen conditions are met. This register does not soften the prohibition. | 2026-06-05 |
+| Predictive setpoint control | `RETIRED — REOPEN ONLY IF` | Same algorithmic-control reopen gate: full-season complete provenance, V10 labeled forensic archive, preserved deadband contract, and separately documented case for control authority beyond V9 deadbands. | Predictive setpoints remain algorithmic control, not diagnosis. They cannot be introduced from telemetry curiosity or isolated comfort complaints. | #92 | [`3_regression_appendix.md`](3_regression_appendix.md) §4.19; [`v9_v10_goals.md`](v9_v10_goals.md) V10 non-goals and future-intelligence sections | Eligible only for doctrine and regression review after the full algorithmic-control gate is satisfied. | 2026-06-05 |
+| ML season switching | `RETIRED — REOPEN ONLY IF` | Same algorithmic-control reopen gate: full-season complete provenance, V10 labeled forensic archive, preserved deadband contract, and separately documented case for control authority beyond V9 deadbands. | ML season switching would alter control authority and therefore remains barred until the algorithmic-control reopen conditions are met. | #92 | [`3_regression_appendix.md`](3_regression_appendix.md) §4.19; [`v9_v10_goals.md`](v9_v10_goals.md) V10 non-goals and future-intelligence sections | Eligible only for doctrine and regression review after all reopen conditions are met. | 2026-06-05 |
+| Event-driven decoupled control loops | `DEFERRED — TELEMETRY` | The V6 event-oriented telemetry schema must land and produce enough evidence to support separating or replacing existing tick-based control surfaces. | V6 remains a planning target, not live runtime. Evidence must come from the landed event-oriented observability layer before any control-loop separation or replacement is scoped. | #92 | [`v6_observability_roadmap.md`](v6_observability_roadmap.md); [`v6_telemetry_schema_proposal.md`](v6_telemetry_schema_proposal.md); [`v9_v10_goals.md`](v9_v10_goals.md) §2.4 | Eligible only for forensic review and a separately scoped doctrine/runtime proposal after V6 evidence exists. | 2026-06-05 |
+| Section 2 latch consult against Section 14 boost | `BLOCKED — DEPENDENCY` | Issue #91 must produce at least four weeks of data, measurable collision frequency, median and p95 collision reporting, and the required source-lineage update. | The quantifier must show collision recurrence at a measurable rate. After that evidence exists, the next action is a separate doctrine decision and separately scoped runtime PR. | #91 | [`3_regression_appendix.md`](3_regression_appendix.md) §4.17; [`v9_v10_goals.md`](v9_v10_goals.md) §2.2; [`comfort_failure_forensics.md`](comfort_failure_forensics.md) §8.3 | Eligible only for doctrine decision after #91 closes with the required evidence. The latch consult is not implemented here. | 2026-06-05 |
+| Ghost Assassin / Samsung Auto Guardrail runtime alignment | `BLOCKED — DOCTRINE` | Issue #89 must select doctrine for whether integration-anomaly gates yield to `timer.manual_hvac_override`. | The register does not pick the doctrine. Once #89 selects a rule, the automation on the losing side of the doctrine comparison may receive its own separately scoped runtime PR. | #89 | [`5_runtime_layer.md`](5_runtime_layer.md) §7.8; [`v9_v10_goals.md`](v9_v10_goals.md) Safety Gate Doctrine / integration-anomaly discussion | Eligible only for the loser-side runtime-alignment issue/PR after the doctrine decision lands. | 2026-06-05 |
+| Sleep Priority Interlock runtime change | `BLOCKED — DOCTRINE + EVIDENCE` | Issue #87 must select SPI's doctrinal position, and at least three real SPI fires must be captured and reviewed. Issue #88 is complete because PR #98 landed the SPI provenance observer. | The observer dependency is complete; the remaining evidence gate is accumulation and review of at least three real fires in the provenance surface. No SPI runtime change is proposed. | #87; #88 | [`5_runtime_layer.md`](5_runtime_layer.md) §7.8; [`v9_v10_goals.md`](v9_v10_goals.md) §2.3; [`3_regression_appendix.md`](3_regression_appendix.md) §4.18 | Eligible only for doctrine selection after real-fire review, followed by any separately scoped runtime issue if the chosen doctrine requires one. | 2026-06-05 |
