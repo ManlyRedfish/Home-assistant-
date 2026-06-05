@@ -1,8 +1,14 @@
 # Doc 2 / Moose House Climate Reference Map
 
-**Canon Date:** 2026-05-06
+**Canon Date:** 2026-06-05
 **Document Role:** Reference Map — canonical routing entry point.
 **Status:** Index. Update when topology, sensor naming, source precedence, or entity routing materially changes.
+
+> **2026-06-05 live-sync:** §7 (Physical-device / source-path inventory) added,
+> capturing the per-room Bluetooth / SmartThings / Matter transport map and the
+> repo↔live truth-source sync (Master + Lilly Matter routes restored to truth;
+> the disabled Living Room secondary route excluded). Entity-source sync only —
+> the statistical truth model is unchanged.
 
 ---
 
@@ -79,6 +85,7 @@ For the topology and routing slices Doc 2 is meant to cover, current sources are
 | Live truth/control/telemetry versions | [`5_runtime_layer.md`](5_runtime_layer.md) §5, §6 | V8.3 control, V3.1 truth, V5 telemetry. |
 | Helper inventory (live) | [`5_runtime_layer.md`](5_runtime_layer.md) §6.5 + `automations.yaml` header | Helpers required for runtime. |
 | Sensor exclusions (MSR-2 DPS310 etc.) | `configuration.yaml` Sections 3–9 (live source); summarized in [`5_runtime_layer.md`](5_runtime_layer.md) §7.5 | Live config wins. |
+| Physical-device / source-path (transport) inventory | §7 below; sourced from `automations.yaml` Section 1 telemetry columns + `configuration.yaml` Sections 3–6 | Per-room BT/ST/Matter transports of one physical probe. |
 | Telemetry worksheet / column names | `automations.yaml` Section 1 (`vtherm_mega_tracker_v5`) | Worksheet `VTherm_Launch_Data_v5`. |
 | Operator-suppressed window classification | [`telemetry_confounders.md`](telemetry_confounders.md) | Read before joining columns to behavior. |
 | Apollo MSR observability validation (proposed) | [`apollo_msr_observability_checklist.md`](apollo_msr_observability_checklist.md) | Observability-only; not a control authority. The single documented narrow exception is the legacy Lincoln fan-only destratification path (`climate.lincoln_air` `fan_only`/`off` only); locked by `tests/test_msr_observability_boundary.py`. |
@@ -105,3 +112,132 @@ Update Doc 2 when:
 - The Reference Map's authoritative-source link list (§4) needs a new row.
 
 Do not update Doc 2 merely to improve prose. Doc 2 is an index, not a narrative.
+
+## 7. Physical-device / source-path inventory (per-room transports)
+
+**Last synced:** 2026-06-05 (repo ↔ live truth-source sync).
+
+### 7.1 The transport principle (read this first)
+
+Each occupied room is monitored by **one physical SwitchBot room probe**. That
+single probe reaches Home Assistant over **multiple transports**:
+
+- **Bluetooth (BT)** — the SwitchBot cloud/BT integration.
+- **SmartThings (ST)** — the same probe bridged through SmartThings.
+- **Matter** — the same probe exposed over Matter.
+
+> **BT, SmartThings, and Matter are alternate transports of the *same physical
+> thermometer*, not independent sensors.** Two transport rows reading 71.2 °F is
+> one probe reported twice — not two probes agreeing.
+
+Genuinely separate hardware (NOT transports of the room probe), kept distinct in
+this inventory:
+
+- **Samsung internal** (`*_air_temperature` / `*_air_humidity`) — the mini-split
+  return-air thermistor. Real but biased; intentionally low-weight
+  (0.20 temp / 0.25 humidity). See `truth_sensor_architecture.md` → Weighting.
+- **MSR / Apollo diagnostics** (`*_msr_*`, e.g. `lincoln_msr_dps310_*`) —
+  observability only; the DPS310 units are hardware-failed and excluded.
+- **Office anchor** = Netatmo; **Dining** = Nest. Different devices, not SwitchBot.
+
+The transport identity (BT / ST / Matter) is **canonically defined by the
+telemetry column names** in `automations.yaml` Section 1
+(`*_RoomProbe_BT`, `*_RoomProbe_ST`, `*_RoomProbe_Matter`,
+`*_HVAC_Samsung`). Some older inline `configuration.yaml` comments use legacy
+hardware labels ("WonderLabs Hub", "Wyze cam sensor") that predate the
+transport taxonomy; where they disagree, **the telemetry transport label wins**.
+
+### 7.2 Current truth model (and the deferred question)
+
+Per-room truth currently takes a **weighted average of every fresh transport**
+(plus the low-weight Samsung internal). Adding a transport adds a contributor;
+removing/disabling one drops a contributor. Freshness is report-time
+(`last_reported`), 2 h window.
+
+> **Deferred design question (NOT decided here):** because the transports are
+> copies of one probe, averaging all of them double-counts that probe relative
+> to a room with fewer working transports. Whether truth should instead **pick
+> the single best available transport per physical probe** is an open V9 question
+> for a follow-up PR. The 2026-06-05 sync is **entity-source only** and does not
+> change this model or any weight.
+
+### 7.3 Per-room transport map (mini-split rooms)
+
+Weights: primary room probe `1.0`, secondary/legacy transport `0.9`, Matter
+`1.0`, Samsung internal `0.20` temp / `0.25` humidity. "In truth?" = currently a
+weighted contributor.
+
+**Living Room** — physical probe: SwitchBot Hub 2. Active temp contributors: **3**.
+
+| Transport | Temperature entity | Humidity entity | In truth? | Weight |
+|---|---|---|---|---|
+| Bluetooth (BT, primary) | `sensor.hub_temperature` | `sensor.hub_humidity` | ✅ | 1.0 |
+| SmartThings (ST) | `sensor.hub_temperature_2` | `sensor.hub_humidity_2` | ✅ | 0.9 |
+| BT secondary (disabled/no-state) | `sensor.hub_2_tempsensor_temperature` | `sensor.hub_2_humisensor_humidity` | ❌ removed 2026-06-05 | — |
+| Samsung internal | `sensor.living_room_air_temperature` | `sensor.living_room_air_humidity` | ✅ | 0.20 / 0.25 |
+
+The disabled secondary route is still emitted to telemetry
+(`LR_Temp/Hum_RoomProbe_BT_Secondary`) for observability; it is no longer a
+truth contributor or counted in `sensor.living_room_temperature_truth_active_count`.
+
+**Master Bedroom** — physical probe: SwitchBot I/O Meter (7C3F). Active temp contributors: **4**.
+
+| Transport | Temperature entity | Humidity entity | In truth? | Weight |
+|---|---|---|---|---|
+| Bluetooth (BT) | `sensor.master_bedroom_temp_temperature_2` | `sensor.master_bedroom_temp_humidity_2` | ✅ | 1.0 |
+| SmartThings (ST) | `sensor.master_bedroom_temperature_temperature_2` | `sensor.master_bedroom_temperature_humidity_2` | ✅ | 0.9 |
+| Matter | `sensor.master_bedroom_temp_temperature_3` | `sensor.master_bedroom_temp_humidity_3` | ✅ added 2026-06-05 | 1.0 |
+| Samsung internal | `sensor.master_bedroom_air_temperature` | `sensor.master_bedroom_air_humidity` | ✅ | 0.20 / 0.25 |
+
+Legacy/removed: `sensor.master_bedroom_temp_temperature` (Outdoor Meter 3F) — not wired.
+
+**Lincoln's Room** — physical probe: SwitchBot I/O Meter (3618). Active temp contributors: **4** (reference room — already fully wired; outlier-rejection pilot, 3 °F limit on the three room-probe transports). Unchanged by the 2026-06-05 sync.
+
+| Transport | Temperature entity | Humidity entity | In truth? | Weight |
+|---|---|---|---|---|
+| Bluetooth (BT) | `sensor.lincoln_s_temp_temperature` | `sensor.lincoln_s_temp_humidity` | ✅ | 1.0 |
+| SmartThings (ST) | `sensor.lincoln_s_room_temperature_temperature` | `sensor.lincoln_s_room_temperature_humidity` | ✅ | 1.0 |
+| Matter | `sensor.lincoln_temp_temperature` | `sensor.lincoln_temp_humidity` | ✅ | 1.0 |
+| Samsung internal | `sensor.lincoln_air_temperature` | `sensor.lincoln_air_humidity` | ✅ | 0.20 / 0.25 |
+
+Diagnostics (observability only, excluded from truth): `sensor.lincoln_msr_dps310_temperature` (hardware-failed), `sensor.lincoln_msr_dps310_pressure`, `sensor.lincoln_msr_esp_temperature`.
+
+**Lilly's Room** — physical probe: SwitchBot Outdoor Meter (58). Active temp contributors: **4**.
+
+| Transport | Temperature entity | Humidity entity | In truth? | Weight |
+|---|---|---|---|---|
+| Bluetooth (BT) | `sensor.lilly_temperature` | `sensor.lilly_humidity` | ✅ | 1.0 |
+| SmartThings (ST) | `sensor.lilly_room_temperature_temperature` | `sensor.lilly_room_temperature_humidity` | ✅ | 0.9 |
+| Matter | `sensor.lilly_temp_temperature_2` | `sensor.lilly_temp_humidity_2` | ✅ added 2026-06-05 | 1.0 |
+| Samsung internal | `sensor.lilly_air_temperature` | `sensor.lilly_air_humidity` | ✅ | 0.20 / 0.25 |
+
+> **Lilly contradiction resolved (2026-06-05):** `sensor.lilly_temp_temperature_2`
+> is the **active Matter transport** of the Outdoor Meter 58 probe (telemetry
+> `Lilly_Temp_RoomProbe_Matter`). It was previously *also* listed in
+> `configuration.yaml` as a removed "Outdoor Meter 58 fallback" — listing one
+> entity as both active and removed. The Matter copy is active; only the legacy
+> non-`_2` transport `sensor.lilly_temp_temperature` remains removed/unwired.
+
+### 7.4 Other room probes (supplemental / not mini-split truth)
+
+These follow the same BT/ST/Matter transport pattern but are not first-class
+supervisor inputs; authoritative entities are the `automations.yaml` Section 1
+telemetry columns:
+
+- **Deck / Outdoor** — `Deck_*_RoomProbe_BT` (`sensor.deck_temp_temperature`),
+  `_ST` (`…_2`), `_Matter` (`…_3`).
+- **Laundry** — `Laundry_*_RoomProbe_BT` (`sensor.laundry_temperature`),
+  `_ST` (`sensor.bathroom_downstairs_*`), `_Matter` (`sensor.laundry_room_*_2`).
+- **Office** — Netatmo anchor (`sensor.indoor_*`) plus
+  `Office_*_RoomProbe_BT` (`sensor.office_temp_*`), `_ST` (`sensor.office_*_2`),
+  `_Matter` (`sensor.office_temperature` / `sensor.office_humidity`).
+
+### 7.5 Maintenance log
+
+- **2026-06-05** — Repo ↔ live truth-source sync. Added Master Matter
+  (`master_bedroom_temp_temperature_3`, `master_bedroom_temp_humidity_3`) and
+  Lilly Matter (`lilly_temp_temperature_2`, `lilly_temp_humidity_2`) to weighted
+  truth (w=1.0). Removed the disabled Living Room secondary route
+  (`hub_2_tempsensor_temperature`, `hub_2_humisensor_humidity`) from truth +
+  active count. Counts after sync: Living Room 3 · Master 4 · Lincoln 4 · Lilly 4.
+  Locked by `tests/test_truth_source_transport_sync.py`.
