@@ -1,687 +1,586 @@
 # Kids' Bedroom Overnight Cooling Plan (Lincoln & Lilly)
 
-**Doc Date:** 2026-06-06
+**Doc Date:** 2026-06-06 (v2 — corrected control model)
 **Document Role:** Planning + adversarial review. **No operational changes.**
 **Scope:** Lincoln's Room and Lilly's Room overnight cooling comfort.
-**Status:** Proposal. Repository analysis only. The live HAOS configuration,
-live entity states, and live automation traces are the ultimate source of
-truth and must be confirmed by Codex before any change ships.
+**Status:** Proposal. Repository analysis + operator correction (2026-06-06).
+Live HAOS is the source of truth; Codex verifies and implements.
 
-> **Operating-model reminders honored by this document**
-> - Claude Code produced analysis + a plan only. Nothing was edited, reloaded,
->   restarted, or deployed.
-> - Codex (inside HAOS) will inspect and modify the live system later.
-> - The Git repo may lag the live HAOS config. Where the repo cannot prove a
->   fact, this plan says so explicitly and routes it to live verification.
-> - Git is the rollback / comparison / documentation layer; **live HAOS wins**.
+> **v2 note — what changed since v1.** v1 assumed the live system runs the
+> repo's Section 2 *deadband + 61 °F shove* doctrine and recommended tightening
+> that deadband. **The operator corrected this on 2026-06-06:** the intended/new
+> control model is a **native Samsung-thermostat hold** — set a real comfort
+> setpoint and let the head's inverter **scale back as it reaches temp** — and
+> **"we never do the deadband."** This **supersedes**, for Lincoln & Lilly, the
+> 2026-06-02 `comfort_control_actuator_arbitration_spec.md` (the "shove + off
+> inside the band" doctrine) and the "deadband is the comfort contract" framing.
+> The plan below is rebuilt around the new model.
+
+> **Operating model honored:** analysis + plan only; nothing edited/reloaded/
+> deployed on the live system. The "new" controller is **not in Git** (repo
+> lags live). Git is the rollback/comparison/documentation layer.
 
 ---
 
 ## 0. Source data and how it was read
 
 - **Authoritative overnight evidence:** Google Drive → Google Sheet **"Home
-  Assistant"** (native Sheet, fileId `1URlWLkBYHYzuRcTvB32jPs_Fvs2bdDFn2L-sW3y10w8`,
-  modified 2026-06-06), tab **`VTherm_Launch_Data_v5_5`**. This is the live
-  15-minute telemetry export written by automation `vtherm_mega_tracker_v5`
-  (Section 1). It is the file the supplied
-  `Home Assistant - VTherm_Launch_Data_v5_5 (1).csv` was exported from.
-- **The repo copy is stale.** `Home Assistant (9).xlsx` in the repo root
-  contains the same tab but its `VTherm_Launch_Data_v5_5` rows **end at
-  2026-06-05 15:00:00** and the workbook is missing the three sub-block-15
-  columns (`Supervisor_Enabled`, `Manual_Override_State`,
-  `Manual_Override_Remaining_Sec`). It therefore **does not contain the
-  June 5 21:00 → June 6 08:30 overnight window**. The overnight rows and the
-  override-state columns live only in the live Sheet.
-- **"VTherm" is a telemetry name, not an integration.** There is **no
-  Versatile Thermostat / `generic_thermostat` / custom `vtherm` climate
-  entity** anywhere in the repo. "VTherm" is the worksheet/launch-data brand
-  (`VTherm_Launch_Data_v*`). The real controller is the **custom Section 2
-  supervisor** (`automation.v7_5_main_supervisor`) issuing raw
-  `climate.set_*` calls to the Samsung heads. **"Don't fight VTherm" therefore
-  means "don't fight the Section 2 supervisor / its manual-override contract /
-  its season branches."** (Live-verify: confirm no Versatile Thermostat
-  integration exists in the live HAOS add-on/integration list.)
-
-This plan's behavioral claims are derived from the live YAML (`automations.yaml`,
-`configuration.yaml`) cross-referenced with the operator-supplied overnight
-observations. Items that depend on the exact overnight rows are flagged for
-Codex in §15.
+  Assistant"** (fileId `1URlWLkBYHYzuRcTvB32jPs_Fvs2bdDFn2L-sW3y10w8`, modified
+  2026-06-06), tab **`VTherm_Launch_Data_v5_5`** — the live 15-min export from
+  `vtherm_mega_tracker_v5` (Section 1) and the source of the supplied CSV.
+- **The repo copy is stale:** `Home Assistant (9).xlsx` ends **2026-06-05 15:00**
+  and lacks the `Supervisor_Enabled` / `Manual_Override_State` /
+  `Manual_Override_Remaining_Sec` columns — it does **not** contain the overnight
+  window. Those rows live only in the live Sheet.
+- **"VTherm" is a telemetry brand, not the controller.** There is no Versatile
+  Thermostat integration; the operator-confirmed live controller for the kids is
+  the **native Samsung head thermostat** (HA holds a setpoint; the head
+  modulates). The mini-split entities are `climate.lincoln_air` /
+  `climate.lilly_air`.
 
 ---
 
 ## 1. Executive diagnosis
 
-Both children's rooms drifted to ~72 °F and held warm for hours overnight
-because of **four compounding causes**, none of which is a sensor fault and
-none of which is "VTherm." Ranked by comfort impact:
+**The rooms overheat overnight because the legacy Section 2 supervisor is still
+enabled and overwrites the new native-thermostat hold — Lincoln & Lilly have two
+controllers fighting on the same heads, and the legacy one wins every tick.**
 
-1. **Shoulder-night force-off with no kids' cooling escape (root cause of the
-   hours-long warm period).** When `Season_Mode` auto-switched
-   `cooling → shoulder` at ~02:45 (driven purely by outdoor Deck temperature),
-   the Section 2 *shoulder-night* branch began issuing an unconditional
-   `climate.set_hvac_mode: off` to `climate.lincoln_air` **and**
-   `climate.lilly_air` every tick (`automations.yaml:533–535`). The **Master**
-   bedroom has a documented shoulder-night cooling escape
-   (`automations.yaml:519–532`); **the kids do not.** This is why Lilly stayed
-   off from ~midnight to 08:30 and Lincoln went off at ~02:45 — the supervisor
-   was *commanding* them off regardless of how warm the rooms were. This is the
-   regression the project itself names "Treating Outdoor / Season Logic as
-   Stronger Than Manual/Comfort Intent" (Doc 1 §7; Regression Appendix §4.16).
+Operator-confirmed facts (2026-06-06):
+- **Intended control:** hold a comfort setpoint on each head; let the inverter
+  scale back near temp; **no deadband**; **room truth must stay ≤ 70 °F**.
+- **Live reality:** `automation.v7_5_main_supervisor` (Section 2) is **still
+  enabled** and runs every 15 min + on every `Season_Mode` change.
 
-2. **A wide, high cooling deadband (cause of the 67 → 72 sawtooth ceiling).**
-   In cooling season the kids' band is **ON when truth `> 72` °F, OFF when truth
-   `≤ 68` °F** (`automations.yaml:438–471`). A 70 °F target cannot be held by a
-   band whose top edge is 72 °F: the room is *allowed* to climb to 72 before any
-   cooling starts. Max truth 72.32 °F is the room sitting right at/just over the
-   72 ON edge.
+What Section 2 does to the kids' heads each time it runs (live YAML
+`automations.yaml`), directly contradicting the hold:
+1. **Re-commands `cool @ 61 °F`** (the test-locked "shove," `:439,:459`) instead
+   of the comfort setpoint — so the head is told to run flat-out, not hold ~70.
+2. **Cuts the head fully OFF at room-truth `≤ 68 °F`** (`:446–471`) — the
+   bang-bang deadband the operator says they no longer want. The room then
+   free-heats toward 72 before truth crosses `> 72` and 61-shove resumes.
+3. **Force-OFFs the kids in shoulder-night** (`:533–535`) and on the shoulder/
+   heating day+night paths — so when auto-season flipped `cooling → shoulder` at
+   ~02:45 (Deck 64.4 °F), the kids were commanded off for the rest of the night.
+4. Never sets the kids' **fan**, so a manually-left **`turbo`** sticks all night.
 
-3. **A "shove" actuator command (61 °F) with a stuck `turbo` fan (cause of the
-   undershoot to ~67 °F and the noise).** The commanded setpoint is a
-   deliberate, **test-locked** 61 °F "shove" (`automations.yaml:439,459`;
-   `tests/test_section2_shove_command_setpoints.py`) so the unit pulls hard and
-   the *supervisor's* `≤68` truth rule stops it — not the Samsung thermostat.
-   Combined with a `turbo` fan that **no automation ever sets or resets**, the
-   unit overshoots down toward ~67 °F before the next 15-minute tick catches
-   `≤68` and shuts it fully off. The room then free-heats back to 72. Result:
-   the large 67↔72 sawtooth.
+Two secondary writers can also fight the hold: **Section 8 Samsung Auto
+Guardrail** (every 10 min) and **Section 6 destrat** (fan), and the **76 °F
+ceiling gate** ends in a hard `off`. None caused last night, but all must be made
+hands-off/safe for the kids.
 
-4. **No anti-short-cycle / minimum-runtime protection.** Per-room
-   `timer.*_compressor_cooldown` helpers exist in `configuration.yaml:131–138`
-   but are **referenced by no automation** — they are orphaned. Nothing damps
-   re-engagement, and control is **15-minute tick-based**, so both overshoot
-   directions are coarse.
+**Net:** the head is yanked between a 61 °F shove and OFF (and force-off in
+shoulder) and never allowed to hold ~70 and modulate → the 67↔72 sawtooth and the
+hours-long warm plateau. The fix is **not** to tune a deadband; it is to **stop
+the legacy stack from touching Lincoln & Lilly and let the head hold a tuned
+comfort setpoint** — with room truth as a light ceiling guard, not a bang-bang.
 
-**Net effect:** a sawtooth bounded by a too-high ceiling during cooling season,
-then a hard outdoor-driven shut-off for the rest of the night during shoulder
-season. `Night_Mode_Toggle`, `Away_Mode`, manual override, and the truth
-sensors were **not** at fault (see §4, §5, §11).
+`Night_Mode_Toggle`, `Away_Mode`, manual override, and the truth sensors were not
+at fault (§4, §11).
 
 ---
 
 ## 2. Relevant files and entity IDs
 
 ### 2.1 Files (complete scope)
-The only places control logic, templates, and helpers live:
-
-| File | Role |
-|---|---|
-| `automations.yaml` | All 21 automations (Sections 1–15). |
-| `configuration.yaml` | Template truth sensors, `timer:`, `input_boolean:`/`input_text:`/`input_datetime:`, `recorder`, `template`, `sensor`. |
-| `Home Assistant (9).xlsx` | **Stale** local telemetry snapshot (ends 2026-06-05 15:00). |
-
-Confirmed **absent** (so nothing was missed): no `scripts.yaml`, `packages/`,
-`blueprints/`, `custom_components/`, `appdaemon/`, `pyscript/`. The Samsung
-heads, SmartThings, `google_sheets`, Netatmo, Nest, and `default_config` are
-config-entry / UI integrations (not in YAML).
+Only `automations.yaml` and `configuration.yaml` carry logic/helpers. Confirmed
+absent (nothing missed): no `scripts.yaml`, `packages/`, `blueprints/`,
+`custom_components/`, `appdaemon/`, `pyscript/`. **The new native-thermostat hold
+is not represented in Git at all** — it is live config (head setpoint/mode set
+by hand or by a live-only automation).
 
 ### 2.2 Entity IDs
 
-| Concept | Entity ID | Defined in repo? |
+| Concept | Entity ID | In repo? |
 |---|---|---|
-| Lincoln mini-split | `climate.lincoln_air` | device (integration) |
-| Lilly mini-split | `climate.lilly_air` | device (integration) |
-| Lincoln room truth | `sensor.lincoln_s_room_temperature_truth` | `configuration.yaml:451` |
-| Lilly room truth | `sensor.lilly_s_room_temperature_truth` | `configuration.yaml:~643` |
-| Lincoln truth contributor count | `sensor.lincoln_temperature_truth_active_count` | yes (exported) |
-| Lilly truth contributor count | **none exported** (telemetry gap) | — |
+| Lincoln / Lilly heads | `climate.lincoln_air`, `climate.lilly_air` | device |
+| Lincoln / Lilly room truth | `sensor.lincoln_s_room_temperature_truth`, `sensor.lilly_s_room_temperature_truth` | `configuration.yaml:451,643` |
+| Samsung internal (biased, w=0.20) | `sensor.lincoln_air_temperature`, `sensor.lilly_air_temperature` | yes |
+| Lincoln truth contributor count | `sensor.lincoln_temperature_truth_active_count` | yes |
+| Lilly truth contributor count | **none exported** (gap) | — |
 | Outdoor/Deck truth | `sensor.deck_temperature_truth` | yes |
 | Season mode | `input_select.hvac_season_mode` | **NOT in repo — live UI helper** |
 | "Night_Mode_Toggle" | `input_boolean.night_mode_lr_primary` | **NOT in repo — live UI helper** |
 | Away mode | `input_boolean.away_mode` | **NOT in repo — live UI helper** |
 | Manual override timer | `timer.manual_hvac_override` | **NOT in repo — live UI helper** |
-| Lincoln cooldown (orphaned) | `timer.lincoln_compressor_cooldown` (15 min) | `configuration.yaml:131` |
-| Lilly cooldown (orphaned) | `timer.lilly_compressor_cooldown` (15 min) | `configuration.yaml:135` |
-| Lincoln presence (debounced) | `binary_sensor.lincoln_presence_debounced_v3` | `configuration.yaml:203` |
+| Lincoln / Lilly cooldown (orphaned, 15 min) | `timer.lincoln_compressor_cooldown`, `timer.lilly_compressor_cooldown` | `configuration.yaml:131,135` |
+| Legacy supervisor (**still enabled**) | `automation.v7_5_main_supervisor` | `automations.yaml:358` |
+| Lincoln presence | `binary_sensor.lincoln_presence_debounced_v3` | `configuration.yaml:203` |
 | Lilly presence | **none** (Lilly has no presence sensor) | — |
-| Supervisor automation | `automation.v7_5_main_supervisor` | `automations.yaml:358` |
 
-> **Repo-lag flag:** `input_select.hvac_season_mode`, `input_boolean.away_mode`,
-> `input_boolean.night_mode_lr_primary`, and `timer.manual_hvac_override` are
-> **referenced by automations but not defined in the repo.** They are live UI
-> helpers. In particular, **the manual-override window *duration* is not in Git**
-> — it is whatever `timer.manual_hvac_override` is configured to in HAOS
-> (documented elsewhere as ~1 hour). Codex must read these live (§15).
+> **Repo-lag flags:** season mode, away mode, night toggle, the override timer
+> (and its **duration**), **and the new native-thermostat hold itself** are not in
+> Git. Codex must read all of them live (§15).
 
 ---
 
-## 3. Full control-flow map (per room, identical for Lincoln & Lilly)
+## 3. Full control-flow map (intended vs. actual)
 
 ```
- 3 room-probe transports (BT + ST + Matter, w=1.0 each)        Samsung internal
- + 3°F outlier rejection vs base-mean of the three            (low weight 0.20)
-        │                                                              │
-        └──────────────► sensor.<room>_room_temperature_truth ◄────────┘
-                 (weighted avg; availability = ≥1 fresh source <2h;
-                  if UNAVAILABLE → supervisor reads float(70) sentinel)
-                                    │
-                                    ▼
-        ┌───────────────────────────────────────────────────────────────┐
-        │ GATE 0: timer.manual_hvac_override == idle ?  (else: stand down)│
-        └───────────────────────────────────────────────────────────────┘
-                                    │ idle
-                                    ▼
-   Section 2 supervisor (automation.v7_5_main_supervisor)
-   triggers: every 15 min  +  on input_select.hvac_season_mode change
-                                    │
-            ┌───────────────────────┼────────────────────────┐
-        season=cooling          season=shoulder           season=heating
-            │                       │                          │
-   on>72 / off≤68 / hold      is_night(22–06)?            (kids force-off
-   setpoint 61 (shove)         ├─ yes → KIDS FORCED OFF     in most paths)
-   fan: (unset → turbo         │        (533–535) ✗no escape
-        sticks)                └─ no  → warm path cools kids
-            │                          only if outdoor>70 or LR>71
-            ▼                          else kids OFF
-        climate.set_temperature / climate.set_hvac_mode
-                                    │
-                                    ▼
-                       Samsung mini-split head (climate.<room>_air)
+  INTENDED (operator's new model)                ACTUAL (live today)
+  ───────────────────────────────                ───────────────────
+  room truth + season decide IF cooling          legacy Section 2 (STILL ENABLED)
+        │                                         runs every 15 min + on season change
+        ▼                                               │
+  set climate.<kid>_air = cool @ COMFORT           overwrites head every tick:
+  setpoint (tuned so truth ≤ 70), quiet fan          cool@61 / off≤68 / shoulder-night off
+        │                                               │
+        ▼                                               ▼
+  head inverter MODULATES / "scales back"          head yanked 61-shove ↔ OFF
+  near setpoint — supervisor leaves it alone        (+ stuck turbo) → 67↔72 sawtooth
+        │                                          + force-off after 02:45 season flip
+        ▼
+  truth used only as a light ≤70 ceiling guard
+  + Section 3 safety; NOT as a bang-bang off
 ```
 
-**Independent safety / side-effect writers layered on top** (see §6):
-Section 3 ceiling gate (>76 °F), Section 4 ghost assassin (Lincoln 01:20),
-Section 6 destrat fan, Section 8 Samsung auto guardrail.
-
-The **seasonal eligibility** step is the decisive fork: it is evaluated *before*
-any per-room comfort decision, and in shoulder/heating it can veto the kids'
-rooms entirely regardless of room truth.
+Both control paths currently write the **same** entities → this is a live
+**conflicting-writers** condition (the exact failure the objective forbids), and
+the legacy path wins because it reasserts on a schedule.
 
 ---
 
 ## 4. Exact likely cause of last night's behavior (transition by transition)
 
-All times approximate; cooling-season band = `ON>72 / OFF≤68 / cmd 61`.
+Legacy cooling band = `ON>72 / OFF≤68`, command `61 / turbo`. Times approximate.
 
-| Time | Observed | Repo-derived cause |
+| Time | Observed | Cause (legacy Section 2 overwriting the hold) |
 |---|---|---|
-| 21:00 | Both rooms **off**, temps low (~68 °F) and rising | Cooling season; both had cooled `≤68` earlier in the evening → deadband holds **off** until truth `>72`. |
-| 22:45 | Lincoln → **cool** | `lincoln_temp` crossed `>72` → engage `cool @ 61 / turbo`. |
-| 23:15 | Lilly → **cool** | `lilly_temp` crossed `>72` → engage. |
-| 23:45 | Lincoln → **off** | 61/turbo shove overshot down to `≤68` → off. |
-| 00:00 | Lilly → **off** | `lilly_temp ≤ 68` → off. |
-| 00:00–02:00 | Lilly creeps to ~71–72, stays **off** | In cooling season OFF holds until truth `>72`. Lilly hovered just under the strict `>72` ON edge → never re-triggered. |
-| 02:00 | Lincoln → **cool** | `lincoln_temp` crossed `>72` again → engage. |
-| **02:45** | `Season_Mode`: **cooling → shoulder**; Deck ≈ 64.4 °F | Section 5 auto-season (`automations.yaml:919–951`): Deck in the `50–68 °F` band sustained 2 h → `shoulder`. The season change is **also a supervisor trigger**, so Section 2 re-runs immediately. |
-| 02:45 → morning | Lincoln **off**; Lilly **off** to 08:30 | Now `shoulder` + `is_night` → shoulder-night branch **forces Lincoln & Lilly off** (`533–535`). No kids escape (Master has one). After 06:00, shoulder-**day** mild path also forces kids off unless `outdoor>70` or `LR>71` (Deck/LR stayed cool). Returning to `cooling` needs Deck `>72 °F` for 2 h (a daytime event) → kids stewed at 71–72 °F. |
+| 21:00 | both off, ~68 °F rising | Truth had fallen `≤68` → Section 2 cut heads OFF; hold can't keep them at ~70 because Section 2 re-offs every tick. |
+| 22:45 / 23:15 | Lincoln / Lilly → cool | truth crossed `>72` → Section 2 engages `cool@61/turbo` (overshooting past any ~70 hold). |
+| 23:45 / 00:00 | → off | 61/turbo overshot to `≤68` → Section 2 cut OFF (bang-bang). |
+| 00:00–02:00 | Lilly drifts 71–72, off | Section 2 holds OFF until `>72`; the head is never allowed to sit in `cool@~70` and modulate. |
+| 02:00 | Lincoln → cool | crossed `>72` → 61-shove again. |
+| **02:45** | Season → shoulder; Deck 64.4 °F | Section 5 auto-season (`:919–951`): Deck in 50–68/2h → `shoulder`; the season change re-triggers Section 2 immediately. |
+| 02:45 → 08:30 | both off / warm to ~72 | shoulder-night force-offs the kids (`:533–535`); shoulder-day mild path also offs them unless `outdoor>70`/`LR>71`. Returning to `cooling` needs Deck `>72`/2h (daytime). The hold is overwritten with OFF the whole time → Lilly stewed 71–72 °F. |
 
-**The 72.32 °F maxima** are the rooms sitting at/just over the `>72` ON edge.
-For Lilly especially, the warm plateau is dominated by the post-02:45
-shoulder-night force-off, **not** by a slow cool-down.
+**05:45 Lincoln boundary:** still `is_night` + `shoulder`, where Section 2 offs
+the kids — a 05:45 re-engage would not come from Section 2. Verify in the live
+trace (manual nudge / cloud push / ceiling gate). §15.
 
-**One anomaly to verify (not explainable from the repo alone):** the operator
-notes "Lincoln off 02:45–05:45," implying a Lincoln re-engagement near 05:45.
-05:45 is still `is_night` in `shoulder`, where Section 2 force-offs Lincoln —
-so a 05:45 cooling start should not come from Section 2. Candidates: a manual
-override (parent intervention → WAF timer), a Samsung/SmartThings cloud push,
-or the Section 3 ceiling gate (only if truth briefly `>76`). **Codex must pull
-the 05:30–06:15 rows + Logbook to classify this** (§15).
+The `72.32 °F` maxima are the room at the legacy `>72` ON edge; under the new
+hold the head should cap the room near the comfort setpoint long before 72.
 
 ---
 
-## 5. Confirmed facts vs assumptions requiring live HAOS verification
+## 5. Confirmed facts vs assumptions requiring live verification
 
-### 5.1 Confirmed from the repo (YAML is runtime truth)
-- Kids' cooling band is `ON>72 / OFF≤68`, command `61 °F`, **fan never set by
-  Section 2** (`automations.yaml:438–471`).
-- Shoulder-night **force-offs Lincoln & Lilly**; Master has an escape; this is
-  **locked by tests** (`tests/test_supervisor_shoulder_night.py:126–136` requires
-  Lincoln+Lilly in the bulk-off; `:101–123` give Master its escape).
-- `61` shove and the `68/72` thresholds are **locked**
-  (`tests/test_section2_shove_command_setpoints.py:136–164`).
-- Auto-season thresholds: `>72/2h → cooling`, `<45/2h → heating`,
-  `50–68/2h → shoulder` (`automations.yaml:919–938`).
-- `Night_Mode_Toggle` = `input_boolean.night_mode_lr_primary`, used **only** in
-  the heating-night branch (`automations.yaml:625`); **no weekday gating exists
-  anywhere** (`is_night` is pure clock `hour>=22 or hour<6`).
-- Manual-override gate is enforced on supervisor, ceiling gates, destrat, Samsung
-  guardrail, boost-engage (`tests/test_manual_override_contract.py`).
-- Truth sensor falls back to **`float(70)`** in the supervisor when unavailable
-  (`automations.yaml:375–376`; documented in `comfort_failure_forensics.md`).
-- Lilly has **no** presence sensor; Lincoln does
-  (`binary_sensor.lincoln_presence_debounced_v3`).
+### 5.1 Operator-confirmed (2026-06-06)
+- New control = **native Samsung thermostat hold + inverter modulation; no
+  deadband.**
+- **Legacy Section 2 is still enabled live** (it is the overwriter).
+- **Room-truth comfort ceiling = 70 °F** ("sweaty kids" above that).
 
-### 5.2 Assumptions requiring live verification (Codex)
-- **`turbo` origin.** No automation sets it. Assumed: a sticky manual/SmartThings
-  fan setting that Section 2 never resets during cooling. **Verify** the live
-  fan-mode history for both heads overnight and the **list of supported fan
-  modes** (e.g., `turbo / high / auto / low / quiet`) before specifying a quiet
-  value.
-- **`timer.manual_hvac_override` duration** (override-window length) — not in Git.
-- **`Supervisor_Enabled` blank.** The column maps to
-  `automation.v7_5_main_supervisor` on/off → `true/false`, returning blank only
-  when the entity is `unknown/unavailable` (`automations.yaml:314–316`). Blank in
-  every row implies either the sub-block-15 columns were added to the export
-  *after* this window, the worksheet header was misaligned at write time (the
-  deployment warning at `automations.yaml:101–106`), or the entity_id diverged.
-  **This is an observability defect to confirm/fix, not proof of anything about
-  the cause.**
-- **`Manual_Override_State`** overnight (task says "idle where recorded") and
-  the exact **Lincoln/Lilly setpoint=61 / fan=turbo** rows — confirm directly in
-  the live tab.
-- That the live Section 2 matches the repo (no out-of-band live edits).
+### 5.2 Confirmed from the repo (YAML = legacy runtime)
+- Section 2 commands the kids `cool@61` / `off≤68` / `on>72` and **force-offs**
+  them in shoulder-night, shoulder-day(non-warm), heating-night(LR-primary), and
+  heating-day (`comfort_failure_forensics.md` bulk-off table; `automations.yaml`
+  Section 2). It never sets their fan.
+- `61`/`79` shoves and `68/72` thresholds and the shoulder-night kids force-off
+  are **test-locked** (`tests/test_section2_shove_command_setpoints.py`,
+  `tests/test_supervisor_shoulder_night.py`).
+- Auto-season: `>72/2h→cooling`, `<45/2h→heating`, `50–68/2h→shoulder`.
+- `Night_Mode_Toggle` = `input_boolean.night_mode_lr_primary` (heating-only,
+  `:625`); **no weekday gating anywhere** (window was Fri→Sat; irrelevant).
+- Manual-override gate enforced on supervisor/ceiling/destrat/guardrail/boost.
+- Supervisor truth fallback = `float(70)` when a room's truth is unavailable.
+- Lilly has no presence sensor; cooldown timers exist but are orphaned.
+
+### 5.3 Assumptions requiring live verification (Codex)
+- **That Section 2 is actively overwriting the kids' heads at `:00/:15/:30/:45`
+  with 61** (confirm via Logbook / `hvac_provenance_log` provenance =
+  `automation_or_script` / `v7_5_main_supervisor`).
+- **Samsung-internal vs room-truth bias** for each head during active cooling
+  (config note: Lincoln Samsung ≈ +4.7 °F). This determines what number to
+  command so the **room** (not the head's biased sensor) tops out at ≤70.
+- **The heads run in `cool`, not Samsung `auto`** (auto would trip Section 8 and
+  the bias/behavior differs).
+- `turbo` origin (no automation sets it) and the **supported fan modes**.
+- `timer.manual_hvac_override` **duration**; overnight `Manual_Override_State`.
+- Why `Supervisor_Enabled` is **blank** in the export (entity_id / worksheet
+  header issue — observability defect, not evidence of cause).
 
 ---
 
 ## 6. Overlapping automation / race-condition audit
 
-**Every automation that can command `climate.lincoln_air` / `climate.lilly_air`:**
+**Every writer to `climate.lincoln_air` / `climate.lilly_air` today:**
 
-| # | Automation (id) | Trigger | Action on kids | Override-gated? | Race / loop notes |
+| # | Automation (id) | Trigger | Action on kids | Override-gated? | Conflict with the new hold |
 |---|---|---|---|---|---|
-| 1 | `v7_5_main_supervisor` (S2) | 15-min + season change | cool/off/heat + setpoint 61/79 | ✅ idle | Primary writer; command-on-every-tick (noisy but `mode: single`). |
-| 2 | `v7_5_safety_ceiling_gates` (S3) | truth `>76 °F` | cooling: `cool@68` 45 min→off; else `fan_only` 45 min→off | ✅ idle | `mode: parallel`; its 45-min `delay` can **collide with the next S2 tick** — S2 may re-off or re-cool mid-delay. Only fires `>76` (didn't fire last night). |
-| 3 | `v7_5_ghost_assassin` (S4) | 01:20 daily | Lincoln only: if `heat` & season≠heating → off | ❌ (not a comfort gate) | Narrow; harmless to cooling. Still an independent writer to Lincoln. |
-| 4 | `v8_comfort_fan_destratification` (S6) | :07/:22/:37/:52 | heating/shoulder: `fan_only`+`fan auto`, or off | ✅ idle | Can set `fan_only` on a kid the supervisor wants `off`; releases on delta/time. Lincoln gated on **presence**; Lilly on **daytime** (no presence sensor) → mostly dormant overnight. |
-| 5 | `v8_samsung_auto_guardrail` (S8) | hvac_action / `→auto` / every 10 min | force `off` on Samsung `auto`-mode misbehavior | ✅ idle | Only acts when head reports `auto`; another every-10-min writer; can off a head between S2 ticks. |
-| — | WAF watcher `v7_5_waf_manual_override` (S3) | any non-automation change to a head | starts `timer.manual_hvac_override` | n/a | Does not command climate; **converts human edits into the override window** that gates #1,2,4,5. |
+| 0 | **New native-thermostat hold** (live, not in Git) | operator/automation sets head setpoint | hold `cool @ ~70`, modulate | (must) | **Being overwritten by #1 every tick.** |
+| 1 | `v7_5_main_supervisor` (S2) — **enabled** | /15 + season change | `cool@61` / `off` / force-off | ✅ idle | **Primary conflict.** Reasserts legacy policy over the hold every tick. |
+| 2 | `v8_samsung_auto_guardrail` (S8) | hvac_action / →auto / /10 | force `off` on Samsung `auto` | ✅ idle | Only fires if head reports `auto`; harmless if head stays `cool`, but it is a second scheduled writer. |
+| 3 | `v7_5_safety_ceiling_gates` (S3) | truth `>76` | cooling: `cool@68` 45 min → **off** | ✅ idle | Emergency only; its terminal `off` would drop the hold — make it hand back to the hold, not hard-off. |
+| 4 | `v8_comfort_fan_destratification` (S6) | :07/:22/:37/:52 | heating/shoulder `fan_only`+fan | ✅ idle | Triggers only when head is `off`; if the hold keeps the head in `cool`, it won't fire — but should be scoped off the kids to be safe. |
+| 5 | `v7_5_ghost_assassin` (S4) | 01:20 | Lincoln: `heat`&non-heating→off | ❌ (protection) | Harmless to a cool hold; keep. |
+| — | WAF watcher (S3) | human change to a head | starts override timer | n/a | Correct — converts a parent's nudge into the override window. |
 
-**Key race conclusions**
-- **No duplicate comfort controller exists today** — Section 2 is the sole
-  comfort writer. **Therefore the fix must stay *inside* Section 2** (or a new
-  automation that is season/time-exclusive with it) to avoid creating the very
-  "two automations issuing conflicting climate commands" failure the objective
-  forbids. A second always-on cooling automation would race S2 every tick.
-- The realistic overlap window is the **ceiling-gate 45-min `delay` vs. S2/S8
-  ticks** (`>76 °F` only) and **S6 fan_only vs S2 off** in shoulder. Neither
-  drove last night, but both must be respected by any change.
-- The **season-change edge trigger** means a `Season_Mode` flip can re-mode a
-  room *immediately*, even mid-cooling (exactly what happened at 02:45).
+**Conclusion:** there are **already** conflicting writers (the new hold vs. the
+still-enabled legacy stack). The fix is to make #1 (and #3/#4) **hands-off for the
+kids**, leave #2/#5 as `auto`/ghost protection, and let #0 own the heads.
+Implementing the hold **inside one place that owns the kids** (and removing the
+kids from #1) prevents re-introducing a race.
 
 ---
 
 ## 7. Minimal recommended implementation
 
-Design principle: **smallest change, inside Section 2, that (a) stops the
-outdoor-driven warm plateau and (b) stops leaving `turbo` running, then
-optionally (c) tightens the band toward 70 °F.** Keep the 61 shove. Keep rooms
-independent. Reuse existing helpers. Update the locked tests deliberately.
+Design principle: **one owner per head.** Remove Lincoln & Lilly from the legacy
+comfort stack and let the native thermostat hold a tuned comfort setpoint, with
+truth as a ≤70 ceiling guard and Section 3 as safety. Keep rooms independent.
+Preserve the manual-override contract. Abandon the 61 shove **for the kids**.
 
-### Tier 1 — Contract-failure fixes (do first; low risk; precedented)
+### Tier 1 — Stop the fight (highest value; do first)
+**A. Carve Lincoln & Lilly out of `v7_5_main_supervisor` (Section 2).** Delete
+their `set_temperature` blocks (cooling `:438–471`; shoulder-day warm
+`:546–549`; heating-night `:610–614`, `:640–644`) and remove them from every
+bulk-off target list (`:533–535`, `:577`, `:581`, `:633`, `:671`). After this,
+Section 2 no longer touches the kids' heads in any branch — Master/LR/Nest
+behavior is unchanged. This single change stops the 61-shove, the `≤68` bang-bang
+**and** the shoulder-night force-off in one move.
 
-**A. Add a kids' shoulder-night cooling escape** (mirror the existing Master
-escape at `automations.yaml:519–532`). Remove `climate.lincoln_air` and
-`climate.lilly_air` from the shoulder-night bulk-off (`533–535`); give each a
-per-room `cool/off/hold` decision. This is the single highest-value fix — it
-directly ends Lilly's all-night warm period and Lincoln's post-02:45 warm
-period, and it removes "outdoor temperature silently vetoes an occupied
-bedroom." Independence preserved (separate per-room steps).
+**B. Scope the other legacy writers off the kids (or make them safe):** remove
+Lincoln/Lilly from Section 6 destrat; change the Section 3 ceiling gate's cooling
+branch so that after the 45-min emergency it **returns the head to the comfort
+hold**, not a hard `off`; leave Section 8 (auto guard) and Section 4 (ghost) as
+protection.
 
-**B. Stop `turbo` from sticking.** In the kids' cooling engage path, explicitly
-command a quiet fan (overnight) / auto (day) **whenever the room is commanding
-`cool`**. Section 2 cooling currently sets `hvac_mode`+`temperature` but never
-`fan_mode`; this is the missing half of the V8.3 "prevent turbo sticking" fix
-that was only ever applied to Section 6 (`automations.yaml:72–73`). Reserve
-`turbo` for the high-temp emergency path / existing `>76 °F` ceiling gate.
+### Tier 2 — Hold the comfort setpoint (the new owner)
+**C. Establish the held setpoint as a *room-truth* target, not a head number.**
+The head regulates against its **biased internal sensor**, so commanding "70" does
+**not** mean the room holds 70. Pick the commanded number so **room truth** tops
+out at ≤70 (operator ceiling). Method: command `cool` at a starting setpoint
+(begin ~68 °F), observe `sensor.<kid>_room_temperature_truth` for 1–2 nights, and
+adjust the commanded number until truth plateaus at ~69 °F (never >70). Expose it
+as a tunable `input_number` per room so it can be dialed without code edits.
 
-Tier 1 alone keeps the rooms from stewing and silences the all-night turbo,
-**without touching the locked `68/72` cooling thresholds** (the escape uses new
-variable names). It changes only the shoulder-night bulk-off test and the
-cooling-command *count* (8 → 10), both at 61.
+**D. Add one small "kids comfort hold" automation that owns both heads**
+(independent per room): on a 15-min reassert + a truth-over-ceiling trigger +
+season change, while `timer.manual_hvac_override == idle`, ensure each head is
+`cool @ comfort_setpoint` with a **quiet fan** (low/auto, never turbo) whenever
+cooling is appropriate, and otherwise leave it alone — **no deadband off.** Let
+the head modulate. A light guard: if room truth `> 70.5 °F` for ~5 min and the
+head is not cooling, set it to `cool`. (Turn off only for genuine non-cooling
+conditions, e.g. heating season with a cold room — see §12.)
 
-### Tier 2 — Overnight comfort-band retune (operator-requested; test- & evidence-gated)
+**E. Reset the stuck fan.** The hold sets `fan_mode` to a quiet value while
+`cool`; `turbo` is reserved for the ≥76 °F ceiling gate / a high-temp emergency.
 
-**C. Tighten the kids' *overnight* band toward 70 °F** — `ON>71 / OFF≤69.5`
-during a sleep window (e.g., 21:00–07:00), leaving the daytime `68/72` band
-unchanged. This is what actually holds "near 70" instead of floating to 72. It
-**edits the test-locked threshold strings** and is, per project doctrine, a
-**deadband change** (`comfort_failure_forensics.md` §10; `v9_v10_goals.md` §10)
-— a single night is a forensic input, not yet repeated evidence. Recommend
-shipping Tier 1 immediately and Tier 2 as a clearly-labeled deadband PR
-(validated over a few nights, or accepted explicitly as an operator preference
-override of the "needs repeated evidence" rule).
+### Tier 3 — Optional hardening
+**F. Anti-short-cycle / min-on** using the existing orphaned
+`timer.lincoln_compressor_cooldown` / `timer.lilly_compressor_cooldown` (only
+relevant if the hold ever turns a head fully off). **G. Event-based ≤70 guard**
+already covered by D's truth trigger (removes the 15-min polling dependency for
+the ceiling). **H.** Migrate the per-room comfort setpoint into the planned
+comfort-profile system later.
 
-**D. Anti-short-cycle via the *existing* orphaned cooldown timers.** Wire
-`timer.lincoln_compressor_cooldown` / `timer.lilly_compressor_cooldown` (already
-defined, 15 min) so that after an OFF the room cannot re-engage `cool` until the
-timer is `idle` (minimum-off), and enforce a minimum-on before an OFF. This
-damps the extra cycling a tighter band would otherwise add. Reuses existing
-helpers (observability requirement) instead of inventing new ones.
-
-### Tier 3 — Optional structural (only if Tier 1+2 prove insufficient)
-
-**E. Event-based crossings.** Add `numeric_state` triggers on
-`sensor.<room>_room_temperature_truth` (`above: on_at, for: 5m` /
-`below: off_at, for: 5m`) so crossings are acted on promptly between 15-min
-ticks, with the cooldown timers (D) providing hysteresis. This removes the
-"15-minute polling dependency" the objective calls out. Larger blast radius;
-defer until evidence shows the tick latency still matters after A–D.
+> **Doctrine update required:** §1/§5.1 of `1_startup_canon.md`, the
+> `comfort_control_actuator_arbitration_spec.md` "off-inside-the-band / shove,"
+> and the `comfort_failure_forensics.md` "deadband is the contract" framing must
+> be amended to note that **Lincoln & Lilly are now native-thermostat-hold
+> rooms** (setpoint + modulation), not deadband/shove rooms. Other rooms are
+> unchanged unless the operator extends the model.
 
 ---
 
 ## 8. "From → To" change table
 
-| # | Item | From (live/repo today) | To (proposed) | Touches locked test? |
+| # | Item | From (live today) | To (proposed) | Tests to update |
 |---|---|---|---|---|
-| A | Shoulder-night kids | `lincoln_air`,`lilly_air` in unconditional bulk-off (`533–535`) | Per-room `cool/off/hold` escape; only `dining_room` stays in bulk-off | **Yes** — `test_supervisor_shoulder_night.py` (mirror Master change) + cooling-command count 8→10 in `test_section2_shove_command_setpoints.py` |
-| B | Kids cooling fan | never set → `turbo` sticks | `fan_mode` quiet/`low` overnight, `auto` daytime, set only while `cool`; `turbo` reserved for ≥ emergency | No (adds `set_fan_mode`, not `set_temperature`) — confirm fan-mode names live |
-| C | Kids overnight band | `ON>72 / OFF≤68` all hours | `ON>71 / OFF≤69.5` during 21:00–07:00; day unchanged | **Yes** — update `l_off_at/l_on_at/ly_off_at/ly_on_at` asserts |
-| C | Kids setpoint cmd | `61` (shove) | `61` (unchanged) | No |
-| D | Anti-short-cycle | cooldown timers defined but unused | min-off (timer idle) + min-on gate on engage/disengage | New tests recommended (none locks this today) |
-| E | Control cadence | 15-min tick + season edge | + event-based truth crossings (`for: 5m`) | New tests recommended |
-| — | Season authority | outdoor Deck temp can veto kids overnight | unchanged thresholds; A restores indoor comfort escape | No |
-| — | Observability | `Supervisor_Enabled`/`Manual_Override_State` blank | confirm worksheet header / entity_id; add kids escape engage/release reason helpers | telemetry only |
+| A | Section 2 owns kids | `cool@61` / `off≤68` / `on>72` / shoulder force-off, all branches | Kids **removed** from Section 2 entirely | `test_section2_shove_command_setpoints.py` (cooling-cmd count drops; kids threshold asserts removed), `test_supervisor_shoulder_night.py` (kids no longer required in bulk-off), `test_section2_cooling_setpoint_doctrine.py` |
+| B | Ceiling gate end-state | `cool@68` 45 min → **off** | → return head to comfort hold | adjust ceiling-gate test if any |
+| B | Destrat on kids | fan_only on kids (heating/shoulder) | kids removed from destrat | destrat test scope |
+| C | Held setpoint | `61` shove (legacy) | comfort setpoint tuned so **room truth ≤70** (start ~68, per-room `input_number`) | new helper test |
+| D | Control style | 15-min bang-bang deadband | hold `cool@setpoint`, head modulates; truth used as ≤70 ceiling guard only | new "kids hold" automation + its tests (incl. override-idle gate) |
+| E | Fan | unset → `turbo` sticks | quiet (low/auto) while cooling; turbo only ≥76 emergency | — |
+| — | Manual override | gated (S2 etc.) | new hold automation **also** gates on `idle` | extend `test_manual_override_contract.py` |
+| — | Independence | per-room already | preserved (separate per-room steps) | — |
 
 ---
 
-## 9. Proposed YAML / template changes (illustrative — DO NOT APPLY HERE)
+## 9. Proposed YAML (illustrative — DO NOT APPLY HERE; Codex adapts vs. live)
 
-> These are reference shapes for Codex to adapt against the **live** Section 2.
-> Exact fan-mode strings, the sleep-window hours, and band numbers are
-> live-tunable. Codex must re-derive line numbers from the live file.
-
-### 9.A Shoulder-night kids cooling escape (replaces `automations.yaml:533–535`)
-
+### 9.A Remove kids from Section 2 (representative — applies to every kid reference)
 ```yaml
-                    # --- Kids shoulder-night cooling escape -------------------
-                    # Mirrors the Master escape above (commit e00013d shape).
-                    # Outdoor/season must not leave an occupied child's bedroom
-                    # above the overnight comfort limit. Rooms stay independent.
-                    # Safety ceiling (>76°F, Section 3) is unchanged & separate.
-                    - variables:
-                        kids_on_at:  "{{ 76 if away else 71 }}"
-                        kids_off_at: "{{ 74 if away else 69.5 }}"
-                        kids_setpoint: "{{ 61 }}"           # locked shove command
-                        l_current:  "{{ states('climate.lincoln_air') }}"
-                        ly_current: "{{ states('climate.lilly_air') }}"
-                    - action: climate.set_temperature
-                      target: { entity_id: climate.lincoln_air }
-                      data:
-                        hvac_mode: >-
-                          {% if lincoln_temp > kids_on_at %}cool
-                          {% elif lincoln_temp <= kids_off_at %}off
-                          {% elif l_current == 'cool' %}cool
-                          {% else %}off{% endif %}
-                        temperature: "{{ kids_setpoint }}"
-                    - action: climate.set_temperature
-                      target: { entity_id: climate.lilly_air }
-                      data:
-                        hvac_mode: >-
-                          {% if lilly_temp > kids_on_at %}cool
-                          {% elif lilly_temp <= kids_off_at %}off
-                          {% elif ly_current == 'cool' %}cool
-                          {% else %}off{% endif %}
-                        temperature: "{{ kids_setpoint }}"
-                    # Nest stays unconditionally off in shoulder-night.
-                    - action: climate.set_hvac_mode
-                      target: { entity_id: climate.dining_room }
-                      data: { hvac_mode: "off" }
+# COOLING branch: delete the Lincoln (:438–451) and Lilly (:458–471)
+#   `- variables:` + `- action: climate.set_temperature` blocks entirely.
+# SHOULDER-NIGHT bulk-off (:533–535): drop the kids, keep Nest:
+- action: climate.set_hvac_mode
+  target: { entity_id: climate.dining_room }   # was [lincoln_air, lilly_air, dining_room]
+  data: { hvac_mode: "off" }
+# Do the same for every other bulk-off list (:577, :581, :633, :671) and delete
+# the heating-night kid set_temperature steps (:610–614, :640–644).
+# RESULT: Section 2 issues NO command to climate.lincoln_air / climate.lilly_air.
 ```
 
-### 9.B Quiet-fan command in the cooling engage path (kids; Section 2 cooling branch and 9.A)
-
+### 9.B New owner: kids comfort hold (native-thermostat, no deadband)
 ```yaml
-            # Never leave turbo running all night. Set a quiet fan only while the
-            # head is actually cooling. Verify supported fan_mode names live.
-            - choose:
-                - conditions: "{{ is_state('climate.lincoln_air', 'cool') }}"
-                  sequence:
-                    - action: climate.set_fan_mode
-                      target: { entity_id: climate.lincoln_air }
-                      data: { fan_mode: "{{ 'low' if is_night else 'auto' }}" }
-            - choose:
-                - conditions: "{{ is_state('climate.lilly_air', 'cool') }}"
-                  sequence:
-                    - action: climate.set_fan_mode
-                      target: { entity_id: climate.lilly_air }
-                      data: { fan_mode: "{{ 'low' if is_night else 'auto' }}" }
+- id: kids_comfort_hold
+  alias: "Kids Comfort Hold (native thermostat + modulation, no deadband)"
+  mode: single
+  trigger:
+    - platform: time_pattern               # reassert intent (defends against drift)
+      minutes: "/15"
+    - platform: numeric_state              # ≤70 ceiling guard (event-based)
+      entity_id: [sensor.lincoln_s_room_temperature_truth, sensor.lilly_s_room_temperature_truth]
+      above: 70.5
+      for: "00:05:00"
+    - platform: state
+      entity_id: input_select.hvac_season_mode
+  condition:
+    - condition: state
+      entity_id: timer.manual_hvac_override
+      state: "idle"
+  action:
+    - variables:
+        season: "{{ states('input_select.hvac_season_mode') }}"
+        # Per-room comfort setpoints are tunable helpers; tuned so ROOM TRUTH ≤70.
+        l_sp:  "{{ states('input_number.lincoln_cool_setpoint') | int(68) }}"
+        ly_sp: "{{ states('input_number.lilly_cool_setpoint')   | int(68) }}"
+        l_truth:  "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
+        ly_truth: "{{ states('sensor.lilly_s_room_temperature_truth')   | float(70) }}"
+        # Cool is appropriate in cooling/shoulder, or any time the room is warm.
+        cool_ok: "{{ season in ['cooling','shoulder'] }}"
+    # --- Lincoln (independent) ---
+    - choose:
+        - conditions: "{{ cool_ok or l_truth > 70.5 }}"
+          sequence:
+            - action: climate.set_temperature
+              target: { entity_id: climate.lincoln_air }
+              data: { hvac_mode: "cool", temperature: "{{ l_sp }}" }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.lincoln_air }
+              data: { fan_mode: "low" }          # quiet; verify supported names live
+      # else: leave the head as-is (heating-season handling TBD; see §12).
+    # --- Lilly (independent; identical, no presence dependency) ---
+    - choose:
+        - conditions: "{{ cool_ok or ly_truth > 70.5 }}"
+          sequence:
+            - action: climate.set_temperature
+              target: { entity_id: climate.lilly_air }
+              data: { hvac_mode: "cool", temperature: "{{ ly_sp }}" }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.lilly_air }
+              data: { fan_mode: "low" }
 ```
 
-### 9.C Overnight band (kids cooling-season variables; replaces `automations.yaml:439–441,459–461`)
-
+### 9.C Tunable comfort-setpoint helpers (configuration.yaml)
 ```yaml
-            # Lincoln (Lilly identical with ly_*). Day band unchanged (68/72);
-            # overnight band centers on the 70°F sleep target.
-            - variables:
-                l_setpoint: "{{ 61 }}"
-                l_off_at: "{{ 74 if away else (69.5 if is_night else 68) }}"
-                l_on_at:  "{{ 76 if away else (71   if is_night else 72) }}"
-                l_current: "{{ states('climate.lincoln_air') }}"
+input_number:
+  lincoln_cool_setpoint:        # tuned so Lincoln ROOM TRUTH tops out ≤70
+    name: "Lincoln Cool Setpoint"
+    min: 64
+    max: 72
+    step: 1
+    unit_of_measurement: "°F"
+  lilly_cool_setpoint:
+    name: "Lilly Cool Setpoint"
+    min: 64
+    max: 72
+    step: 1
+    unit_of_measurement: "°F"
 ```
 
-### 9.D Anti-short-cycle latch (reusing existing cooldown timers)
-
-```yaml
-            # Engage only if min-off satisfied; start cooldown on disengage.
-            # Add to the cool/off decision:  ... and is_state(
-            #   'timer.lincoln_compressor_cooldown', 'idle')  for re-engage.
-            # On transition cool->off:  timer.start lincoln_compressor_cooldown.
-            # (Implement as a small choose around the existing set_temperature
-            #  so deadband "hold" is preserved. Mirror for Lilly.)
-```
-
-### 9.E Observability (reuse existing patterns)
-- Add `input_text` + `input_datetime` engage/release-reason helpers for the kids
-  escape, mirroring the Section 14 boost helpers (`configuration.yaml:1166–1188`),
-  and extend the Section 15 provenance logger (`automations.yaml:1754+`) or the
-  v5.5 export so every kids engage/release records **temperature, season,
-  manual-override state, and triggering rule**.
-- Fix the blank `Supervisor_Enabled` / `Manual_Override_State` columns (verify the
-  live worksheet header includes sub-block-15 and the entity_id resolves).
-- Add a `Lilly_Truth_Count` export column to match `Lincoln_Truth_Count`.
+> **Why the commanded number is not "70":** the head regulates on its own
+> internal thermistor, which is biased vs. room air during cooling (Lincoln
+> noted ≈ +4.7 °F). Tune each `*_cool_setpoint` from `*_room_temperature_truth`
+> so the *room* never exceeds 70 — that is the operator's actual ceiling.
 
 ---
 
 ## 10. Safety and anti-short-cycle behavior
 
-- **Independent safety stays untouched.** LR runaway `<60 °F` (`737–762`), Master
-  floor `<58 °F` (`778–801`), and the `>76 °F` ceiling gates (`810–856`) are not
-  modified and must **not** gate on manual override (locked by
-  `test_manual_override_contract.py`). The kids' comfort band must never alias a
-  safety floor (Doc 1 §5.1).
-- **Anti-short-cycle = reuse the orphaned per-room cooldown timers** (15 min):
-  minimum-off before re-engage, minimum-on before disengage. This is the
-  project-blessed way to "reduce compressor short-cycling" (AGENTS.md goals)
-  without new helpers.
-- **Sustained crossing:** Tier 3 uses `for: 5m` on truth crossings so a transient
-  spike does not engage. Until then, the 15-min tick is itself a coarse debounce.
-- **Emergency fan path only:** `turbo` allowed only at/above an emergency
-  threshold (or via the existing `>76 °F` ceiling gate), never as the default
-  overnight fan.
+- **Section 3 untouched:** LR runaway `<60` (`:737–762`), Master floor `<58`
+  (`:778–801`) — never gated by override. The 76 °F ceiling gate stays as the
+  emergency backstop for the kids; adjust only its *terminal* action to hand back
+  to the comfort hold instead of a hard `off`.
+- **No bang-bang to short-cycle:** the head holds `cool` and **modulates**;
+  because the supervisor stops cutting it OFF at a band edge, the primary source
+  of rapid cycling is removed. If the hold ever turns a head fully off, wire the
+  existing `timer.<kid>_compressor_cooldown` (15 min) for min-off/min-on.
+- **Ceiling guard is sustained** (`for: 5m`) so a transient spike doesn't act.
+- **Turbo only for emergency** (≥76 °F ceiling gate); never the overnight default.
 
 ---
 
 ## 11. Manual override behavior (must remain authoritative)
 
-- **Mechanism (confirmed):** `v7_5_waf_manual_override` (`858–881`,
-  `mode: restart`) fires on any change to a head's `state` or `temperature`
-  attribute **whose `trigger.context.parent_id is none`** (i.e., a human / app /
-  cloud change, not an automation). It starts `timer.manual_hvac_override`.
-- **Effect (confirmed, test-locked):** while that timer is `active`, Section 2,
-  the ceiling gates, destrat, the Samsung guardrail, and boost-engage all
-  **stand down** (they require `state: idle`). True safety gates ignore it.
-- **Expiration (route to live):** the timer runs for its configured duration
-  (**not in Git**; documented as ~1 h). On expiry → `idle` → the next 15-min
-  supervisor tick re-applies policy (the `comfort_failure_forensics.md` §8.1
-  "supervisor overwrite" signature). This is *by design*: the supervisor does
-  not undo a parent's change *during* the window, only after it lapses.
-- **Plan compliance:** because all proposed changes live **inside Section 2**
-  (or, for E, a new automation that must also carry `state: idle`), the override
-  contract is inherited automatically. **Do not add any kids automation that
-  omits the `timer.manual_hvac_override == idle` gate** (Regression Appendix
-  §4.15). If E is implemented as a new automation, extend
-  `test_manual_override_contract.py` to assert it gates on idle.
+- **Mechanism (confirmed):** `v7_5_waf_manual_override` (`:858–881`, restart)
+  starts `timer.manual_hvac_override` on any non-automation change to a head.
+- **Effect:** while `active`, Section 2, ceiling gates, destrat, guardrail, boost
+  **and the new `kids_comfort_hold`** must stand down (all gate on `idle`). Add
+  `kids_comfort_hold` to `test_manual_override_contract.py`.
+- **Expiry (route to live):** the timer's duration is **not in Git** (~1 h
+  documented); on expiry → `idle` → the hold reasserts on the next tick. The hold
+  must **not** undo a parent's nudge during the window.
 
 ---
 
 ## 12. Seasonal shoulder-mode behavior
 
-- **Does shoulder block/delay bedroom cooling?** Yes — today it **forces the
-  kids off** at night and on the mild/cold day paths (`comfort_failure_forensics.md`
-  bulk-off table). Only the warm day path (`outdoor>70 or LR>71`) cools kids.
-- **Does outdoor temp override indoor comfort?** Yes — `Season_Mode` is driven
-  purely by Deck truth (Section 5), and the season then vetoes the kids. The plan
-  treats this as the regression named in Doc 1 §7 / Appendix §4.16: outdoor is an
-  input, not a meta-authority. **Fix A restores an indoor over-temperature escape**
-  without changing the season thresholds (so seasonal control for LR/Master/Nest
-  is untouched).
-- **Special rule for occupied/sleeping bedrooms?** Master already has one
-  (shoulder-night escape). The kids do not — A adds it. (Lilly has no presence
-  sensor, so the escape is time-of-night based, not presence-based; Lincoln may
-  optionally add presence later, but presence must not be a *new fragile
-  dependency* — default to cooling the room when presence is unknown.)
-- **Can `Season_Mode` change while a room is actively cooling?** Yes — the season
-  change is a supervisor trigger; that is exactly the 02:45 force-off. With A in
-  place, a `→shoulder` flip at night hands the kids to the escape (cool/off/hold)
-  rather than an unconditional off.
-- **Does `→shoulder` force `climate.turn_off`?** Today: yes (`set_hvac_mode off`).
-  After A: only when the room is at/below `kids_off_at`.
+- **Today:** shoulder (and the 02:45 outdoor-driven flip) **force-offs the kids**
+  — the root of the warm plateau. Outdoor Deck temp silently vetoes indoor
+  comfort (Regression Appendix §4.16).
+- **After the change:** the kids are out of Section 2, so a `→shoulder` flip no
+  longer offs them. The `kids_comfort_hold` keeps `cool@setpoint` whenever cooling
+  is appropriate **or** the room exceeds the 70 °F ceiling — **regardless of
+  season**. Season becomes a *bias*, not a veto (matching the operator's intent
+  and the actuator-spec's "season biases, does not hard-ban").
+- **Heating season (scope note):** this plan targets overnight overheating. For
+  winter, decide whether the kids' heating stays in Section 2 (then `kids_comfort_hold`
+  should no-op in `heating` unless the room is over the cooling ceiling) or also
+  migrates to a hold. Recommended: keep `cool_ok = season in ['cooling','shoulder']`
+  plus the year-round `>70.5` guard, and leave heating to a follow-up so this
+  change stays minimal.
+- **Independence:** Lincoln and Lilly are handled in separate steps; one reaching
+  its setpoint never disables the other.
 
 ---
 
-## 13. Validation procedure (for Codex, post-change, live)
+## 13. Validation procedure (Codex, live)
 
-1. **Static:** `python -m pytest tests/` — all green, including the updated
-   `test_supervisor_shoulder_night.py` and `test_section2_shove_command_setpoints.py`.
-   Confirm `61` shove and `58/60` safety floors still asserted.
-2. **Config check:** `ha core check` (or Developer Tools → YAML check) before reload.
-3. **Dry trace:** Developer Tools → Template, paste the new hvac_mode templates with
-   representative `lincoln_temp/lilly_temp/away/is_night` values; confirm
-   cool/off/hold transitions at 71 / 69.5.
-4. **Forced shoulder-night test:** with override idle, set `input_select.hvac_season_mode`
-   to `shoulder` during 22:00–06:00 with a kid's truth >71 °F; confirm the head
-   goes/stays `cool @ 61` with the quiet fan, and that the **other** child is
-   unaffected (independence). Confirm Master + LR + Nest behavior unchanged.
-5. **Override test:** manually nudge a kid's setpoint; confirm
-   `timer.manual_hvac_override` goes `active` and the supervisor stands down for
-   the window, then reasserts on expiry.
-6. **Overnight telemetry:** capture 2–3 nights in `VTherm_Launch_Data_v5_5`; verify
-   max kids truth ≤ ~71.5 °F, no `turbo` rows overnight, cycle count per room is
-   not higher than baseline (cooldown timers working), and no ceiling-gate fires.
-7. **Compare to baseline:** the June 5–6 window is the "before"; quantify
-   reduction in time-above-71 and in off↔cool transitions.
+1. **Static:** `python -m pytest tests/` green, with the updated Section 2 /
+   shoulder-night / cooling-setpoint tests and the new hold + helper tests.
+   Re-assert `58/60` floors and report-time freshness unchanged.
+2. **Config check:** `ha core check` before reload.
+3. **Provenance:** confirm Section 2 no longer writes `climate.lincoln_air` /
+   `climate.lilly_air` (Logbook / `hvac_provenance_log` shows no
+   `v7_5_main_supervisor` writes to the kids).
+4. **Hold + modulation:** with override idle and a warm room, confirm the head
+   sits in `cool @ comfort_setpoint` with a quiet fan and **modulates** (hvac_action
+   cycles run→idle) instead of being cut OFF; confirm the other child is
+   unaffected (independence) and Master/LR/Nest unchanged.
+5. **Ceiling:** drive a room `>70.5` for 5 min and confirm the guard ensures
+   cooling; confirm the room **truth** plateaus ≤70 after setpoint tuning.
+6. **Season flip:** force `cooling→shoulder` overnight and confirm the kids keep
+   cooling (no force-off).
+7. **Override:** nudge a head; confirm the hold stands down for the window and
+   reasserts on expiry.
+8. **2–3 nights telemetry:** max kids truth ≤70, no `turbo` rows, far fewer
+   off↔cool transitions than the June 5–6 baseline.
 
 ---
 
 ## 14. Rollback procedure
 
-- All changes are confined to `automations.yaml` Section 2 (+ optional
-  `configuration.yaml` helper wiring for D/E and the test files). **Rollback =
-  `git revert`/restore the prior `automations.yaml` (+ tests)** and reload
-  automations; no entity renames, no truth-layer changes, so no migration.
-- Because Git may lag live, Codex should **snapshot the live `automations.yaml`
-  Section 2 and the live helper definitions before editing** (commit them first
-  so the repo matches live), then apply changes on top — so rollback returns to
-  the *actual* prior live state, not a stale repo state.
-- The orphaned cooldown timers (D) and any new reason-helpers (E) are additive;
-  removing their references restores prior behavior. If a new automation is used
-  for E, disabling that single automation is an instant partial rollback.
-- Safety gates are untouched, so rollback never affects equipment protection.
+- Changes are confined to `automations.yaml` (Section 2 kid-removal + new
+  `kids_comfort_hold` + ceiling-gate terminal tweak), `configuration.yaml` (two
+  `input_number` helpers), and the test files. **Rollback = `git revert` + reload
+  automations;** no entity renames, no truth-layer changes.
+- Because Git lags live, Codex must **first commit the live Section 2 + the live
+  native-thermostat hold setup** (so the repo matches reality), then apply changes
+  on top — so rollback returns to the *actual* prior live state.
+- Disabling the single `kids_comfort_hold` automation + re-enabling the kids in
+  Section 2 is an instant full rollback. Safety gates are untouched throughout.
 
 ---
 
 ## 15. Specific live automation traces Codex must inspect
 
-1. **02:45 season flip:** trace `automation.v7_5_auto_season_mode` and
-   `automation.v7_5_main_supervisor` around 02:30–03:00 June 6. Confirm the
-   `cooling→shoulder` `select_option` and the supervisor re-run that issued the
-   kids `off`. Confirm Deck truth value at the flip.
-2. **05:45 Lincoln anomaly:** pull `VTherm_Launch_Data_v5_5` rows 05:15–06:30 +
-   HA Logbook + (if present) `hvac_provenance_log`/`supervisor_state_log` for
-   `climate.lincoln_air`. Classify the re-engage origin (manual / cloud / ceiling
-   gate / supervisor). This decides whether the 05:45 event is in scope.
-3. **`turbo` provenance:** Logbook/history for `climate.lincoln_air` and
-   `climate.lilly_air` `fan_mode` for the whole night — when/by whom was `turbo`
-   last set, and did any automation touch it. Confirm supported fan-mode names.
-4. **Manual-override timer:** read the live `timer.manual_hvac_override`
-   definition (duration, `restore`) and any `active` windows overnight
-   (`Manual_Override_State` / `_Remaining_Sec` columns).
-5. **`Supervisor_Enabled` blank:** verify `automation.v7_5_main_supervisor`
-   exists/`on`, and that the live worksheet header row includes the sub-block-15
-   columns in order (deployment warning `automations.yaml:101–106`).
-6. **Ceiling-gate non-fire:** confirm neither kid's truth hit `>76 °F` (so the
-   45-min ceiling delay did not interact with S2).
-7. **Live helper existence:** confirm `input_select.hvac_season_mode`,
-   `input_boolean.away_mode`, `input_boolean.night_mode_lr_primary`, and
-   `timer.*_compressor_cooldown` exist live and match this plan's assumptions.
-8. **Section 2 parity:** diff live Section 2 against repo `automations.yaml` to
-   ensure no out-of-band live edits before applying changes.
+1. **Confirm the fight:** for `climate.lincoln_air` / `climate.lilly_air`, pull
+   Logbook + `hvac_provenance_log` across the overnight window — expect
+   `v7_5_main_supervisor` writes at `:00/:15/:30/:45` (and at 02:45) commanding
+   `61`/`off`. This is the proof the legacy supervisor overwrote the hold.
+2. **Bias characterization:** compare `sensor.<kid>_air_temperature` (Samsung
+   internal) vs `sensor.<kid>_room_temperature_truth` during active cooling to
+   pick the commanded setpoint that holds room truth ≤70.
+3. **Mode check:** confirm the heads run in `cool` (not Samsung `auto`).
+4. **02:45 flip:** trace `v7_5_auto_season_mode` + the supervisor re-run.
+5. **05:45 Lincoln anomaly:** classify the re-engage origin (manual / cloud /
+   ceiling gate).
+6. **turbo provenance** + **supported fan modes** for both heads.
+7. **Override timer** definition/duration + overnight `Manual_Override_State`.
+8. **`Supervisor_Enabled` blank** root cause (entity_id / worksheet header).
+9. **Helper existence:** `input_select.hvac_season_mode`, `input_boolean.away_mode`,
+   `night_mode_lr_primary`, `timer.*` exist live as assumed.
 
 ---
 
 ## 16. Copy-paste Codex implementation prompt
 
-> Paste the block below to Codex inside HAOS. It is scoped to the **minimal
-> Tier-1 fix first**, with Tier-2/3 gated behind explicit confirmation.
-
 ```
 ROLE: You are modifying the LIVE Moose House Home Assistant config inside HAOS.
-The Git repo may lag live. LIVE YAML + live traces are source of truth. Read
-docs/kids-bedroom-overnight-cooling-plan.md before doing anything.
+Git lags live; LIVE YAML + live traces are source of truth. Read
+docs/kids-bedroom-overnight-cooling-plan.md (v2) first.
 
-GOAL: Keep Lincoln's and Lilly's rooms near 70°F overnight without the 67→72
-sawtooth, hours-long warm periods, turbo-all-night, rapid cycling, fighting the
-Section 2 supervisor, breaking seasonal control, ignoring manual override, or
-adding a second conflicting climate writer.
+CONTEXT (operator-confirmed 2026-06-06):
+- Lincoln & Lilly should be controlled by the NATIVE Samsung thermostat: set a
+  real comfort setpoint and let the head's inverter scale back as it reaches
+  temp. NO bang-bang deadband. Room TRUTH must never exceed 70°F.
+- The legacy Section 2 supervisor (automation.v7_5_main_supervisor) is STILL
+  ENABLED and overwrites that hold every 15 min with cool@61 / off<=68 and
+  force-offs the kids in shoulder-night. That fight is the bug.
 
-STEP 0 — VERIFY LIVE (do not skip; report findings before editing):
-  1. Confirm there is NO Versatile Thermostat integration; the controller is
-     automation.v7_5_main_supervisor (Section 2).
-  2. Snapshot live automations.yaml Section 2 + live helper defs
-     (input_select.hvac_season_mode, input_boolean.away_mode,
-     input_boolean.night_mode_lr_primary, timer.manual_hvac_override,
-     timer.lincoln_compressor_cooldown, timer.lilly_compressor_cooldown). Commit
-     them so the repo matches live BEFORE changing anything.
-  3. List supported fan_mode values for climate.lincoln_air and climate.lilly_air.
-  4. Pull VTherm_Launch_Data_v5_5 rows 2026-06-05 21:00 → 2026-06-06 08:30 and
-     classify the 05:45 Lincoln event and the turbo fan origin (see plan §15).
+STEP 0 — VERIFY LIVE (report before editing):
+  1. Confirm Section 2 is enabled and is writing climate.lincoln_air /
+     climate.lilly_air at :00/:15/:30/:45 with setpoint 61 (Logbook /
+     hvac_provenance_log).
+  2. Snapshot live automations.yaml Section 2, the live native-thermostat hold
+     setup for the kids, and live helpers (input_select.hvac_season_mode,
+     input_boolean.away_mode, night_mode_lr_primary, timer.manual_hvac_override,
+     timer.{lincoln,lilly}_compressor_cooldown). COMMIT them so the repo matches
+     live BEFORE changing anything.
+  3. Characterize Samsung-internal vs room-truth bias during cooling for each
+     head; confirm heads run in 'cool' (not 'auto'); list supported fan modes.
 
-STEP 1 — TIER 1 (implement, then run pytest, then ha core check, then reload):
-  A. In Section 2 shoulder-night sub-branch, REMOVE climate.lincoln_air and
-     climate.lilly_air from the unconditional bulk-off and ADD a per-room
-     cool/off/hold cooling escape mirroring the existing Master escape
-     (plan §9.A). Keep setpoint 61. Keep dining_room in the bulk-off. Keep the
-     two rooms independent (separate steps).
-  B. In the kids' cooling engage paths (cooling-season branch AND the new
-     shoulder-night escape), set a quiet fan while the head is 'cool'
-     (low overnight / auto by day; turbo only for emergency). Never leave turbo
-     as the overnight default (plan §9.B).
-  C. Update the locked tests to match: in tests/test_supervisor_shoulder_night.py
-     change the "bulk-off still covers lincoln/lilly" expectation to dining-only
-     and add kids-escape-exists + kids-excluded-from-bulk-off tests (mirror the
-     Master tests). In tests/test_section2_shove_command_setpoints.py update the
-     cooling-command count (8 -> 10) and assert the two new kids escape commands
-     are at 61. Do NOT weaken the 61 shove or the 58/60 safety asserts.
+STEP 1 — STOP THE FIGHT:
+  A. Remove Lincoln & Lilly from automation.v7_5_main_supervisor entirely:
+     delete their set_temperature blocks in every season branch and remove them
+     from every bulk-off target list. Section 2 must issue NO command to
+     climate.lincoln_air / climate.lilly_air. Leave Master/LR/Nest unchanged.
+  B. Remove the kids from Section 6 destrat; change the Section 3 76°F ceiling
+     gate cooling branch to hand the head back to the comfort hold instead of a
+     hard 'off'. Leave Section 8 (auto guard) and Section 4 (ghost) as protection.
 
-STEP 2 — TIER 2 (only after I confirm Tier 1 looks good for 2-3 nights):
-  D. Tighten the kids OVERNIGHT band to ON>71 / OFF<=69.5 for 21:00-07:00,
-     leaving the daytime 68/72 band unchanged (plan §9.C); update the locked
-     threshold asserts. Frame as a deadband change.
-  E. Wire timer.lincoln_compressor_cooldown / timer.lilly_compressor_cooldown for
-     minimum-off (block re-engage until idle) and minimum-on (plan §9.D); add tests.
+STEP 2 — NEW OWNER (kids comfort hold; see plan §9.B/§9.C):
+  C. Add input_number.lincoln_cool_setpoint / lilly_cool_setpoint (tunable),
+     tuned from room truth so each room tops out <=70°F (start ~68, adjust).
+  D. Add ONE automation 'kids_comfort_hold' (mode: single) that, while
+     timer.manual_hvac_override == idle, ensures each head is cool @ its comfort
+     setpoint with a quiet fan whenever cooling is appropriate (cooling/shoulder
+     season) OR room truth > 70.5°F for 5 min, and otherwise leaves it alone.
+     NO deadband off. Keep Lincoln and Lilly independent. Reserve turbo for the
+     76°F ceiling gate only.
+  E. Add kids_comfort_hold to tests/test_manual_override_contract.py (must gate
+     on idle). Update tests/test_section2_shove_command_setpoints.py,
+     tests/test_supervisor_shoulder_night.py, and
+     tests/test_section2_cooling_setpoint_doctrine.py to reflect that the kids
+     are no longer Section-2-controlled. Do NOT weaken the 58/60 safety asserts
+     or report-time freshness.
 
-STEP 3 — OBSERVABILITY: add kids escape engage/release reason helpers (mirror
-  Section 14), record temperature+season+override-state+rule on every engage/
-  release, add a Lilly_Truth_Count export column, and fix the blank
-  Supervisor_Enabled / Manual_Override_State columns (plan §9.E).
+STEP 3 — DOCTRINE: amend 1_startup_canon.md §5.1,
+  comfort_control_actuator_arbitration_spec.md, and comfort_failure_forensics.md
+  to record that Lincoln & Lilly are native-thermostat-hold rooms (setpoint +
+  modulation), not deadband/shove rooms.
 
 CONSTRAINTS:
-  - Every comfort/destrat/guardrail automation MUST keep the
-    timer.manual_hvac_override == idle gate. Safety floors (58/60) MUST NOT gate
-    on override. Do not introduce arbitration/comfort_profiles/MSR into the
-    supervisor (locked by tests).
-  - Do not rename entities, collapse sections, or remove telemetry/safety.
-  - Make NO change without STEP 0 verification. If anything live contradicts the
-    plan, STOP and report instead of inventing behavior.
+  - One owner per head: after STEP 1, only kids_comfort_hold (+ Section 3 safety,
+    Section 8 auto-guard, Section 4 ghost) may touch the kids' heads.
+  - Every comfort automation keeps the timer.manual_hvac_override == idle gate;
+    Section 3 floors (58/60) must NOT gate on override.
+  - Do not rename entities, collapse sections, or remove telemetry/safety. Do not
+    promote MSR/Apollo into control.
+  - Make NO change without STEP 0. If live contradicts the plan, STOP and report.
 
-VALIDATE: python -m pytest tests/ ; ha core check ; reload automations ; run the
-plan §13 live checks ; capture 2-3 nights of telemetry and compare to the
-June 5-6 baseline (time-above-71 and off<->cool transition count per room).
+VALIDATE: python -m pytest tests/ ; ha core check ; reload ; run plan §13 live
+checks ; capture 2-3 nights and confirm room truth stays <=70 with no turbo and
+far fewer off<->cool transitions than the June 5-6 baseline.
 
-ROLLBACK: git revert the Section 2 + test changes and reload (plan §14). No
-entity/truth migrations are involved.
+ROLLBACK: git revert the changes + reload; or disable kids_comfort_hold and
+re-enable the kids in Section 2 (plan §14). No entity/truth migrations involved.
 ```
 
 ---
 
 ### Appendix — doctrine alignment notes
-- This plan follows `comfort_failure_forensics.md`: it reconstructs the window,
-  names the failure modes (§8.5/§8.6-adjacent: season branch overruled comfort;
-  plus the deadband-ceiling and stuck-actuator-fan modes), and recommends the
-  **smallest targeted fix** rather than a redesign.
-- It does **not** re-propose any retired approach (Doc 1 §7): no presence-as-master
-  governor, no premature arbitration, no isolation-first rewrite, no offset
-  stacking. The shoulder-night escape is the already-blessed Master shape applied
-  to the kids.
-- It keeps comfort logic and safety logic separate, keeps the 61 shove doctrine,
-  and treats outdoor/season as an input — not an authority over an occupied
-  child's bedroom.
+- This plan stops treating outdoor/season as an authority over an occupied
+  child's bedroom (Doc 1 §7; Appendix §4.16) and resolves an existing
+  conflicting-writers condition rather than adding one.
+- It **supersedes**, for Lincoln & Lilly only, the 2026-06-02 actuator-shove /
+  "off-inside-the-band" spec and the deadband-as-contract framing, per the
+  operator's 2026-06-06 decision (native-thermostat hold + modulation, room ≤70).
+- It keeps comfort and safety separate, preserves the manual-override contract,
+  and keeps the two rooms independent. The held setpoint is tuned against room
+  truth (not the head's biased thermistor), consistent with the truth-first
+  philosophy.
