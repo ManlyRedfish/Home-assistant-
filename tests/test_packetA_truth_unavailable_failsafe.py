@@ -31,6 +31,7 @@ PENDING = (
 
 SUPERVISOR_ID = "v7_5_main_supervisor"
 FAILSAFE_ID = "v8_6_truth_unavailable_cooling_failsafe"
+RECON_ID = "v8_6b_truth_unavailable_cooling_reconciliation"
 
 # zone-key -> (truth sensor, climate entity, truth_ok variable name)
 ZONES = {
@@ -136,6 +137,31 @@ def _supervisor_control_variables(supervisor):
     return merged
 
 
+def _collect_hvac_modes(node):
+    """Recursively gather every ``data.hvac_mode`` value in an action tree.
+
+    Handles nested structures: choose/sequence/default, repeat/for_each, if/then/
+    else, and plain action lists.
+    """
+    modes = []
+
+    def walk(obj):
+        if isinstance(obj, list):
+            for item in obj:
+                walk(item)
+        elif isinstance(obj, dict):
+            if isinstance(obj.get("data"), dict) and "hvac_mode" in obj["data"]:
+                modes.append(obj["data"]["hvac_mode"])
+            for key, val in obj.items():
+                if key == "data":
+                    continue
+                if isinstance(val, (list, dict)):
+                    walk(val)
+
+    walk(node)
+    return modes
+
+
 def _render(template, **ctx):
     jinja2 = pytest.importorskip("jinja2")
     return jinja2.Environment().from_string(template).render(**ctx).strip()
@@ -200,11 +226,18 @@ def test_healthy_deadband_behavior_unchanged(automations):
 
 @pytest.mark.xfail(reason=PENDING, strict=False)
 def test_supervisor_defines_per_zone_truth_ok(automations):
-    """Each zone validates truth via has_value BEFORE numeric conversion."""
+    """Each zone validates truth via has_value AND float(none) before deadband.
+
+    Both clauses are required so the guard rejects unavailable/unknown *and* any
+    arbitrary non-numeric string — the same validity the event path uses.
+    """
     v = _supervisor_control_variables(_supervisor(automations))
     for _key, (truth, _clim, ok) in ZONES.items():
         assert ok in v, f"supervisor must define {ok}"
-        assert "has_value" in v[ok], f"{ok} must validate via has_value (not float)"
+        assert "has_value" in v[ok], f"{ok} must validate via has_value"
+        assert "float(none)" in v[ok], (
+            f"{ok} must also reject arbitrary non-numeric via float(none)"
+        )
         assert truth in v[ok], f"{ok} must reference {truth}"
 
 
@@ -264,31 +297,51 @@ def test_master_sleep_unavailable_cannot_create_cool(automations):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.xfail(reason=PENDING, strict=False)
-def test_event_failsafe_present_per_zone_unavailable_triggers(automations):
+def test_event_failsafe_present_per_zone_validity_triggers(automations):
+    """Template triggers (not state-to-unavailable), one per zone, id=climate."""
     auto = _auto(automations, FAILSAFE_ID)
     assert auto is not None, f"{FAILSAFE_ID} automation must exist"
-    triggered = {}
-    for trig in auto.get("trigger", []):
-        if trig.get("platform") != "state":
-            continue
-        to = trig.get("to")
-        to_set = set(to if isinstance(to, list) else [to])
-        if to_set & {"unavailable", "unknown"}:
-            triggered[trig.get("entity_id")] = trig
-    for _key, (truth, _clim, _ok) in ZONES.items():
-        assert truth in triggered, f"missing unavailable trigger for {truth}"
+    template_trigs = {
+        t.get("id"): t
+        for t in auto.get("trigger", [])
+        if t.get("platform") == "template"
+    }
+    for _key, (truth, clim, _ok) in ZONES.items():
+        trig = template_trigs.get(clim)
+        assert trig is not None, f"missing template trigger with id={clim}"
+        vt = trig.get("value_template", "")
+        assert truth in vt, f"trigger {clim} must reference {truth}"
+
+
+@pytest.mark.xfail(reason=PENDING, strict=False)
+def test_event_failsafe_validity_covers_non_numeric(automations):
+    """Validity must reject ANY non-numeric truth, not only unavailable/unknown.
+
+    Each trigger template must use ``float(none) is none`` (the same definition
+    as the supervisor guard), so a stray non-numeric string cannot bypass the
+    event path while being caught by the guard.
+    """
+    auto = _auto(automations, FAILSAFE_ID)
+    assert auto is not None
+    import json
+
+    blob = json.dumps(auto.get("trigger", []))
+    assert "float(none) is none" in blob, (
+        "event triggers must detect float(none) is none (arbitrary non-numeric)"
+    )
+    assert "has_value" in blob, "event triggers must also cover unavailable/unknown"
 
 
 @pytest.mark.xfail(reason=PENDING, strict=False)
 def test_event_failsafe_two_minute_persistence(automations):
     auto = _auto(automations, FAILSAFE_ID)
     assert auto is not None
-    state_trigs = [t for t in auto.get("trigger", []) if t.get("platform") == "state"]
-    assert state_trigs, "fail-safe must have state triggers"
-    for trig in state_trigs:
+    trigs = [t for t in auto.get("trigger", []) if t.get("platform") == "template"]
+    assert trigs, "fail-safe must have template triggers"
+    for trig in trigs:
         for_val = trig.get("for")
         assert for_val in ("00:02:00", 120, {"minutes": 2}, {"seconds": 120}), (
-            f"each truth trigger needs a 2-minute persistence, got {for_val!r}"
+            f"each validity trigger needs a 2-minute persistence, got {for_val!r}"
         )
 
 
@@ -340,4 +393,118 @@ def test_event_failsafe_recovery_never_turns_cooling_on(automations):
         service = step.get("action") or step.get("service")
         assert service not in ("climate.turn_on",), (
             "fail-safe must not turn climate on"
+        )
+
+
+@pytest.mark.xfail(reason=PENDING, strict=False)
+def test_protective_off_not_blocked_by_notification(automations):
+    """Climate OFF must precede any notify, and any notify must be non-blocking.
+
+    Guarantees a missing/failed notification service cannot prevent or invalidate
+    the protective OFF.
+    """
+    auto = _auto(automations, FAILSAFE_ID)
+    assert auto is not None
+    actions = [s for s in auto.get("action", []) if isinstance(s, dict)]
+
+    def _svc(s):
+        return s.get("action") or s.get("service") or ""
+
+    off_idx = next(
+        (i for i, s in enumerate(actions)
+         if _svc(s) == "climate.set_hvac_mode"
+         and s.get("data", {}).get("hvac_mode") in ("off", False)),
+        None,
+    )
+    assert off_idx is not None, "fail-safe must issue climate.set_hvac_mode off"
+    for i, s in enumerate(actions):
+        if _svc(s).startswith("notify."):
+            assert i > off_idx, "notify must come AFTER the protective OFF"
+            assert s.get("continue_on_error") is True, (
+                "notify must be non-blocking (continue_on_error: true)"
+            )
+
+
+# ---------------------------------------------------------------------------
+# GROUP 4 — Restart/reload reconciliation (xfail until implemented)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(reason=PENDING, strict=False)
+def test_reconciliation_present_restart_and_reload_safe(automations):
+    """Reconciliation has a homeassistant start trigger AND a periodic sweep.
+
+    Start trigger covers HA restart; the periodic time_pattern covers automation
+    reload (which fires no start event) and bounds any blind spot.
+    """
+    auto = _auto(automations, RECON_ID)
+    assert auto is not None, f"{RECON_ID} automation must exist"
+    platforms = {t.get("platform") for t in auto.get("trigger", [])}
+    assert "homeassistant" in platforms, "needs a homeassistant start trigger"
+    assert "time_pattern" in platforms, "needs a periodic reconciliation trigger"
+
+
+@pytest.mark.xfail(reason=PENDING, strict=False)
+def test_reconciliation_startup_settle_delay(automations):
+    """Start path waits a bounded delay so briefly-unavailable startup entities
+    do not cause false protective shutdowns."""
+    auto = _auto(automations, RECON_ID)
+    assert auto is not None
+    import json
+
+    assert "delay" in json.dumps(auto.get("action", [])), (
+        "reconciliation start path must include a bounded settle delay"
+    )
+
+
+@pytest.mark.xfail(reason=PENDING, strict=False)
+def test_reconciliation_off_only_all_zones_on_invalid_truth(automations):
+    """Reconciliation sweeps all four zones, OFF-only, gated on cool + invalid."""
+    auto = _auto(automations, RECON_ID)
+    assert auto is not None
+    import json
+
+    blob = json.dumps(auto.get("action", []))
+    for _key, (truth, clim, _ok) in ZONES.items():
+        assert truth in blob, f"reconciliation must consider {truth}"
+        assert clim in blob, f"reconciliation must consider {clim}"
+    assert "float(none) is none" in blob, "must use the shared invalid-truth test"
+    assert "'cool'" in blob or '"cool"' in blob, "must gate on a unit being cool"
+    # OFF-only: every hvac_mode set in the action tree is 'off'
+    for mode in _collect_hvac_modes(auto.get("action", [])):
+        assert mode in ("off", False), f"reconciliation may only set off, got {mode!r}"
+
+
+# ---------------------------------------------------------------------------
+# ENFORCEABLE GATE — must be a NORMAL test (green in both phases)
+# ---------------------------------------------------------------------------
+
+def test_packet_a_xfail_markers_removed_once_implemented(automations):
+    """Make the test gate enforceable.
+
+    ``xfail(strict=False)`` lets an XPASS slip through a green suite, so once the
+    runtime guard is implemented every Packet A marker MUST be removed and the
+    tests must run as ordinary assertions. This gate ties marker-removal to the
+    implementation signal (supervisor truth guards present in YAML):
+
+      * design phase  (guards absent): markers expected → pass.
+      * implemented   (guards present) AND markers removed: pass.
+      * implemented but markers left (the dangerous XPASS state): FAIL the suite.
+    """
+    v = _supervisor_control_variables(_supervisor(automations))
+    implemented = all(ok in v for _k, (_t, _c, ok) in ZONES.items())
+
+    marker = "@pytest.mark." + "xfail"  # built by concat so this line isn't a hit
+    with open(__file__, "r") as fh:
+        marker_count = fh.read().count(marker)
+
+    if implemented:
+        assert marker_count == 0, (
+            "Packet A runtime guard is implemented but xfail markers remain. "
+            "Remove every xfail marker so the contract tests run as enforced "
+            "assertions (zero XFAIL, zero XPASS)."
+        )
+    else:
+        assert marker_count >= 1, (
+            "Design phase expected: xfail markers should be present until the "
+            "runtime change lands."
         )

@@ -9,10 +9,18 @@ enforcement (V9 backlog), thresholds, the 61 °F target, or hardware. Proposed
 YAML is illustrative and must not be committed to `automations.yaml` /
 `configuration.yaml` until separately approved.
 
-**Status (2026-06-09):** All three design decisions **APPROVED** (see §Decisions).
-Static contract tests added in `tests/test_packetA_truth_unavailable_failsafe.py`
-— implementation-facing checks are `xfail(strict=False)` until Codex applies the
-runtime change; healthy-state/doctrine checks pass now and must stay green.
+**Status (2026-06-09, pass 2 — hardened):** All three design decisions
+**APPROVED** (see §Decisions). Pass-2 hardening applied: (1) event validity now
+covers **any** non-numeric truth via a shared `float(none) is none` definition
+matching the supervisor guard; (2) a restart/reload-safe **reconciliation**
+automation (§3c) closes the `for:`-reset blind spot; (3) the test gate is
+**enforceable** (a normal-priority gate test fails the suite if the guard is
+implemented but `xfail` markers remain); (4) the notifier is **non-blocking** and
+must be verified, never gating the protective OFF.
+Contract tests: `tests/test_packetA_truth_unavailable_failsafe.py` — **design-only
+baseline: 136 passed, 14 xfailed** (3 Packet A pass now; 14 `xfail(strict=False)`
+until implemented). **Expected post-implementation: 150 passed, 0 xfailed, 0
+xpassed** once Codex applies the YAML and removes the markers.
 
 ---
 
@@ -149,6 +157,12 @@ the variables checked by `test_section2_cooling_setpoint_doctrine.py` (it assert
 green.
 
 ### 3b. Event protective-OFF automation (new block — DO NOT APPLY)
+
+Uses **template triggers**, not `state … to: [unavailable, unknown]`, so the
+validity test matches the supervisor guard **exactly** and catches **any**
+non-numeric value (e.g. a stray `"err"`/`"NaN"` string), not only the two known
+states. Shared validity definition (truth is INVALID iff):
+`{{ not has_value(<truth>) or states(<truth>) | float(none) is none }}`.
 ```yaml
 # DO NOT APPLY — illustrative new automation
 - id: v8_6_truth_unavailable_cooling_failsafe
@@ -156,24 +170,28 @@ green.
   mode: parallel
   max: 4
   trigger:
-    - platform: state
-      entity_id: sensor.living_room_temperature_truth
-      to: ["unavailable", "unknown"]
+    - platform: template
+      value_template: >-
+        {{ not has_value('sensor.living_room_temperature_truth')
+           or states('sensor.living_room_temperature_truth') | float(none) is none }}
       for: "00:02:00"
       id: climate.living_room_air
-    - platform: state
-      entity_id: sensor.master_bedroom_temperature_truth
-      to: ["unavailable", "unknown"]
+    - platform: template
+      value_template: >-
+        {{ not has_value('sensor.master_bedroom_temperature_truth')
+           or states('sensor.master_bedroom_temperature_truth') | float(none) is none }}
       for: "00:02:00"
       id: climate.master_bedroom_air
-    - platform: state
-      entity_id: sensor.lincoln_s_room_temperature_truth
-      to: ["unavailable", "unknown"]
+    - platform: template
+      value_template: >-
+        {{ not has_value('sensor.lincoln_s_room_temperature_truth')
+           or states('sensor.lincoln_s_room_temperature_truth') | float(none) is none }}
       for: "00:02:00"
       id: climate.lincoln_air
-    - platform: state
-      entity_id: sensor.lilly_s_room_temperature_truth
-      to: ["unavailable", "unknown"]
+    - platform: template
+      value_template: >-
+        {{ not has_value('sensor.lilly_s_room_temperature_truth')
+           or states('sensor.lilly_s_room_temperature_truth') | float(none) is none }}
       for: "00:02:00"
       id: climate.lilly_air
   condition:
@@ -182,24 +200,84 @@ green.
     - condition: template
       value_template: "{{ is_state(trigger.id, 'cool') }}"
   action:
+    # Protective OFF FIRST — it must not depend on any notification succeeding.
     - action: climate.set_hvac_mode
       target: { entity_id: "{{ trigger.id }}" }
       data: { hvac_mode: "off" }
-    - action: notify.notify
+    # Notification is SECONDARY and non-blocking. continue_on_error guarantees a
+    # missing/failed notifier cannot invalidate the protective OFF above.
+    # Codex must verify the live notify service (see §10); if none is approved,
+    # drop this step entirely — the OFF action stands alone.
+    - action: notify.notify          # VERIFY-OR-REPLACE (non-blocking)
+      continue_on_error: true
       data:
         title: "🌡️⚠️ Truth-Unavailable Cooling Fail-Safe"
         message: >
-          {{ trigger.id }} forced OFF — its truth sensor went
-          unavailable/unknown for >2 min while the unit was cooling.
-          Truth-based safety gates (runaway/floor/ceiling) are blind until
-          the sensor recovers. Investigate the sensor/integration; the V8.3
-          supervisor will resume control automatically on recovery.
+          {{ trigger.id }} forced OFF — its truth input was invalid
+          (unavailable/unknown/non-numeric) for >2 min while the unit was
+          cooling. Truth-based safety gates are blind until recovery. The V8.3
+          supervisor resumes control automatically once truth is numeric again.
 ```
 Notes: `mode: parallel, max: 4` keeps zones independent; the automation **only
 ever commands OFF** (never `cool`); commands carry an automation context so the
-`v7_5_waf_manual_override` watcher (which requires `context.parent_id is none`)
-is **not** tripped. If the climate entity is already `off`/`heat`/`unavailable`,
-the `cool`-only condition skips it (no needless command).
+`v7_5_waf_manual_override` watcher (requires `context.parent_id is none`) is
+**not** tripped. The `cool`-only condition skips units already `off`/`heat`.
+**`for: "00:02:00"` resets on automation reload / HA restart — §3c covers that.**
+
+### 3c. Restart / reload reconciliation (new block — DO NOT APPLY)
+
+HA template (and `for:`) edges are **not** re-fired for a condition that was
+already true before an automation reload or HA restart — a sensor already
+invalid across that boundary would otherwise sit in a blind spot until the
+15-min supervisor tick. This automation closes that gap with two restart-safe
+triggers and an all-zone sweep. **Chosen approach: `homeassistant` start trigger
+(with a bounded settle delay) + a periodic reconciliation sweep.** Rationale:
+the start trigger handles HA restart promptly; the periodic `time_pattern`
+handles **automation reload** (which fires no start event) and bounds any blind
+spot to ≤5 min — tighter than the 15-min supervisor backstop, which remains the
+final scheduled guard.
+```yaml
+# DO NOT APPLY — illustrative new automation
+- id: v8_6b_truth_unavailable_cooling_reconciliation
+  alias: "V8.6b: Truth-Unavailable Cooling Reconciliation (Restart/Reload Safe)"
+  mode: single
+  trigger:
+    - platform: homeassistant
+      event: start
+      id: reconcile_start
+    - platform: time_pattern
+      minutes: "/5"
+      id: reconcile_periodic
+  action:
+    # On HA start, let sensors report before judging validity (avoid startup
+    # false-positives from briefly-unavailable entities). Periodic runs: no wait.
+    - choose:
+        - conditions: "{{ trigger.id == 'reconcile_start' }}"
+          sequence:
+            - delay: "00:03:00"
+    # Sweep all four zones; force OFF any unit cooling while its truth is invalid.
+    # Per-item condition preserves four-zone independence. OFF-only.
+    - repeat:
+        for_each:
+          - { truth: sensor.living_room_temperature_truth,    climate: climate.living_room_air }
+          - { truth: sensor.master_bedroom_temperature_truth, climate: climate.master_bedroom_air }
+          - { truth: sensor.lincoln_s_room_temperature_truth, climate: climate.lincoln_air }
+          - { truth: sensor.lilly_s_room_temperature_truth,   climate: climate.lilly_air }
+        sequence:
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ is_state(repeat.item.climate, 'cool')
+                     and (not has_value(repeat.item.truth)
+                          or states(repeat.item.truth) | float(none) is none) }}
+            then:
+              - action: climate.set_hvac_mode
+                target: { entity_id: "{{ repeat.item.climate }}" }
+                data: { hvac_mode: "off" }
+```
+The reconciliation also covers "**reload mid-persistence**": if a reload resets a
+pending 2-min `for:` timer, the next periodic sweep (≤5 min) forces OFF a
+cooling+invalid zone. No persistent inhibit helpers are required.
 
 ---
 
@@ -237,7 +315,14 @@ Diagnostic-only (NOT used here): binary_sensor.*_heat_pump_firing, sensor.*_temp
   (their limitation, not a new conflict) and re-arm on recovery. Fail-safe
   complements them by covering exactly the blind window.
 - **`mode` choices:** fail-safe `parallel/max:4` → no cross-zone queueing.
-  Supervisor stays `single`.
+  Supervisor stays `single`; reconciliation `single`.
+- **Reconciliation (`v8_6b`) vs event fail-safe vs supervisor:** all three only
+  ever command **OFF** on a cooling+invalid zone, so they converge — no opposing
+  commands. Reconciliation exists solely to cover the restart/reload boundary
+  where the event automation's `for:` edge is not re-fired; it shares the exact
+  `float(none) is none` validity test, so it never disagrees about validity. Its
+  start-path settle `delay` prevents startup-unavailable false positives; its
+  `/5` sweep bounds the reload blind spot below the 15-min supervisor backstop.
 
 ---
 
@@ -259,17 +344,46 @@ Diagnostic-only (NOT used here): binary_sensor.*_heat_pump_firing, sensor.*_temp
 
 ## 7. Tests
 
-### 7a. Static (repo-style, pytest over parsed YAML — proposed)
-- `test_truth_unavailable_failsafe_present`: automation
-  `v8_6_truth_unavailable_cooling_failsafe` exists; 4 state triggers to
-  `['unavailable','unknown']` with `for >= 60s`, each `id` = a `climate.*_air`;
-  condition gates on `is_state(trigger.id,'cool')`; action sets
-  `hvac_mode: off`; **no** action sets `cool`.
-- `test_supervisor_truth_guard_present`: top variables define
-  `lr_/master_/lincoln_/lilly_truth_ok` using `has_value(...)`; each cooling
-  `hvac_mode` template begins with `{% if not <zone>_truth_ok %}off`.
-- `test_doctrine_unchanged`: `test_section2_cooling_setpoint_doctrine.py` still
-  green (thresholds/targets untouched).
+### 7a. Static + behavioral (implemented: `tests/test_packetA_truth_unavailable_failsafe.py`)
+17 tests. **3 pass now and must stay green**; **14 are `xfail(strict=False)`**
+until the runtime change lands (Codex removes the marks at implementation).
+
+*Always-green (doctrine / enforcement gate):*
+- `test_healthy_state_doctrine_unchanged` — setpoints 61, thresholds, away,
+  Master sleep band all unchanged.
+- `test_healthy_deadband_behavior_unchanged` — renders the Master template:
+  `>on_at`→cool, `<=off_at`→off, else HOLD, with healthy truth.
+- `test_packet_a_xfail_markers_removed_once_implemented` — **enforceable gate.**
+  If the supervisor guard is present in YAML (implemented) it asserts **zero**
+  `xfail` markers remain in this module; in design phase it asserts the markers
+  are present. This fails the suite if YAML is implemented but markers are left
+  (the dangerous strict=False XPASS state).
+
+*xfail until implemented — supervisor guard:*
+- `test_supervisor_defines_per_zone_truth_ok` — each `*_truth_ok` uses
+  **`has_value` AND `float(none)`** (shared validity; rejects non-numeric).
+- `test_cooling_hvac_templates_guard_unavailable_before_cool`,
+  `test_unavailable_truth_forces_off_each_zone` (behavioral render),
+  `test_master_sleep_unavailable_cannot_create_cool` (behavioral render).
+
+*xfail until implemented — event fail-safe:*
+- `test_event_failsafe_present_per_zone_validity_triggers` — **template**
+  triggers, one per zone, `id` = climate entity, `for` = 2 min.
+- `test_event_failsafe_validity_covers_non_numeric` — trigger templates contain
+  `float(none) is none` (arbitrary non-numeric, not just unavailable/unknown).
+- `test_event_failsafe_two_minute_persistence`,
+  `test_event_failsafe_only_commands_off_and_gates_on_cooling`,
+  `test_event_failsafe_ignores_manual_override`,
+  `test_event_failsafe_recovery_never_turns_cooling_on`.
+- `test_protective_off_not_blocked_by_notification` — climate OFF precedes any
+  notify, and any notify carries `continue_on_error: true`.
+
+*xfail until implemented — restart/reload reconciliation:*
+- `test_reconciliation_present_restart_and_reload_safe` — `v8_6b…` has a
+  `homeassistant` **start** trigger **and** a `time_pattern` trigger.
+- `test_reconciliation_startup_settle_delay` — start path has a bounded `delay`.
+- `test_reconciliation_off_only_all_zones_on_invalid_truth` — sweeps all four
+  zones, OFF-only, gated on `cool` + invalid truth.
 
 ### 7b. Acceptance (runtime / trace — operator-executed)
 | # | Scenario | Expected |
@@ -360,36 +474,61 @@ Diagnostic-only (NOT used here): binary_sensor.*_heat_pump_firing, sensor.*_temp
 >    remain byte-identical otherwise. Result: unavailable/non-numeric truth ⇒
 >    that zone is commanded OFF (never COOL, never HOLD-on-stale).
 > 5. **Add the event automation** `v8_6_truth_unavailable_cooling_failsafe`
->    exactly per design §3b: `mode: parallel, max: 4`; four `state` triggers, one
->    per `sensor.*_temperature_truth`, `to: ['unavailable','unknown']`,
->    `for: "00:02:00"`, `id:` = the matching `climate.*_air`; condition
->    `is_state(trigger.id,'cool')`; action `climate.set_hvac_mode` →
->    `hvac_mode: off` on `{{ trigger.id }}` + a `notify.notify`. It must have
->    **no** condition referencing `timer.manual_hvac_override`, and **no** action
->    that issues `cool` or otherwise restores cooling.
-> 6. **Configuration validation:** run `ha core check` (HAOS) — must be clean.
-> 7. **Repository tests:** run the full suite `python -m pytest tests/`. All
->    previously-green tests stay green; the Packet A `xfail` contract tests in
->    `tests/test_packetA_truth_unavailable_failsafe.py` must now **xpass/pass**.
->    (Once confirmed, flip them from `xfail(strict=False)` to plain asserts.)
-> 8. **Reload minimally if safe:** reload the `automation` domain (and `template`
->    only if touched — it is not in this packet). If a full restart is required
->    in your environment, state that instead of forcing a reload.
-> 9. **Verify via traces, not by endangering rooms:** inspect the supervisor
->    trace to confirm the guard path renders `off` for a simulated
->    unavailable/non-numeric truth and that healthy-truth traces are unchanged;
->    confirm the fail-safe automation registers its four triggers. Do **not**
->    physically force a real sensor offline in a way that leaves an occupied room
->    unsafe. Capture `run_id`s.
-> 10. **Exact rollback (if any step fails or review rejects):**
->     `git checkout -- automations.yaml` (discard the guard + new automation), or
->     `git revert <checkpoint-range>` if already committed; re-run
->     `python -m pytest tests/` and `ha core check`; reload the `automation`
->     domain; confirm the supervisor trace shows the original `float(70)` path.
+>    exactly per design §3b: `mode: parallel, max: 4`; **four `template`
+>    triggers** (NOT `state … to:[unavailable,unknown]`), one per zone, each
+>    `value_template: {{ not has_value(<truth>) or states(<truth>) | float(none)
+>    is none }}`, `for: "00:02:00"`, `id:` = the matching `climate.*_air`. This
+>    validity definition must be **byte-identical in meaning** to the supervisor
+>    guard so no non-numeric string is rejected by one path but missed by the
+>    other. Condition `is_state(trigger.id,'cool')`. Action: **`climate.set_hvac_mode
+>    off` FIRST**, then an optional notification that is **non-blocking**
+>    (`continue_on_error: true`) and **secondary** — the OFF must never depend on
+>    it. **No** condition referencing `timer.manual_hvac_override`; **no** action
+>    issuing `cool` or restoring cooling.
+> 6. **Notifier — do not hard-code an unverified service.** Before using
+>    `notify.notify`, confirm an approved notify service exists in the live
+>    config (it is used elsewhere in `automations.yaml`, but verify it resolves).
+>    If verified, keep it with `continue_on_error: true`. If not, **omit the
+>    notify step entirely** — the protective OFF action stands alone.
+> 7. **Add the reconciliation automation** `v8_6b_truth_unavailable_cooling_reconciliation`
+>    exactly per design §3c: triggers = `homeassistant` `event: start` **and**
+>    `time_pattern minutes:"/5"`; on the start path apply a bounded settle
+>    `delay: "00:03:00"` (avoid startup false-positives) before sweeping; then a
+>    `repeat.for_each` over the four `{truth, climate}` pairs forcing
+>    `hvac_mode: off` only where `is_state(climate,'cool')` **and** truth is
+>    invalid. OFF-only; preserves four-zone independence; **no** inhibit helpers.
+> 8. **Configuration validation:** run `ha core check` (HAOS) — must be clean.
+> 9. **Make the test gate enforceable — in this order:**
+>    a. implement the YAML (steps 3–7);
+>    b. **remove all `xfail` markers** in
+>       `tests/test_packetA_truth_unavailable_failsafe.py` (do not leave any);
+>    c. run the full suite `python -m pytest tests/ -rA`;
+>    d. **require every Packet A test to PASS as a normal assertion** — there must
+>       be **zero Packet A XFAIL and zero Packet A XPASS**. A green pytest exit
+>       with remaining XPASS/XFAIL is **not** acceptance. The
+>       `test_packet_a_xfail_markers_removed_once_implemented` gate will itself
+>       fail the suite if markers remain after the guard is implemented.
+>    Expected final result (no unrelated test-count changes): **150 passed, 0
+>    xfailed, 0 xpassed** (design-only baseline is 136 passed + 14 xfailed; the 14
+>    convert to passes once implemented and un-marked).
+> 10. **Reload minimally if safe:** reload the `automation` domain. The
+>     reconciliation start-trigger only re-arms on a full HA restart; if your
+>     environment requires a restart to register it, state that rather than
+>     forcing one.
+> 11. **Verify via traces, not by endangering rooms:** confirm the supervisor
+>     trace renders `off` for a simulated invalid truth and is unchanged for
+>     healthy truth; confirm `v8_6_…` registers four template triggers and
+>     `v8_6b_…` its start + periodic triggers. Do **not** force a real sensor
+>     offline in a way that leaves an occupied room unsafe. Capture `run_id`s.
+> 12. **Exact rollback (on any failure/rejection):** `git checkout --
+>     automations.yaml tests/test_packetA_truth_unavailable_failsafe.py` (or
+>     `git revert <checkpoint-range>` if committed); re-run `python -m pytest
+>     tests/` and `ha core check`; reload the `automation` domain; confirm the
+>     trace shows the original `float(70)` path restored.
 >
 > Do not merge or deploy without operator sign-off. Produce a diff for review
-> first; report files changed, `ha core check` output, full pytest results, and
-> the verifying `run_id`s.
+> first; report files changed, `ha core check` output, full pytest results
+> (showing 0 XFAIL/0 XPASS for Packet A), and the verifying `run_id`s.
 
 ---
 
