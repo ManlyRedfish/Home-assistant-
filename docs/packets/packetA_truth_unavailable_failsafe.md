@@ -9,6 +9,11 @@ enforcement (V9 backlog), thresholds, the 61 °F target, or hardware. Proposed
 YAML is illustrative and must not be committed to `automations.yaml` /
 `configuration.yaml` until separately approved.
 
+**Status (2026-06-09):** All three design decisions **APPROVED** (see §Decisions).
+Static contract tests added in `tests/test_packetA_truth_unavailable_failsafe.py`
+— implementation-facing checks are `xfail(strict=False)` until Codex applies the
+runtime change; healthy-state/doctrine checks pass now and must stay green.
+
 ---
 
 ## 0. Audit source verification
@@ -80,7 +85,7 @@ cooling command**.
   turns anything ON. When truth becomes numeric again, the guard passes and the
   supervisor resumes on its next trigger, subject to all existing gates.
 
-**Debounce = `for: "00:02:00"` (justified).** The truth `availability` template
+**Debounce = `for: "00:02:00"` — APPROVED.** The truth `availability` template
 only goes false when **every** contributor is stale (>7200 s) or absent
 (`configuration.yaml:248-257`), so a genuine `unavailable` is already a sustained
 fault, not a value blip. The 2-minute window exists mainly to ride out **HA
@@ -89,10 +94,10 @@ first report. 2 min of extra cooling is acceptable because this fail-safe is the
 *only* live protection during the outage and is far inside the 60 °F runaway
 margin. A 60 s alternative is offered for operators who prefer faster action.
 
-**Manual-override interaction (decision surfaced).** Recommend the protective-OFF
+**Manual-override interaction — APPROVED: ignore override.** The protective-OFF
 fires **regardless of `timer.manual_hvac_override`**, matching the runaway/floor
-equipment-protection precedent (those gates do **not** check override), since the
-hazard is unbounded cooling with no shutoff. Flagged as a decision point (§Open).
+equipment-protection precedent (those gates do **not** check override). Manual
+override is a comfort/control authority, not an equipment-safety bypass.
 
 ---
 
@@ -322,47 +327,88 @@ Diagnostic-only (NOT used here): binary_sensor.*_heat_pump_firing, sensor.*_temp
 
 ## 10. Codex implementation prompt (self-contained — use only after operator approval)
 
-> **Task:** Apply the approved Packet A sensor-loss fail-safe to the Moose House
-> HA repo. Design source: `docs/packets/packetA_truth_unavailable_failsafe.md`.
-> Make ONLY these changes; do not touch Packet B (smoothing/control), cooldown
-> timers, thresholds, the 61 °F target, or hardware.
+> **Task:** Apply **only** Packet A Design 1 (truth-unavailable cooling fail-safe)
+> to the live Moose House HAOS repo. Design source of truth:
+> `docs/packets/packetA_truth_unavailable_failsafe.md` on branch
+> `claude/compassionate-davinci-8ly5pv` (PR #135). Decisions are APPROVED:
+> 2-minute persistence, ignore manual override, Design 1 (no inhibit helpers).
 >
-> 1. **Locate the supervisor** in `automations.yaml` by repository `id:
->    v7_5_main_supervisor` (alias "V8.3: Main Supervisor"; live entity may be
->    `automation.v7_5_main_supervisor` or `…_rev_b` — confirm before editing).
-> 2. **Add per-zone guards:** in the supervisor's first `variables:` block add
->    `lr_truth_ok`, `master_truth_ok`, `lincoln_truth_ok`, `lilly_truth_ok` using
->    `has_value(<truth>) and states(<truth>)|float(none) is not none`. Prepend
->    `{% if not <zone>_truth_ok %}off` as the first branch of each cooling-branch
->    `hvac_mode` template (LR, Master, Lincoln, Lilly). Leave all setpoints and
->    off_at/on_at templates byte-identical.
-> 3. **Add automation** `v8_6_truth_unavailable_cooling_failsafe` exactly as in
->    design §3b (4 state triggers → `['unavailable','unknown']`, `for: 00:02:00`,
->    `id` = climate entity; condition `is_state(trigger.id,'cool')`; action
->    `climate.set_hvac_mode off` + notify; `mode: parallel, max: 4`).
-> 4. **Validate:** run `ha core check` (or `python` YAML load) and
->    `python -m pytest tests/` — all prior tests plus the two new static tests in
->    §7a must pass.
-> 5. **Verify behavior:** trigger a truth sensor to `unavailable` in a test
->    context; confirm a trace shows protective OFF and that healthy-truth traces
->    are unchanged. Capture `run_id`s.
-> 6. **Rollback if anything fails:** `git checkout -- automations.yaml`; re-run
->    pytest to confirm restoration. Report results, traces, and diffs.
+> **Hard exclusions:** make **no** Packet B smoothing/control changes; **no** V9
+> compressor-cooldown changes; do **not** alter any threshold, equality operator
+> (`<= off_at`, `> on_at`, else HOLD), the 61 °F target, away logic, the Master
+> 18:00–06:00 sleep band, or four-zone independence; add no hardware; do not
+> treat `binary_sensor.*_heat_pump_firing` as physical proof.
 >
-> Do not merge or deploy without operator sign-off. Report a diff for review
-> first.
+> 1. **Inspect first, edit second.** Read the live `automations.yaml` in full
+>    before any change. Resolve the supervisor identity: repository `id:
+>    v7_5_main_supervisor` vs live entity `automation.v7_5_main_supervisor_rev_b`
+>    — match by `id:`, `alias:` ("V8.3: Main Supervisor (Deadband Cooling +
+>    Heating)"), and YAML source location. Confirm you are editing the single
+>    canonical supervisor block before proceeding.
+> 2. **Create a Git checkpoint:** `git rev-parse HEAD` (record), and
+>    `git stash list`/`git status` clean check; tag or branch as needed so the
+>    pre-change state is recoverable.
+> 3. **Add four per-zone truth-validity guards** in the supervisor's first
+>    `variables:` block: `lr_truth_ok`, `master_truth_ok`, `lincoln_truth_ok`,
+>    `lilly_truth_ok`, each = `{{ has_value(<truth>) and states(<truth>) |
+>    float(none) is not none }}` for the matching `sensor.*_temperature_truth`.
+>    This validation must occur **before** any `float(70)` fallback is used as a
+>    control value.
+> 4. **Guard each cooling-branch `hvac_mode` template** (LR, Master, Lincoln,
+>    Lilly) by prepending `{% if not <zone>_truth_ok %}off` as the **first**
+>    branch, ahead of the existing `> on_at`/`<= off_at`/HOLD logic, which must
+>    remain byte-identical otherwise. Result: unavailable/non-numeric truth ⇒
+>    that zone is commanded OFF (never COOL, never HOLD-on-stale).
+> 5. **Add the event automation** `v8_6_truth_unavailable_cooling_failsafe`
+>    exactly per design §3b: `mode: parallel, max: 4`; four `state` triggers, one
+>    per `sensor.*_temperature_truth`, `to: ['unavailable','unknown']`,
+>    `for: "00:02:00"`, `id:` = the matching `climate.*_air`; condition
+>    `is_state(trigger.id,'cool')`; action `climate.set_hvac_mode` →
+>    `hvac_mode: off` on `{{ trigger.id }}` + a `notify.notify`. It must have
+>    **no** condition referencing `timer.manual_hvac_override`, and **no** action
+>    that issues `cool` or otherwise restores cooling.
+> 6. **Configuration validation:** run `ha core check` (HAOS) — must be clean.
+> 7. **Repository tests:** run the full suite `python -m pytest tests/`. All
+>    previously-green tests stay green; the Packet A `xfail` contract tests in
+>    `tests/test_packetA_truth_unavailable_failsafe.py` must now **xpass/pass**.
+>    (Once confirmed, flip them from `xfail(strict=False)` to plain asserts.)
+> 8. **Reload minimally if safe:** reload the `automation` domain (and `template`
+>    only if touched — it is not in this packet). If a full restart is required
+>    in your environment, state that instead of forcing a reload.
+> 9. **Verify via traces, not by endangering rooms:** inspect the supervisor
+>    trace to confirm the guard path renders `off` for a simulated
+>    unavailable/non-numeric truth and that healthy-truth traces are unchanged;
+>    confirm the fail-safe automation registers its four triggers. Do **not**
+>    physically force a real sensor offline in a way that leaves an occupied room
+>    unsafe. Capture `run_id`s.
+> 10. **Exact rollback (if any step fails or review rejects):**
+>     `git checkout -- automations.yaml` (discard the guard + new automation), or
+>     `git revert <checkpoint-range>` if already committed; re-run
+>     `python -m pytest tests/` and `ha core check`; reload the `automation`
+>     domain; confirm the supervisor trace shows the original `float(70)` path.
+>
+> Do not merge or deploy without operator sign-off. Produce a diff for review
+> first; report files changed, `ha core check` output, full pytest results, and
+> the verifying `run_id`s.
 
 ---
 
-## Open decision points (for operator / Hermes)
-1. **Debounce:** 2 min (recommended) vs 60 s (faster, slightly more restart
-   sensitivity).
-2. **Manual-override:** fail-safe ignores `timer.manual_hvac_override`
-   (recommended, runaway/floor precedent) vs respects it (honors WAF, but leaves
-   hazard during an active override).
-3. **Design 1 (supervisor guard + automation, 0 helpers, recommended)** vs
-   **Design 2 (automation + 4 inhibit `input_boolean`s)** if editing the
-   supervisor templates is undesirable.
+## Decisions — APPROVED 2026-06-09
+1. **Debounce:** 2-minute persistent unavailable/non-numeric requirement on the
+   event-triggered protective-OFF automation. ✅ APPROVED. (Filters brief
+   SmartThings/template glitches; acts well before the 15-min supervisor cycle;
+   within the accepted maximum response window.)
+2. **Manual override:** the fail-safe **ignores** `timer.manual_hvac_override`,
+   following the runaway-cooling / emergency-floor equipment-protection
+   precedent. ✅ APPROVED.
+3. **Architecture — Design 1.** ✅ APPROVED. Per-zone `*_truth_ok` validation
+   inside the V8.3 supervisor **before** any `float(70)`/deadband comparison;
+   unavailable/non-numeric truth ⇒ that zone is commanded OFF. Plus a separate
+   event-triggered protective-OFF automation (2-min persistence, **OFF-only**,
+   never COOL, never independently restores cooling). Recovery authority remains
+   solely with the V8.3 supervisor once truth is numeric again. Do **not** add
+   four persistent inhibit helpers unless repository constraints prove Design 1
+   cannot be implemented safely.
 
 ## Remaining unknowns (not silently resolved)
 - Live entity ID of the supervisor (`…` vs `…_rev_b`) and the `_2` suffix on the
