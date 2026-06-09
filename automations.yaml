@@ -370,6 +370,18 @@
   action:
     - variables:
         outdoor: "{{ states('sensor.deck_temperature_truth') | float(50) }}"
+        lr_truth_ok: >-
+          {% set x = states('sensor.living_room_temperature_truth') | float(none) %}
+          {{ x is not none and x == x and -90 <= x <= 200 }}
+        master_truth_ok: >-
+          {% set x = states('sensor.master_bedroom_temperature_truth') | float(none) %}
+          {{ x is not none and x == x and -90 <= x <= 200 }}
+        lincoln_truth_ok: >-
+          {% set x = states('sensor.lincoln_s_room_temperature_truth') | float(none) %}
+          {{ x is not none and x == x and -90 <= x <= 200 }}
+        lilly_truth_ok: >-
+          {% set x = states('sensor.lilly_s_room_temperature_truth') | float(none) %}
+          {{ x is not none and x == x and -90 <= x <= 200 }}
         lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
         master_temp: "{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}"
         lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
@@ -424,7 +436,8 @@
               target: { entity_id: climate.master_bedroom_air }
               data:
                 hvac_mode: >-
-                  {% if master_temp > m_on_at %}cool
+                  {% if not master_truth_ok %}off
+                  {% elif master_temp > m_on_at %}cool
                   {% elif master_temp <= m_off_at %}off
                   {% elif m_current == 'cool' %}cool
                   {% else %}off{% endif %}
@@ -444,7 +457,8 @@
               target: { entity_id: climate.lincoln_air }
               data:
                 hvac_mode: >-
-                  {% if lincoln_temp > l_on_at %}cool
+                  {% if not lincoln_truth_ok %}off
+                  {% elif lincoln_temp > l_on_at %}cool
                   {% elif lincoln_temp <= l_off_at %}off
                   {% elif l_current == 'cool' %}cool
                   {% else %}off{% endif %}
@@ -464,7 +478,8 @@
               target: { entity_id: climate.lilly_air }
               data:
                 hvac_mode: >-
-                  {% if lilly_temp > ly_on_at %}cool
+                  {% if not lilly_truth_ok %}off
+                  {% elif lilly_temp > ly_on_at %}cool
                   {% elif lilly_temp <= ly_off_at %}off
                   {% elif ly_current == 'cool' %}cool
                   {% else %}off{% endif %}
@@ -485,7 +500,8 @@
               target: { entity_id: climate.living_room_air }
               data:
                 hvac_mode: >-
-                  {% if lr_temp > lr_on_at %}cool
+                  {% if not lr_truth_ok %}off
+                  {% elif lr_temp > lr_on_at %}cool
                   {% elif lr_temp <= lr_off_at %}off
                   {% elif lr_current == 'cool' %}cool
                   {% else %}off{% endif %}
@@ -525,7 +541,8 @@
                       target: { entity_id: climate.master_bedroom_air }
                       data:
                         hvac_mode: >-
-                          {% if master_temp > m_sleep_on_at %}cool
+                          {% if not master_truth_ok %}off
+                          {% elif master_temp > m_sleep_on_at %}cool
                           {% elif master_temp <= m_sleep_off_at %}off
                           {% elif m_current == 'cool' %}cool
                           {% else %}off{% endif %}
@@ -541,13 +558,13 @@
                       sequence:
                         - action: climate.set_temperature
                           target: { entity_id: climate.master_bedroom_air }
-                          data: { hvac_mode: "{{ 'cool' if master_temp > 70 else 'off' }}", temperature: 61 }
+                          data: { hvac_mode: "{{ 'off' if not master_truth_ok else ('cool' if master_temp > 70 else 'off') }}", temperature: 61 }
                         - action: climate.set_temperature
                           target: { entity_id: climate.lincoln_air }
-                          data: { hvac_mode: "{{ 'cool' if lincoln_temp > 70 else 'off' }}", temperature: 61 }
+                          data: { hvac_mode: "{{ 'off' if not lincoln_truth_ok else ('cool' if lincoln_temp > 70 else 'off') }}", temperature: 61 }
                         - action: climate.set_temperature
                           target: { entity_id: climate.lilly_air }
-                          data: { hvac_mode: "{{ 'cool' if lilly_temp > 70 else 'off' }}", temperature: 61 }
+                          data: { hvac_mode: "{{ 'off' if not lilly_truth_ok else ('cool' if lilly_temp > 70 else 'off') }}", temperature: 61 }
                         - action: climate.set_hvac_mode
                           target: { entity_id: [climate.living_room_air, climate.dining_room] }
                           data: { hvac_mode: "off" }
@@ -688,6 +705,121 @@
 # Design rule: comfort policy lives in Section 2. Runaway protection lives
 # here. The two should not overlap. If they do, the controller is broken.
 # =============================================================================
+
+# -----------------------------------------------------------------------------
+# V8.6 TRUTH-UNAVAILABLE COOLING FAILSAFE
+# -----------------------------------------------------------------------------
+# If a canonical room truth sensor becomes invalid while its mini-split is
+# cooling, force that head OFF after a two-minute persistence window. This is
+# intentionally OFF-only: it prevents hidden 70°F fallbacks from sustaining
+# cooling, but never authorizes new cooling and never relies on template
+# compressor-intent sensors as physical proof.
+# -----------------------------------------------------------------------------
+- id: v8_6_truth_unavailable_cooling_failsafe
+  alias: "V8.6: Truth Unavailable Cooling Failsafe"
+  mode: queued
+  trigger:
+    - platform: template
+      id: living_room_air
+      value_template: >-
+        {% set x = states('sensor.living_room_temperature_truth') | float(none) %}
+        {{ x is none or x != x or x < -90 or x > 200 }}
+      for: "00:02:00"
+    - platform: template
+      id: master_bedroom_air
+      value_template: >-
+        {% set x = states('sensor.master_bedroom_temperature_truth') | float(none) %}
+        {{ x is none or x != x or x < -90 or x > 200 }}
+      for: "00:02:00"
+    - platform: template
+      id: lincoln_air
+      value_template: >-
+        {% set x = states('sensor.lincoln_s_room_temperature_truth') | float(none) %}
+        {{ x is none or x != x or x < -90 or x > 200 }}
+      for: "00:02:00"
+    - platform: template
+      id: lilly_air
+      value_template: >-
+        {% set x = states('sensor.lilly_s_room_temperature_truth') | float(none) %}
+        {{ x is none or x != x or x < -90 or x > 200 }}
+      for: "00:02:00"
+  action:
+    - variables:
+        climate_entity: "{{ 'climate.' ~ trigger.id }}"
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ states(climate_entity) == 'cool' }}"
+          sequence:
+            - action: climate.set_hvac_mode
+              target:
+                entity_id: "{{ climate_entity }}"
+              data:
+                hvac_mode: "off"
+            - action: persistent_notification.create
+              continue_on_error: true
+              data:
+                title: "Truth unavailable cooling failsafe"
+                message: >-
+                  Forced {{ climate_entity }} off because its room truth sensor
+                  was invalid for at least two minutes while the climate entity
+                  reported cool.
+
+# -----------------------------------------------------------------------------
+# V8.6B TRUTH-UNAVAILABLE COOLING RECONCILIATION
+# -----------------------------------------------------------------------------
+# Startup/periodic reconciliation closes the race where HA restarts while a
+# truth sensor is already invalid and a template trigger's `for:` timer has not
+# been armed. It sweeps the same four truth/climate pairs and remains OFF-only.
+# -----------------------------------------------------------------------------
+- id: v8_6b_truth_unavailable_cooling_reconciliation
+  alias: "V8.6B: Truth Unavailable Cooling Reconciliation"
+  mode: single
+  trigger:
+    - platform: homeassistant
+      event: start
+    - platform: time_pattern
+      minutes: "/5"
+  action:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.platform == 'homeassistant' }}"
+          sequence:
+            - delay: "00:03:00"
+    - repeat:
+        for_each:
+          - truth: sensor.living_room_temperature_truth
+            climate: climate.living_room_air
+          - truth: sensor.master_bedroom_temperature_truth
+            climate: climate.master_bedroom_air
+          - truth: sensor.lincoln_s_room_temperature_truth
+            climate: climate.lincoln_air
+          - truth: sensor.lilly_s_room_temperature_truth
+            climate: climate.lilly_air
+        sequence:
+          - variables:
+              truth_entity: "{{ repeat.item.truth }}"
+              climate_entity: "{{ repeat.item.climate }}"
+              truth_invalid: >-
+                {% set x = states(truth_entity) | float(none) %}
+                {{ x is none or x != x or x < -90 or x > 200 }}
+              invalid_age_seconds: >-
+                {% set st = states[truth_entity] if truth_entity in states else none %}
+                {{ 0 if st is none else (as_timestamp(now()) - as_timestamp(st.last_changed, 0)) }}
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {{ states(climate_entity) == 'cool'
+                         and (truth_invalid | bool)
+                         and (invalid_age_seconds | float(0)) >= 120 }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
 
 # -----------------------------------------------------------------------------
 # V9 SLEEP PRIORITY INTERLOCK
