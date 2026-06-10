@@ -18,6 +18,8 @@ Bundle:   The Hermes air-gapped Codex implementation bundle generated from
 Routing:  The final raw-versus-filtered routing decision REMAINS BLOCKED
           (PR #138 §3.4 gate; PR #139 Document 1 review stands).
 Date:     2026-06-10
+Amended:  2026-06-10 — §1.5 Bedroom Cooling Priority added (shoulder
+          cross-mode contention rule; Stage 0 CHANGE-6 + §5.2 test 6).
 Operator: Cooling-contract matrix dictated 2026-06-10 (this document
           encodes it; see AGENTS.md "Current Operator Decisions" doctrine
           introduced in PR #134).
@@ -154,7 +156,80 @@ a zone is evaluated for cooling at all*:
 
 Heating-season behavior, Nest behavior, Section 6 destratification, Sections
 7/7B solar logic, and Section 14 are entirely outside this contract and are
-unchanged.
+unchanged. Shoulder-season Living Room *heating* remains governed by its
+existing logic with exactly one addition: the §1.5 bedroom-cooling-priority
+suppression term.
+
+### 1.5 Cross-zone rule: Bedroom Cooling Priority (shoulder season)
+
+**Authoritative Stage 0 rule (operator, 2026-06-10).** During shoulder
+season, if either Lincoln's or Lilly's bedtime controller call resolves to
+`cool`, Living Room heating must be suppressed and commanded `off`. Living
+Room heating may resume only when both kids' bedtime calls resolve to `off`.
+
+Why it is needed: P3 authorizes kids' bedtime cooling in shoulder season,
+while the existing shoulder branches (the night path's LR heat write, and
+the day cold path's LR heating deadband) can simultaneously command LR
+heat. The V9 Sleep Priority Interlock protects only Master-cooling versus
+LR-heating; Lincoln and Lilly were unprotected.
+
+Generalization required by the contract test (§5.2 test 6): the same
+suppression applies to **any** bedroom cooling call resolved in a shoulder
+evaluation — P1 (away), P2 (Master night escape), or P3 (kids bedtime) — so
+that no shoulder evaluation can command LR heat while Master, Lincoln, or
+Lilly is being commanded to cool. The Master case is today resolved
+reactively, post-command, by `v9_sleep_priority_interlock`; under this rule
+the supervisor stops emitting the conflict in the first place. The V9
+interlock is **not modified** and remains the reactive backstop (it still
+covers transitions that occur between supervisor evaluations).
+
+Exact rule, per shoulder evaluation:
+
+```
+bedroom_cool_priority =
+    (master_call == cool  OR  lincoln_call == cool  OR  lilly_call == cool)
+    AND lr_truth > 60          # structural-floor guard, mirrors the V9 SPI
+
+bedroom_cool_priority     → every LR heat command in the shoulder branch
+                            resolves to `off` this evaluation.
+not bedroom_cool_priority → LR heating evaluates per its existing shoulder
+                            logic, unchanged.
+```
+
+Properties:
+
+- **Scope:** shoulder branch only. Heating-season LR templates carry no
+  suppression term (heating-season behavior unchanged). The cooling branch
+  never commands LR heat, so no term exists there.
+- **Floor:** if LR truth ≤ 60 °F the rule yields and LR heating is not
+  suppressed — the same structural-floor guard the V9 SPI uses. All
+  Section 3 safety behavior is preserved and continues to outrank this rule.
+- **Override:** the rule lives inside Section 2 and inherits the
+  `timer.manual_hvac_override` gate; manual intent remains authoritative.
+- **Memory consequence (intended):** suppression commands LR `off`, so LR's
+  heating mode-as-memory reads `off` at the next tick. When suppression
+  lifts (all bedroom calls off), LR heat re-engages only on a fresh
+  engage-threshold crossing (truth < lr_on_at), not from a held call —
+  conservation behavior, consistent with how the V9 SPI already resets LR.
+- **Classification:** this is **bedroom cooling priority** — a scoped
+  cross-mode (heat-versus-cool) priority rule at the shared outdoor
+  compressor. It is NOT a general multi-head capacity arbitration system;
+  the standing doctrine ("no capacity arbitration until measured starvation
+  evidence") is unchanged.
+
+Implementation shape (Section 2 only; no new helpers, no new automations):
+hoist `kids_bedtime` and the two per-room bedtime call resolutions
+(`lincoln_bedtime_call`, `lilly_bedtime_call` ∈ {cool, off, not_active})
+into the supervisor's top-level `variables:` step so they are visible to
+both the kids bedtime block (which consumes them for commanding — single
+source of truth, no duplicated threshold logic) and the shoulder branch.
+Jinja scoping note for the implementer: variables defined inside a
+`choose:` sequence are scoped to that sequence, so the calls must be
+computed at top level (and the shoulder-night Master escape call computed
+before the first LR write in that sequence) for the suppression predicate
+to see them. Each shoulder-branch LR `hvac_mode` template that can yield
+`heat` gains the suppression conjunction; the suppressed output is exactly
+`off`.
 
 ---
 
@@ -387,6 +462,17 @@ no-hold, mirrored as-is by the shadow) is inferior but acceptable. **The
 shadow evaluator mirrors whichever variant Stage 0 lands** — the policy and
 its mirror cannot diverge.
 
+**CHANGE-6 — Bedroom Cooling Priority in shoulder (new cross-zone rule,
+§1.5).** Hoist the kids' bedtime call resolutions into the supervisor's
+top-level variables; gate every shoulder-branch LR heat command on
+`not bedroom_cool_priority` (any bedroom cool call this evaluation AND
+`lr_truth > 60`), suppressing to exactly `off`. LR heat resumes only at an
+evaluation where the Master, Lincoln, and Lilly calls all resolve to off
+(for the kids: both bedtime calls off, per the operator rule).
+`v9_sleep_priority_interlock` is **not modified** and remains the reactive
+backstop. Heating-season templates are untouched. Recorded as bedroom
+cooling priority, not capacity arbitration (§1.5 classification).
+
 Untouched: heating-season logic, Nest/Dining, Section 1/3/4/5/6/7/7B/8/9/11/
 14/15, manual-override gate, all Section 3 thresholds, truth sensors,
 telemetry, MSR boundaries, `configuration.yaml`.
@@ -418,11 +504,31 @@ New tests (pytest over parsed YAML, repo pattern):
 5. `test_section2_hysteresis_comparators.py` — locks the exact comparators
    per profile (`>`/`≤` for P1/P2/P4/P5; `≥`/`≤` for P3) and that every
    cooling profile preserves prior call between thresholds.
+6. `test_section2_bedroom_cooling_priority.py` — proves no shoulder
+   evaluation can command LR heat while Master, Lincoln, or Lilly is being
+   commanded cool: (a) the kids' bedtime call resolutions are defined once
+   in the top-level variables block and referenced (not re-derived) by both
+   the bedtime block and the suppression predicate; (b) every LR
+   `hvac_mode` template in the shoulder branch that can yield `heat`
+   contains the suppression conjunction over all three bedroom calls with
+   the `lr_temp > 60` floor guard, and suppresses to exactly `off`; (c) no
+   LR heat template in the heating branch contains the term
+   (heating-season unchanged); (d) the `v9_sleep_priority_interlock`
+   automation is identical to its pre-Stage-0 form (id, triggers,
+   conditions, and actions locked); (e) no new automation ids or
+   `input_*`/`timer.*` helpers are introduced for this rule. Where the test
+   harness can render Jinja, add a truth-table case: for each shoulder LR
+   heat write, `heat` is unreachable under every input combination in which
+   any bedroom call is `cool` and LR truth > 60.
 
 Stage 0 ships only when the full suite is green, `ha core check` passes, and
 the PR #134 plan's live validation steps (§9 of that plan) plus: away-flip
 mid-pull-down behaves per P1; LR night engage/release at 76/74; turbo
-observed on the head (`fan_mode` attribute) during a real pull-down.
+observed on the head (`fan_mode` attribute) during a real pull-down; and a
+live shoulder contention check — with a kid mid-pull-down and LR truth below
+its heat engage threshold (but above 60 °F), LR is commanded `off`, and LR
+heating resumes only after both kids' calls release and a fresh LR
+engage-threshold crossing occurs.
 
 ---
 
@@ -500,6 +606,14 @@ immaterial" claim is replaced by making ordering *observable*.
 | `raw_threshold_distance_on/off`, `filtered_threshold_distance_on/off` | signed °F |
 | `raw_truth_available`, `filtered_available`, `memory_warmup` | bool flags |
 
+LR records additionally carry two derived fields, `lr_heat_suppressed_raw`
+and `lr_heat_suppressed_filtered`: the §1.5 bedroom-cooling-priority
+predicate evaluated against each path's bedroom call latches (shoulder
+ticks only; null otherwise). When the two paths disagree, the choice of
+input path would change whether LR heating is suppressed — a downstream
+consequence with direct comfort/energy meaning that Gate 7 must classify
+alongside threshold divergence.
+
 Failure behavior table from Rev 3 §7 carries over, with one amendment: a
 missing latch (unknown/unavailable) triggers stateless evaluation +
 `memory_warmup: true`, never a fallback to head-mode memory.
@@ -568,7 +682,13 @@ Document 1). Nothing in Stage 0 or Stage 1 pre-decides it.
    implicit. Only P3 carries an operator-granted flip exemption.
 5. **`shoulder→cooling`:** no special handling; latches/memory carry, the
    wider eligibility simply adds zones.
-6. **Shadow mirror:** the shadow evaluator applies these exact eligibility
+6. **Bedroom Cooling Priority is shoulder-scoped:** the §1.5 suppression
+   term exists only in the shoulder branch. A flip to heating season drops
+   the term (heating-season behavior unchanged); a flip to cooling season
+   removes LR heat commands entirely. The rule gates only the LR output —
+   it never touches the kids' calls, so it cannot break the P3
+   flip-immunity in rule 2.
+7. **Shadow mirror:** the shadow evaluator applies these exact eligibility
    rules; ineligible ticks record `profile_selected: not_eligible` rather
    than fabricating a decision (Rev 3 recorded kids decisions during
    shoulder bulk-offs that the real controller could never take — that class
@@ -584,7 +704,8 @@ Document 1). Nothing in Stage 0 or Stage 1 pre-decides it.
 | LR runaway cooling cutoff | truth < 60 °F while cooling → force off | Unchanged |
 | Safety ceiling gates (Master/Lincoln/Lilly) | truth > 76 °F → cool@68 for 45 min (cooling season) | Unchanged. Known interplay: the supervisor may reassert 61 within the gate's 45-min window; pre-existing behavior, out of scope. |
 | Manual override | `timer.manual_hvac_override != idle` gates Section 2 and the ceiling gates; WAF watcher starts it on human action | Unchanged; the kids/LR-night/away blocks live inside the supervisor and inherit the gate |
-| Sleep Priority Interlock | Master cool + LR heat → LR off (LR truth > 60) | Unchanged |
+| Sleep Priority Interlock | Master cool + LR heat → LR off (LR truth > 60) | Unchanged — remains the reactive backstop for §1.5 |
+| Bedroom Cooling Priority (§1.5) | suppresses shoulder LR heat only while LR truth > 60; yields at/below 60 °F | New in Stage 0; lives inside Section 2 so it inherits the manual-override gate; never modifies the kids' or Master's calls |
 | Ghost assassin / Samsung auto guardrail | 01:20 Lincoln heat kill; auto-mode policing | Unchanged; turbo is a fan mode and never sets `auto` (§4 check 6) |
 | Shadow path | zero `climate.*`/helper/timer calls; failure cannot propagate to control | Carried from Rev 3 §6–§7, binding |
 | Recorder | no include/exclude; `purge_keep_days: 30`; `commit_interval: 5` | Carried from Rev 3 §5.5, binding |
@@ -674,8 +795,10 @@ reduction; no Section 3 / safety threshold changes; no supervisor input-path
 change (routing stays blocked); no new helpers beyond this spec (Stage 0:
 none); no shadow `climate.*`/`input_*`/`timer.*` calls; no edits to PR #139's
 design branch from an implementation task; no splitting a stage across
-multiple PRs; if live state contradicts the bundle, **stop and report** —
-never improvise.
+multiple PRs; no modification to `v9_sleep_priority_interlock`; the §1.5
+bedroom-cooling-priority rule must not be generalized into a capacity
+arbitration system; if live state contradicts the bundle, **stop and
+report** — never improvise.
 
 ### 10.4 Repository reconciliation (status ledger)
 
