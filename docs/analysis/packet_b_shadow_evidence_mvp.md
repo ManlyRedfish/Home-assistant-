@@ -10,6 +10,7 @@ Status:  APPROVED FOR IMPLEMENTATION (observational MVP only)
 Routing: Final raw-vs-filtered decision REMAINS BLOCKED
          See companion memo: packet_b_architecture_decision_review.md
 Date:    2026-06-10
+Revision: pre-implementation safety corrections applied 2026-06-10
 ═══════════════════════════════════════════════════════════════
 ```
 
@@ -134,9 +135,9 @@ Control Wrappers (» sensor.*_temperature_control, Section 10)
   │                                                        │
   ▼                                                        ▼
 UI / Dashboard                              Shadow Evaluator [NEW — read-only]
-(unchanged)                                 config.yaml §16 template sensors
-                                            automations.yaml §17 (logbook.log only)
-                                            recorder include additions
+(unchanged)                                 config.yaml §16: 28 template sensors
+                                            automations.yaml §17: logbook.log only
+                                            recorder: no change (records all by default)
 ```
 
 ### 3.2 New constructs (observational only)
@@ -145,7 +146,8 @@ UI / Dashboard                              Shadow Evaluator [NEW — read-only]
 
 28 read-only template sensors (7 per zone × 4 zones: LR, Master, Lincoln, Lilly).
 They compute and expose the shadow filtered decision and divergence classification.
-They update reactively; HA recorder captures their state-change history automatically.
+They update reactively; HA recorder captures their state-change history automatically
+because the recorder currently records all entities by default (see §5.5).
 They cannot issue service calls. They cannot become supervisor inputs.
 
 | Entity pattern | Role |
@@ -167,18 +169,42 @@ and `homeassistant: start`. Variables block mirrors the supervisor variables
 block exactly (same entity reads, same gate inputs). One service call only:
 `logbook.log`. Zero `climate.*` calls. Zero `input_*` or `timer.*` writes.
 
-**C — Recorder include additions** (`configuration.yaml`, recorder block)
+**C — Recorder: no change required**
 
-All 28 shadow entities plus `sensor.*_temperature_smoothed` (4 zones) and
-`sensor.*_temperature_control` (4 zones) added to recorder `include.entities`.
-Minimum `purge_keep_days: 14` verified or increased. No exclude changes.
+The current repository recorder configuration is:
+
+```yaml
+recorder:
+  purge_keep_days: 30
+  commit_interval: 5
+```
+
+There is no `include:` or `exclude:` block. HA recorder therefore already
+captures all entities — including all truth, smoothed, control, and new
+shadow template sensor entities — by default at native event granularity.
+
+**The Codex implementation PR must not add a `recorder: include:` block.**
+Adding an include allow-list would immediately stop HA from recording every
+entity not in that list, destroying history for the rest of the system.
+
+The Codex implementation PR must:
+1. Preserve `purge_keep_days: 30` exactly (already ≥ the 14-day evidence minimum).
+2. Preserve `commit_interval: 5` exactly.
+3. Add no `include:` or `exclude:` sub-key to the recorder block.
+4. Verify — by inspection only, no YAML change — that no `exclude:` block
+   exists that would suppress truth, smoothed, control, or shadow entities.
+5. If the live system’s running configuration diverges from the repository
+   (e.g. an include list was added out-of-band), reconcile by appending to
+   the existing list without removing any existing entries; never replace
+   an include list with a shorter one.
 
 ### 3.3 Existing constructs NOT modified
 
 | File | Sections | Status |
 |---|---|---|
 | `automations.yaml` | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 15 | Unchanged |
-| `configuration.yaml` | 3–9 (truth sensors), 12 (filters), 10 (wrappers) | Logic unchanged; comments corrected (§8) |
+| `configuration.yaml` | 3–9 (truth sensors), 10 (wrappers), 12 (filters) | Logic unchanged; comments corrected (§8) |
+| `configuration.yaml` | recorder block | Unchanged |
 | All threshold values (60°F, 58°F, 68°F, 72°F, 62°F, 66°F, 74°F, 76°F) | | Unchanged |
 | All helper definitions | | Unchanged |
 | V5.5 telemetry export columns and cadence | | Unchanged |
@@ -227,9 +253,11 @@ For each zone at each evaluation:
                  same        otherwise
 
   7. divergence_direction:
-     none                    if divergence == same
-     raw_more_aggressive     if raw==cool and filtered==hold/off, or raw==hold and filtered==off
-     filtered_more_aggressive if filtered==cool and raw==hold/off, or filtered==hold and raw==off
+     none                     if divergence == same
+     raw_more_aggressive      if raw==cool and filtered==hold/off,
+                                 or raw==hold and filtered==off
+     filtered_more_aggressive if filtered==cool and raw==hold/off,
+                                 or filtered==hold and raw==off
 ```
 
 **Heating branches:** if `season_mode` is `heating` and no cooling branch fires,
@@ -311,7 +339,7 @@ The Section 17 automation emits one `logbook.log` event per evaluation.
 The payload is a JSON string in the `message` field containing all fields
 from §5.1 for all four zones plus the gate-input block. `entity_id` is set
 to `sensor.living_room_temperature_truth` (required by `logbook.log`; does
-not modify that entity's state).
+not modify that entity’s state).
 
 ```yaml
 - service: logbook.log
@@ -339,19 +367,25 @@ not modify that entity's state).
 
 ### 5.3 Recorder evidence (native granularity)
 
-HA recorder already captures state-change events for all `sensor.*_temperature_truth`,
-`sensor.*_temperature_smoothed`, and `sensor.*_temperature_control` entities at native
-event granularity. This is the raw event stream that `y[n] = 0.9·y[n−1] + 0.1·x[n]`
-replays over — the data the Drive telemetry cannot provide.
+HA recorder already captures state-change events for all
+`sensor.*_temperature_truth`, `sensor.*_temperature_smoothed`,
+`sensor.*_temperature_control`, and — after the implementation PR adds
+Section 16 — all `sensor.*_shadow_*` entities, all at native event granularity.
+This requires no recorder YAML change because the recorder has no include/exclude
+block and records all entities by default.
 
-For the replay to be possible:
+For the replay to be correctly executed:
 
-1. `purge_keep_days ≥ 14` must be configured.
-2. None of the truth/smoothed/control entities may appear in a recorder `exclude` block.
-3. `last_reported` (not `last_changed`) is the correct column for distinguishing
+1. **`purge_keep_days`** is already 30, which exceeds the 14-day evidence minimum.
+   Preserve it. Do not reduce it.
+2. **No exclude block** currently exists. Verify by inspection that the implementation
+   PR does not introduce one. If an out-of-band live exclude block is ever discovered,
+   treat it as an instrumentation failure and do not execute the replay until it is
+   removed or corrected.
+3. **`last_reported`** (not `last_changed`) is the correct column for distinguishing
    value-change events from re-reports. Verify the recorder schema exposes this column
    before the replay is attempted.
-4. `automation.v7_5_main_supervisor` logbook entries must be retained across the
+4. **`automation.v7_5_main_supervisor`** logbook entries must be retained across the
    evidence window to reconstruct supervisor execution timestamps.
 
 ### 5.4 Event-level export specification
@@ -420,6 +454,27 @@ ORDER BY s.last_updated ASC;
 
 Do not resample. The per-event `last_updated` timestamps are the object of study.
 
+### 5.5 Recorder safety rule
+
+**Do not add `recorder: include: entities:`.**
+
+The current recorder configuration records all HA entities by default. Introducing
+an `include: entities:` allow-list would immediately restrict recording to only the
+listed entities and would silently stop retaining history for every other entity in
+the system — including all entities unrelated to Packet B.
+
+The implementation PR is compliant if and only if:
+- `recorder: purge_keep_days: 30` is preserved.
+- `recorder: commit_interval: 5` is preserved.
+- No `recorder: include:` key is added.
+- No `recorder: exclude:` key is added.
+- The recorder block in `configuration.yaml` is byte-for-byte identical to
+  the pre-implementation version except for purely cosmetic whitespace.
+
+If the Codex implementer believes an include list is needed, that belief is
+wrong: all shadow entities are template sensors defined in `configuration.yaml`
+and HA automatically records all template sensors. No configuration nudge is needed.
+
 ---
 
 ## 6. Service-Call and Control-Isolation Guarantees
@@ -449,7 +504,7 @@ have no `action:` context and cannot call services by construction.
 - No shadow entity appears in any existing automation trigger, condition, or variable.
 - No shadow entity is added to any `continue_on_timeout`, `wait_for_trigger`, or
   `parallel` block of any existing automation.
-- The shadow automation's `time_pattern` trigger fires independently of the supervisor;
+- The shadow automation’s `time_pattern` trigger fires independently of the supervisor;
   execution order within a 15-minute window is non-deterministic and immaterial (the
   shadow reads current state; it does not produce state the supervisor depends on).
 
@@ -466,7 +521,7 @@ finite-value validity definition (NaN/±inf/out-of-range rejection, −90/200°F
 protective-OFF behavior, and reconciliation logic.
 
 Packet B MVP owns none of this. The shadow evaluator does not implement any finite-value
-guard beyond reading the control wrapper's existing `float(none) is not none` availability
+guard beyond reading the control wrapper’s existing `float(none) is not none` availability
 state. The known `float(none)`-passes-NaN gap in Section 10 wrappers remains Packet A
 territory.
 
@@ -624,10 +679,24 @@ list that implies it consumes the smoothed/wrapper chain.
 
 ---
 
-## 9. Contract Tests (specification for Codex)
+## 9. Contract Tests
 
-All tests follow the existing repository pattern: pytest over parsed YAML, no HA runtime
-required. Tests in `tests/` alongside `test_truth_freshness_report_time.py` and siblings.
+All eight tests follow the existing repository pattern: pytest over parsed YAML,
+no HA runtime required. Style is consistent with `test_truth_freshness_report_time.py`
+and siblings in `tests/`.
+
+**Classification:** These eight tests are **MVP isolation and evidence tests**. They
+are not routing-doctrine tests. They do not encode Option A as permanent doctrine.
+They verify that the shadow evaluator is genuinely observational, that the existing
+supervisor and safety inputs are untouched, that the recorder default coverage is
+preserved, and that documentation matches actual runtime routing. All eight are
+authorized for implementation in the Codex implementation PR.
+
+The six routing-invariant tests described in the companion memo §7 remain deferred
+until Gate 8 clears with an Option A result. Those tests are separate from and
+additional to the eight tests below.
+
+---
 
 ### Test 1: `tests/test_packet_b_supervisor_reads_raw_truth.py`
 
@@ -687,15 +756,22 @@ required. Tests in `tests/` alongside `test_truth_freshness_report_time.py` and 
 5. `v_shadow_evaluator` variables block reads the same gate helpers as the supervisor
    (season, away, override).
 
-### Test 6: `tests/test_packet_b_evidence_schema.py`
+### Test 6: `tests/test_packet_b_recorder_safety.py`
+
+**Purpose:** Guard that the implementation PR does not introduce a restrictive recorder
+include allow-list into a configuration that previously recorded all entities by default.
 
 **Asserts:**
 1. `configuration.yaml` defines template sensors for all 28 shadow entities (7 × 4 zones).
 2. Each shadow sensor has a `unique_id` ending in `_v1`.
-3. Recorder `include.entities` in `configuration.yaml` contains all 28 shadow entity names.
-4. Recorder `include.entities` contains all 8 smoothed entity names.
-5. Recorder `include.entities` contains all 8 control-wrapper entity names.
-6. `purge_keep_days` in the recorder config is ≥ 14.
+3. **FAIL if** `configuration.yaml` contains a `recorder:` block with an `include:` sub-key.
+   Rationale: adding an include allow-list would stop recorder history for every entity
+   not in that list, destroying system-wide observability.
+4. **FAIL if** `configuration.yaml` contains a `recorder:` block with an `exclude:`
+   sub-key that matches any of: `*_temperature_truth`, `*_temperature_smoothed`,
+   `*_temperature_control`, `*_shadow_*`, or `automation.v7_5_main_supervisor`.
+5. `configuration.yaml` recorder block contains `purge_keep_days: 30` (not reduced).
+6. `configuration.yaml` recorder block contains `commit_interval: 5` (not changed).
 
 ### Test 7: `tests/test_packet_b_documentation_routing.py`
 
@@ -791,8 +867,7 @@ Before any architecture conclusion:
 3. **Halt condition:** if the replayed series deviates from recorded smoothed by > 0.05°F
    for more than 5% of events, the filter model or event-acceptance assumptions are wrong.
    Re-derive before any architecture conclusion. This is the halt gate from PR §138 §3.2(2)
-   that the companion review memo (Section 2, §1 review questions) confirmed was never
-   run against the claimed evidence.
+   that the companion review memo confirmed was never run against the claimed evidence.
 
 **This gate is the primary instrument for clearing the §3.4 decision block.** Passing it
 produces the cross-validated per-event replay that the companion review requires.
@@ -810,7 +885,7 @@ Apply PR §138 §3.4 decision rule to the cleared evidence:
 
 Required metrics: divergent-decision rate, chatter rate (raw ON reversals within one tick),
 overcooling °F·min (filter lag past off-threshold), engagement delay °F·min, per-zone
-counts (companion review, Section 2 Q§6 finding: concentration matters).
+counts (companion review finding: concentration matters).
 
 ### Gate 8 — Fable final architecture review handoff
 
@@ -834,15 +909,15 @@ timestamped) may be included to observe filter cold-start / recorder-priming beh
 Stops all shadow logbook writes.
 
 **Step 2:** Remove Section 16 block from `configuration.yaml`.
-Removes all 28 shadow template sensors.
-
-**Step 3:** Remove shadow entity names from recorder `include.entities`.
-Does not delete already-recorded history.
+Removes all 28 shadow template sensors. Because the recorder has no include list,
+removing the shadow template sensors automatically stops recording them — no recorder
+YAML change is needed and none should be made.
 
 **Time to rollback:** one HA configuration reload, < 60 seconds.
 
-**Effect on live control:** zero. No climate command is reverted. No helper state is changed.
-No supervisor tick is altered. V5.5 export continues. Safety automations continue.
+**Effect on live control:** zero. No climate command is reverted. No helper state is
+changed. No supervisor tick is altered. V5.5 export continues. Safety automations
+continue. Recorder continues recording all remaining entities as before.
 
 ### Documentation rollback
 
@@ -856,13 +931,14 @@ Reverting documentation does not change any control path.
 - `sensor.lr_shadow_*` (and other zone shadow entities) no longer appear in HA states.
 - The supervisor fires its next tick without error.
 - V5.5 export continues at the next 15-minute tick.
-- Contract test 4 (shadow failure isolation) still passes.
+- `configuration.yaml` recorder block is unchanged from pre-implementation.
+- Contract test 4 (shadow failure isolation) and test 6 (recorder safety) still pass.
 
 ### Non-rollback scope
 
 The rollback applies to shadow instrumentation only. It does not revert the supervisor to
-filtered truth (the supervisor never read filtered truth). It does not shorten
-`purge_keep_days` (preserving recorder history after the evidence window is harmless).
+filtered truth (the supervisor never read filtered truth). It does not change the recorder
+configuration in either direction.
 
 ---
 
@@ -896,28 +972,47 @@ observational only and issues zero climate commands.
 ### 12.5 Routing-invariant contract tests (companion review §7)
 
 The companion memo (Section 7) specifies six routing-invariant tests contingent on Option A
-landing. Those tests encode Option A as doctrine and must not be added until Gate 8 clears
-with an Option A result. Tests 1–8 in §9 above are non-routing evidence and isolation tests;
-they are authorized now.
+landing from Gate 8. Those tests encode Option A as permanent doctrine and must not be
+implemented until Gate 8 produces an Option A result.
+
+**They are distinct from §9 Tests 1–8.** Tests 1–8 in §9 are MVP isolation and evidence
+tests authorized now. The six companion-memo routing-invariant tests are a separate set,
+authorized only after Gate 8.
 
 ---
 
 ## 13. Codex Implementation Handoff
 
-### 13.1 Authorized scope (exact)
+### Phase 1: This design PR (#139) — already complete
+
+PR #139 contains two design documents only. It does **not** contain any test files,
+YAML changes, or implementation artifacts. Nothing in PR #139 should be interpreted as
+an instruction to create files in this PR.
+
+### Phase 2: Codex implementation PR — what Codex must do next
+
+A separate implementation PR must make exactly the changes in §13.2 and create all eight
+tests from §9 with full implementations. The implementation PR is not ready until every
+test passes.
+
+### 13.1 Authorized scope (exact, applies to the Codex implementation PR)
 
 | Action | File | Detail |
 |---|---|---|
-| Add Section 16 shadow template sensors | `configuration.yaml` | 28 entities, 7 per zone, per §3.2 and §6.2 |
-| Add recorder include entries | `configuration.yaml` | 28 shadow + 8 smoothed + 8 control + purge check, per §5.5 |
+| Add Section 16 shadow template sensors | `configuration.yaml` | 28 entities, 7 per zone, per §3.2A |
+| **Preserve recorder block unchanged** | `configuration.yaml` | `purge_keep_days: 30`, `commit_interval: 5` — add no `include:` or `exclude:` key; see §5.5 |
 | Correct Section 12 comment | `configuration.yaml` | Replace text per §8.1 exactly |
 | Correct Section 10 comment | `configuration.yaml` | Replace text per §8.2 exactly |
 | Correct line ~36 comment | `configuration.yaml` | Replace text per §8.4 exactly |
 | Add Section 17 shadow automation | `automations.yaml` | `v_shadow_evaluator`, logbook.log only, per §3.2B |
 | Correct pipeline diagram | `truth_sensor_architecture.md` | Replace diagram and add routing note per §8.3 |
 | Update §6.6 note | `docs/5_runtime_layer.md` | Add shadow sensors to Evidence components list |
+| Create and fully implement all 8 tests | `tests/` | Per §9.1–9.8; all assertions real, all tests passing |
 
-### 13.2 Files to create (new tests — specification only, do not implement)
+### 13.2 Tests: implementation requirements for the Codex implementation PR
+
+PR #139 is a design document. It contains no test files. The eight test files listed below
+must be **created and fully implemented** in the Codex implementation PR.
 
 | File | §Ref |
 |---|---|
@@ -926,13 +1021,23 @@ they are authorized now.
 | `tests/test_packet_b_shadow_no_climate_calls.py` | §9.3 |
 | `tests/test_packet_b_shadow_failure_isolation.py` | §9.4 |
 | `tests/test_packet_b_shadow_same_thresholds.py` | §9.5 |
-| `tests/test_packet_b_evidence_schema.py` | §9.6 |
+| `tests/test_packet_b_recorder_safety.py` | §9.6 |
 | `tests/test_packet_b_documentation_routing.py` | §9.7 |
 | `tests/test_packet_b_no_packet_a_duplication.py` | §9.8 |
 
-**Do not implement tests in this PR.** Tests are specifications for Codex.
+**Requirements:**
+- All assertions must be fully implemented. No TODO placeholders. No `pass` bodies.
+  No `pytest.mark.skip`. No `@unittest.expectedFailure`.
+- All eight new tests must pass before the implementation PR is ready for review.
+- The full existing test suite must continue to pass.
+- `tests/test_yaml_syntax.py` must pass.
 
-### 13.3 Prohibited scope (exact)
+**Classification:** these eight tests are MVP isolation and evidence tests, not routing-doctrine
+tests. They verify observational isolation, recorder safety, and documentation accuracy — not
+which input path the supervisor uses as permanent doctrine. All eight are authorized now.
+Only the six routing-invariant tests from the companion memo §7 remain deferred.
+
+### 13.3 Prohibited scope (exact, applies to the Codex implementation PR)
 
 | Prohibited action | Reason |
 |---|---|
@@ -942,33 +1047,43 @@ they are authorized now.
 | Adding shadow entities as supervisor inputs | Would constitute a routing change |
 | Calling any `climate.*` service from shadow | Absolute prohibition per §6.1 |
 | Calling any `input_*` or `timer.*` service from shadow | Absolute prohibition per §6.3 |
-| Implementing routing-invariant tests (companion memo §7) | Encodes Option A; blocked until Gate 8 |
+| **Adding `recorder: include: entities:`** | **Would immediately stop recording all entities not in the list; destroys system-wide observability** |
+| **Adding `recorder: exclude:`** | **Would suppress evidence entities from recorder** |
+| **Reducing `purge_keep_days` below 30** | **Would lose evidence before the observation window completes** |
+| Implementing routing-invariant tests (companion memo §7) | Encodes Option A as doctrine; blocked until Gate 8 |
 | Implementing or citing a one-zone pilot migration | Not authorized until Gate 7 |
-| Modifying control wrapper (`sensor.*_temperature_control`) availability logic | Deferred per §12.2 |
-| Opening a second PR | User instruction: do not open another PR |
+| Modifying control wrapper availability logic | Deferred per §12.2 |
+| Opening a second PR from this design document | User instruction: do not open another PR |
 
-### 13.4 Implementation order
+### 13.4 Codex implementation PR: ordered steps
 
-1. Write the 8 test files as failing stubs (test structure only; assertions use TODOs).
+These steps apply to the **Codex implementation PR**, not to PR #139.
+
+1. Create all 8 test files from §9 with full assertion implementations (not stubs).
 2. Add Section 16 shadow template sensors to `configuration.yaml`.
-3. Add recorder include block and verify `purge_keep_days`.
-4. Apply Corrections 1, 2, 4 to `configuration.yaml` (§8.1, §8.2, §8.4).
+3. Verify `configuration.yaml` recorder block is unchanged: `purge_keep_days: 30`,
+   `commit_interval: 5`, no `include:`, no `exclude:`. Make no recorder YAML change.
+4. Apply comment corrections 1, 2, and bonus (4) to `configuration.yaml` (§8.1, §8.2, §8.4).
 5. Add Section 17 automation to `automations.yaml`.
-6. Apply Correction 3 to `truth_sensor_architecture.md` (§8.3).
+6. Apply correction 3 to `truth_sensor_architecture.md` (§8.3).
 7. Update `docs/5_runtime_layer.md` §6.6 with shadow sensor note.
-8. Implement test assertions in all 8 test files.
-9. Run `tests/test_yaml_syntax.py` — must pass.
-10. Run all 8 new tests — all must pass.
-11. Run full existing test suite — all must continue to pass.
+8. Run `tests/test_yaml_syntax.py` — must pass.
+9. Run all 8 new tests — all must pass with real assertions.
+10. Run full existing test suite — all must continue to pass.
+11. Confirm `test_packet_b_recorder_safety.py` assertions 3 and 4 pass (no include/exclude
+    introduced).
 12. Commit and push.
 
-### 13.5 Post-merge operator checklist
+### 13.5 Post-merge operator checklist (after the Codex implementation PR merges)
 
 1. Confirm Gate 0 within 24 hours of merge.
 2. Note evidence window start time.
 3. Schedule Gate 1 review for 24 hours later.
-4. Do not perform offline replay until Gate 6 data exists (recorder data for the full window).
-5. Do not interpret any divergence finding as an architecture decision until Gate 8 Fable review.
+4. Confirm recorder is capturing `sensor.*_shadow_*` entities in HA history —
+   no configuration change should have been needed; if entities are absent from
+   history, the implementation PR introduced a recorder regression and must be reverted.
+5. Do not perform offline replay until Gate 6 data exists (recorder data for the full window).
+6. Do not interpret any divergence finding as an architecture decision until Gate 8 Fable review.
 
 ---
 
