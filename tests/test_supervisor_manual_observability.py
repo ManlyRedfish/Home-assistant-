@@ -57,19 +57,19 @@ NEW_FIELDS = {
     "Manual_Override_Remaining_Sec",
 }
 
-# These hashes intentionally lock the untouched control surfaces for this
-# observability-only change. If this test fails, the PR is no longer limited to
-# telemetry/provenance/docs and needs explicit control-behavior review.
+# These hashes intentionally lock reviewed control surfaces. Packet A changes
+# Section 2/3 for truth-unavailable cooling safety; any future drift still needs
+# explicit control-behavior review.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        "6d409d3c584cbd5eafa76fd9c9ac9c36e2c616a90c7c271bfd59ad512e0925e5",
+        "8e0cce9dc62e32f6e2a7bc48267d22a7efb2bb978c275a3dfa6fc5fea1adaaeb",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
         "# SECTION 4:",
-        "bc762a54c7c33b739a15c4a0d85e40c6141d82f209373f5e0a7cd32591944a75",
+        "9d078092445376affacd1584fbfdf9e15bb5fc5102f92d992e3be91c94d59ec0",
     ),
     "section14_lr_boost": (
         "# SECTION 14: V8.4 LR HEATING RECOVERY BOOST PILOT",
@@ -231,7 +231,7 @@ def test_no_automation_reads_google_sheets_tabs(automations_data):
 def test_control_surfaces_and_truth_configuration_are_byte_for_byte_unchanged(automations_text):
     for name, (start, end, expected_hash) in EXPECTED_SECTION_HASHES.items():
         digest = hashlib.sha256(_section(automations_text, start, end).encode()).hexdigest()
-        assert digest == expected_hash, f"{name} changed in an observability-only PR"
+        assert digest == expected_hash, f"{name} changed without updating the reviewed control-surface contract"
 
     configuration_digest = hashlib.sha256(CONFIGURATION.read_bytes()).hexdigest()
     assert configuration_digest == EXPECTED_CONFIGURATION_HASH, (
