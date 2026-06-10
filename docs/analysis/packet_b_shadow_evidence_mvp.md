@@ -392,7 +392,28 @@ For the replay to be correctly executed:
 
 Extend `tools/export_ha_nuisance_evidence.ps1` with a new `-EventLevel` flag
 that produces a separate CSV file (not replacing the 15-minute wide-table output)
-containing the per-event recorder query:
+containing the per-event recorder query.
+
+**Schema-dependent warning — read before implementing or executing:**
+
+- The SQL below is **illustrative**. It is not an approved command to run unchanged.
+- Codex must inspect the actual live Home Assistant recorder schema and the existing
+  exporter (`tools/export_ha_nuisance_evidence.ps1`) before choosing column and
+  table names.
+- Codex must verify whether the entity identifier is resolved from `states`,
+  `states_meta`, or another schema surface in the live database version.
+- Codex must verify the actual timestamp representation and confirm that a
+  `last_reported` column exists and carries the expected semantics in the live schema.
+- The first execution must be a **read-only, narrowly bounded test export** (e.g.,
+  a single entity over a 1-hour window) to confirm column names and row counts
+  before running the full query.
+- **No direct writes, schema changes, migrations, locks, or mutations** of the
+  recorder database are authorized under any circumstances.
+- If direct recorder database access is unavailable or unsafe in the deployment
+  context (e.g., the recorder DB file is locked, the schema version is unknown, or
+  remote access is not configured), Codex must **stop and report** the supported
+  alternative (e.g., HA `recorder.get_statistics`, Logbook API, or SQLite
+  read-only mode via a copy) rather than improvising a write path or schema change.
 
 ```sql
 SELECT s.entity_id, s.state, s.last_updated, s.last_reported, s.last_changed
@@ -826,13 +847,24 @@ climate mode in ≥ 90% of ticks where override is idle and cooling is active.
 
 **Pass condition:** At least 48 continuous hours with `Season_Mode = cooling` (or active
 shoulder-cooling with outdoor > 70°F). At least one zone running `cool` per day.
-Minimum 48 rows in `VTherm_Launch_Data_v5_5` meeting these criteria.
+
+The primary Gate 2 qualification is **48 hours of qualifying native recorder evidence**
+captured from `sensor.*_temperature_truth` and the shadow sensors. The native-granularity
+recorder data is the replay source; it is not derived from V5.5.
+
+V5.5 cross-check: 48 hours at the 15-minute V5.5 cadence equals **192 expected rows**
+(before accounting for gaps). V5.5's row count is a coverage cross-check only — it is
+not the replay source. Missing V5.5 rows (e.g., export gaps, resampling artifacts) must
+be reported explicitly rather than silently reducing the 48-hour requirement. A V5.5 gap
+does not shorten the required native recorder evidence window.
 
 **Context (2026-06-10):** May telemetry showed shoulder season. June is the expected
 transition to sustained cooling season. The evidence window should open no earlier
 than the first confirmed 48-hour cooling period.
 
-**Fail action:** Extend observation until 48 active cooling hours are confirmed.
+**Fail action:** Extend observation until 48 active cooling hours of native recorder data
+are confirmed. Report any V5.5 row count shortfall as a separate finding; do not use it
+to declare Gate 2 passed early.
 
 ### Gate 3 — Band-edge crossings per zone
 
@@ -1053,7 +1085,9 @@ Only the six routing-invariant tests from the companion memo §7 remain deferred
 | Implementing routing-invariant tests (companion memo §7) | Encodes Option A as doctrine; blocked until Gate 8 |
 | Implementing or citing a one-zone pilot migration | Not authorized until Gate 7 |
 | Modifying control wrapper availability logic | Deferred per §12.2 |
-| Opening a second PR from this design document | User instruction: do not open another PR |
+| PR #139 receiving runtime implementation commits | PR #139 is design-only; all implementation work must go on a separate branch and PR |
+| Codex opening multiple competing Packet B implementation PRs | Exactly one implementation PR; do not split implementation across branches |
+| Committing implementation changes directly to branch `claude/packet-b-architecture-review-9s3ry4` | That branch is this design PR's branch; runtime changes belong on the Codex implementation branch |
 
 ### 13.4 Codex implementation PR: ordered steps
 
