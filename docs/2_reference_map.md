@@ -240,10 +240,10 @@ These follow the same BT/ST/Matter transport pattern but are not first-class
 supervisor inputs; authoritative entities are the `automations.yaml` Section 1
 telemetry columns:
 
-- **Deck / Outdoor** — `Deck_*_RoomProbe_BT` (`sensor.deck_temp_temperature`),
+- **Deck / Outdoor** — `Deck_*_RoomProbe_ST` (`sensor.deck_temp_temperature_2`),
+  `Deck_*_RoomProbe_Matter` (`sensor.deck_temp_temperature_3`)
   `_ST` (`…_2`), `_Matter` (`…_3`).
-- **Laundry** — `Laundry_*_RoomProbe_BT` (`sensor.laundry_temperature`),
-  `_ST` (`sensor.bathroom_downstairs_*`), `_Matter` (`sensor.laundry_room_*_2`).
+- **Laundry** — `_ST` (`sensor.bathroom_downstairs_*`), `_Matter` (`sensor.laundry_room_*_2`).
 - **Office** — Netatmo anchor (`sensor.indoor_*`) plus
   `Office_*_RoomProbe_BT` (`sensor.office_temp_*`), `_ST` (`sensor.office_*_2`),
   `_Matter` (`sensor.office_temperature` / `sensor.office_humidity`).

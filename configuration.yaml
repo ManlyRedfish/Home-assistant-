@@ -820,25 +820,20 @@ template:
         availability: >
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
-          {% set s1 = states('sensor.laundry_temperature') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.laundry_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
-          {% set s2 = states('sensor.laundry_room_temperature_2') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.laundry_room_temperature_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
-          {% set s3 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
-          {% if s3 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s1 = states('sensor.laundry_room_temperature_2') | float(none) %}
+          {% if s1 is not none and (now() - states.sensor.laundry_room_temperature_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s2 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
+          {% if s2 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.laundry_temperature') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_temperature.last_reported).total_seconds() < max_age %}
-          {% set s2 = states('sensor.laundry_room_temperature_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.laundry_room_temperature_2.last_reported).total_seconds() < max_age %}
-          {% set s3 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
-          {% set s3_ok = s3 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}
+          {% set s1 = states('sensor.laundry_room_temperature_2') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_room_temperature_2.last_reported).total_seconds() < max_age %}
+          {% set s2 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
-          {% if s2_ok %}{% set ns.total = ns.total + (s2 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
-          {% if s3_ok %}{% set ns.total = ns.total + (s3 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
+          {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
           {{ (ns.total / ns.weight) | round(2) }}
 
       - name: "Laundry Humidity Truth"
@@ -849,25 +844,20 @@ template:
         availability: >
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
-          {% set s1 = states('sensor.laundry_humidity') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.laundry_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
-          {% set s2 = states('sensor.laundry_room_humidity_2') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.laundry_room_humidity_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
-          {% set s3 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
-          {% if s3 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s1 = states('sensor.laundry_room_humidity_2') | float(none) %}
+          {% if s1 is not none and (now() - states.sensor.laundry_room_humidity_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s2 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
+          {% if s2 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.laundry_humidity') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_humidity.last_reported).total_seconds() < max_age %}
-          {% set s2 = states('sensor.laundry_room_humidity_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.laundry_room_humidity_2.last_reported).total_seconds() < max_age %}
-          {% set s3 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
-          {% set s3_ok = s3 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}
+          {% set s1 = states('sensor.laundry_room_humidity_2') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_room_humidity_2.last_reported).total_seconds() < max_age %}
+          {% set s2 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
-          {% if s2_ok %}{% set ns.total = ns.total + (s2 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
-          {% if s3_ok %}{% set ns.total = ns.total + (s3 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
+          {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
           {{ (ns.total / ns.weight) | round(2) }}
 
       # =========================================================
@@ -878,12 +868,12 @@ template:
       #     and deep-freeze boiler logic all depend on this sensor.
       #     If both deck sensors die, the supervisor defaults to 50°F.
       #
-      # ACTIVE SENSORS (STEP 2):
-      #   deck_temp_temperature    (SwitchBot Outdoor Meter 4481) w=equal
-      #   deck_temp_temperature_2  (WonderLabs WoIOSensor)        w=equal
+      # ACTIVE SENSORS:
+      #   deck_temp_temperature_3  (SwitchBot Outdoor Meter — Matter)  w=equal
+      #   deck_temp_temperature_2  (WonderLabs WoIOSensor — ST)        w=equal
       #
-      # REMOVED (STEP 2):
-      #   deck_temp_temperature_3  (SwitchBot Outdoor Meter 81)
+      # REMOVED:
+      #   deck_temp_temperature    (BT — pruned from registry, RF-attenuated)
       # =========================================================
       - name: "Deck Temperature Truth"
         unique_id: deck_temperature_truth_v3
@@ -892,15 +882,15 @@ template:
         state_class: measurement
         availability: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.deck_temp_temperature') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_temperature.last_reported).total_seconds() < max_age %}
+          {% set s1 = states('sensor.deck_temp_temperature_3') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_temperature_3.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.deck_temp_temperature_2') | float(none) %}
           {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_temperature_2.last_reported).total_seconds() < max_age %}
           {{ s1_ok or s2_ok }}
         state: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.deck_temp_temperature') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_temperature.last_reported).total_seconds() < max_age %}
+          {% set s1 = states('sensor.deck_temp_temperature_3') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_temperature_3.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.deck_temp_temperature_2') | float(none) %}
           {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_temperature_2.last_reported).total_seconds() < max_age %}
           {% if s1_ok and s2_ok %}
@@ -918,15 +908,15 @@ template:
         state_class: measurement
         availability: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.deck_temp_humidity') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_humidity.last_reported).total_seconds() < max_age %}
+          {% set s1 = states('sensor.deck_temp_humidity_3') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_humidity_3.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.deck_temp_humidity_2') | float(none) %}
           {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_humidity_2.last_reported).total_seconds() < max_age %}
           {{ s1_ok or s2_ok }}
         state: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.deck_temp_humidity') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_humidity.last_reported).total_seconds() < max_age %}
+          {% set s1 = states('sensor.deck_temp_humidity_3') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_humidity_3.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.deck_temp_humidity_2') | float(none) %}
           {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_humidity_2.last_reported).total_seconds() < max_age %}
           {% if s1_ok and s2_ok %}

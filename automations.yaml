@@ -139,8 +139,6 @@
         # 2. Outdoor / Deck
         Deck_Temp_Truth: "{% set v = states('sensor.deck_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Deck_Hum_Truth: "{% set v = states('sensor.deck_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Deck_Temp_RoomProbe_BT: "{% set v = states('sensor.deck_temp_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Deck_Hum_RoomProbe_BT: "{% set v = states('sensor.deck_temp_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Deck_Temp_RoomProbe_ST: "{% set v = states('sensor.deck_temp_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Deck_Hum_RoomProbe_ST: "{% set v = states('sensor.deck_temp_humidity_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Deck_Temp_RoomProbe_Matter: "{% set v = states('sensor.deck_temp_temperature_3') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
@@ -201,8 +199,6 @@
         # 7. Laundry
         Laundry_Temp_Truth: "{% set v = states('sensor.laundry_temperature_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Laundry_Hum_Truth: "{% set v = states('sensor.laundry_humidity_truth') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Laundry_Temp_RoomProbe_BT: "{% set v = states('sensor.laundry_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
-        Laundry_Hum_RoomProbe_BT: "{% set v = states('sensor.laundry_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Laundry_Temp_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_temperature') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Laundry_Hum_RoomProbe_ST: "{% set v = states('sensor.bathroom_downstairs_humidity') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Laundry_Temp_RoomProbe_Matter: "{% set v = states('sensor.laundry_room_temperature_2') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
