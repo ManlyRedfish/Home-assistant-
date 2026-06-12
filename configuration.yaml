@@ -794,19 +794,21 @@ template:
           {{ states('sensor.indoor_carbon_dioxide') | float(none) | round(0) }}
 
       # =========================================================
-      # SECTION 8: TRUTH SENSORS — LAUNDRY / DOWNSTAIRS BATH
+      # SECTION 8: TRUTH SENSORS — LAUNDRY ROOM
       # =========================================================
-      # ⚠️  DO NOT DELETE — Laundry truth monitors the coolest zone
-      #     in the house (basement-adjacent). Useful as a thermal
-      #     baseline and for detecting boiler spill-over.
+      # ⚠️  DO NOT DELETE — Laundry truth is a satellite zone.
+      #     Phase 1 (Jun 2026): Added Matter source to dual-source this zone.
+      #     BT tier dead from lath-and-plaster RF attenuation — awaiting
+      #     dedicated ESP32 BT proxy (Phase 2) to restore triple-source.
       #
       # ACTIVE SENSORS (STEP 2):
-      #   laundry_temperature             (SwitchBot WoTHP)         w=1.0
-      #   bathroom_downstairs_temperature (WonderLabs WoIOSensor)   w=0.8
+      #   laundry_temperature                (SwitchBot 7C BT)      w=1.0  (unavailable, proxy pending)
+      #   laundry_room_temperature_2          (SwitchBot 7C Matter) w=1.0  ✅ live
+      #   bathroom_downstairs_temperature     (WoIOSensor hallway)  w=0.8  (ambient fallback)
       #
-      # REMOVED (STEP 2):
-      #   laundry_room_temperature (SwitchBot Outdoor Meter 7C)
-      #   laundry_room_temperature_2 (Outdoor Meter 7C fallback)
+      # PHASE 2 ROADMAP: Deploy ESP32 BT proxy inside Laundry →
+      #   laundry_temperature recovers automatically (template already references it) →
+      #   Triple-source fusion: BT (1.0) + Matter (1.0) + hallway (0.8)
       # =========================================================
       - name: "Laundry Temperature Truth"
         unique_id: laundry_temperature_truth_v3
@@ -818,18 +820,23 @@ template:
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.laundry_temperature') | float(none) %}
           {% if s1 is not none and (now() - states.sensor.laundry_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
-          {% set s2 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s2 = states('sensor.laundry_room_temperature_2') | float(none) %}
+          {% if s2 is not none and (now() - states.sensor.laundry_room_temperature_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s3 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
+          {% if s3 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set s1 = states('sensor.laundry_temperature') | float(none) %}
           {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_temperature.last_reported).total_seconds() < max_age %}
-          {% set s2 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}
+          {% set s2 = states('sensor.laundry_room_temperature_2') | float(none) %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.laundry_room_temperature_2.last_reported).total_seconds() < max_age %}
+          {% set s3 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
+          {% set s3_ok = s3 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
-          {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
+          {% if s2_ok %}{% set ns.total = ns.total + (s2 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
+          {% if s3_ok %}{% set ns.total = ns.total + (s3 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
           {{ (ns.total / ns.weight) | round(2) }}
 
       - name: "Laundry Humidity Truth"
@@ -842,19 +849,24 @@ template:
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.laundry_humidity') | float(none) %}
           {% if s1 is not none and (now() - states.sensor.laundry_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
-          {% set s2 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s2 = states('sensor.laundry_room_humidity_2') | float(none) %}
+          {% if s2 is not none and (now() - states.sensor.laundry_room_humidity_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s3 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
+          {% if s3 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set s1 = states('sensor.laundry_humidity') | float(none) %}
           {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_humidity.last_reported).total_seconds() < max_age %}
-          {% set s2 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}
+          {% set s2 = states('sensor.laundry_room_humidity_2') | float(none) %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.laundry_room_humidity_2.last_reported).total_seconds() < max_age %}
+          {% set s3 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
+          {% set s3_ok = s3 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
-          {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
-          {{ (ns.total / ns.weight) | round(1) }}
+          {% if s2_ok %}{% set ns.total = ns.total + (s2 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
+          {% if s3_ok %}{% set ns.total = ns.total + (s3 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
+          {{ (ns.total / ns.weight) | round(2) }}
 
       # =========================================================
       # SECTION 9: TRUTH SENSORS — DECK / OUTDOOR
