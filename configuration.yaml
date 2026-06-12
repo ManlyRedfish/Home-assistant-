@@ -23,6 +23,8 @@
 #  10. CONTROL WRAPPERS (smoothed pass-through for UI / supervisor)
 #  11. RUNTIME TRACKING (history_stats for boiler + all heat pumps)
 #  12. SMOOTHED SENSORS (lowpass filter on all truth temps)
+#  14. SECTION 14 HELPERS (V8.4 LR heating recovery boost)
+#  16. SECTION 16 FORECAST CACHE + HELPERS (V9-E Master pre-cool experiment)
 #
 # DESIGN PRINCIPLES:
 #   - Per-room weighted-average truth from multiple physical sensors
@@ -1017,6 +1019,52 @@ template:
         state: >
           {{ states('sensor.deck_temperature_smoothed') | float(none) | round(2) }}
 
+  # =============================================================================
+  # SECTION 16 FORECAST CACHE: V9-E MASTER PRE-COOL (Evidence-Gated Experiment)
+  # =============================================================================
+  # Trigger-based forecast cache for the V9 Exception Master pre-cool
+  # experiment (automations.yaml Sections 2 + 16). Calls weather.get_forecasts
+  # hourly (and on HA start) and caches tomorrow's forecast daily high.
+  # This is the supported pattern — the legacy state_attr(weather.x,
+  # 'forecast') attribute no longer exists; do not regress to it.
+  #
+  # Fallback ladder: tomorrow's forecast temperature → own last value →
+  # 70°F (a value below the 85°F heatwave gate, so a dead forecast source
+  # fails SAFE: pre-cool simply never arms).
+  #
+  # ⚠️ DEPLOY VERIFY: confirm weather.forecast_home exists on the live HA
+  # instance (it is the default Met.no entity). It is not referenced
+  # anywhere else in this repo, so it could not be verified offline.
+  - triggers:
+      - trigger: time_pattern
+        hours: "/1"
+      - trigger: homeassistant
+        event: start
+    actions:
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.forecast_home
+        data:
+          type: daily
+        response_variable: daily_forecast
+    sensor:
+      - name: Precool Tomorrow High
+        unique_id: precool_tomorrow_high
+        device_class: temperature
+        state_class: measurement
+        unit_of_measurement: "°F"
+        availability: >
+          {{ daily_forecast is defined }}
+        state: >
+          {% set f = daily_forecast.get('weather.forecast_home', {}).get('forecast', []) %}
+          {% if f | length > 1 and f[1].temperature is defined %}
+            {{ f[1].temperature | float }}
+          {% elif has_value('sensor.precool_tomorrow_high') %}
+            {{ states('sensor.precool_tomorrow_high') }}
+          {% else %}
+            70
+          {% endif %}
+
 sensor:
   # =============================================================================
   # SECTION 11: RUNTIME TRACKING
@@ -1162,6 +1210,15 @@ input_boolean:
   lr_heating_recovery_boost_active:
     name: "LR Heating Recovery Active"
     icon: mdi:fire-alert
+  # ---------------------------------------------------------------------------
+  # SECTION 16 HELPER: V9-E MASTER PRE-COOL nightly abort latch.
+  # No `initial:` on purpose — a tripped latch must survive an HA restart
+  # mid-night (a restart must not silently re-arm an aborted experiment).
+  # The Section 16 reset automation clears it daily at 22:00.
+  # ---------------------------------------------------------------------------
+  precool_aborted_tonight:
+    name: "Precool Aborted Tonight"
+    icon: mdi:snowflake-alert
 
 # =============================================================================
 # SECTION 14 OBSERVABILITY HELPERS (v5.5)
@@ -1186,6 +1243,16 @@ input_text:
     icon: mdi:stop-circle-outline
     initial: ""
     max: 64
+  # ---------------------------------------------------------------------------
+  # SECTION 16 HELPER: V9-E MASTER PRE-COOL abort-reason memory.
+  # No `initial:` on purpose — the forensic reason must survive an HA
+  # restart together with the abort latch above. The Section 16 reset
+  # automation rewrites it to "ready" daily at 22:00.
+  # ---------------------------------------------------------------------------
+  precool_abort_reason:
+    name: "Precool Abort Reason"
+    icon: mdi:snowflake-melt
+    max: 255
 
 input_datetime:
   lr_heating_recovery_boost_last_engage_at:
@@ -1198,3 +1265,71 @@ input_datetime:
     icon: mdi:clock-end
     has_date: true
     has_time: true
+
+# =============================================================================
+# SECTION 16 HELPERS: V9-E MASTER PRE-COOL (Evidence-Gated Runtime Experiment)
+# =============================================================================
+# Helpers for the V9 Exception Master pre-cool experiment (automations.yaml
+# Sections 2 + 16; docs/v9_v10_goals.md §2.6). YAML-defined to match the
+# Section 14 helper precedent in this file.
+#
+# `initial:` policy (deliberate, two classes):
+#   - TUNABLES (target/floor/drop-limit/max-runtime) declare `initial:` so the
+#     experiment envelope re-asserts its documented thresholds on every HA
+#     restart. Deterministic thresholds keep the telemetry interpretable.
+#   - STATE/MEMORY helpers (runtime counter, previous-master slope memory —
+#     plus the latch and reason above) omit `initial:` so envelope state
+#     survives a mid-night restart. A restart must not refill the runtime
+#     budget or clear a tripped latch. The Section 16 reset automation
+#     re-initializes all of them daily at 22:00.
+#
+# precool_target_temp is a ROOM-TRUTH cutoff (comfort threshold), not the
+# Samsung actuator setpoint. Pre-cool commands keep the 61°F shove doctrine.
+# =============================================================================
+input_number:
+  precool_runtime_counter:
+    name: "Precool Runtime Counter"
+    icon: mdi:timer-outline
+    min: 0
+    max: 300
+    step: 15
+    unit_of_measurement: "min"
+  precool_previous_master_temp:
+    name: "Precool Previous Master Temp"
+    icon: mdi:history
+    min: 50
+    max: 90
+    step: 0.1
+    unit_of_measurement: "°F"
+  precool_target_temp:
+    name: "Precool Target Temp"
+    icon: mdi:thermometer-low
+    min: 62
+    max: 68
+    step: 0.5
+    initial: 64
+    unit_of_measurement: "°F"
+  precool_thermal_floor:
+    name: "Precool Thermal Floor"
+    icon: mdi:thermometer-alert
+    min: 60
+    max: 65
+    step: 0.5
+    initial: 63.5
+    unit_of_measurement: "°F"
+  precool_drop_rate_limit:
+    name: "Precool Drop Rate Limit"
+    icon: mdi:speedometer
+    min: 1
+    max: 5
+    step: 0.1
+    initial: 2.5
+    unit_of_measurement: "°F/hr"
+  precool_max_runtime:
+    name: "Precool Max Runtime"
+    icon: mdi:timer-lock-outline
+    min: 60
+    max: 300
+    step: 15
+    initial: 180
+    unit_of_measurement: "min"

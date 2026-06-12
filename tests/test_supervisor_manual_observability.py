@@ -57,14 +57,22 @@ NEW_FIELDS = {
     "Manual_Override_Remaining_Sec",
 }
 
-# These hashes intentionally lock the untouched control surfaces for this
-# observability-only change. If this test fails, the PR is no longer limited to
-# telemetry/provenance/docs and needs explicit control-behavior review.
+# These hashes intentionally lock the control surfaces. If this test fails,
+# the PR includes control-behavior changes and needs explicit review before
+# the pinned hashes are updated.
+#
+# Re-pin history:
+#   - section2 + configuration re-pinned for the V9-E evidence-gated Master
+#     pre-cool exception (docs/v9_v10_goals.md §2.6): Section 2 gained the
+#     pre-cool variables/guards and two Master hvac_mode template consults;
+#     configuration.yaml gained the Section 16 helpers and forecast cache.
+#     Section 3 (safety gates) and Section 14 hashes were NOT re-pinned —
+#     those surfaces remain byte-for-byte unchanged.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        "6d409d3c584cbd5eafa76fd9c9ac9c36e2c616a90c7c271bfd59ad512e0925e5",
+        "ac90562fc16d4a081437e341cdeaa9b1528e36ade12a2229baba84128f012c14",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
@@ -77,7 +85,7 @@ EXPECTED_SECTION_HASHES = {
         "fcb18b5953a9bfb9f1d1e9f10ba8217cc46c7db63cb268bfab5daa6ffd2b71c3",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "f81e754d318f76dd8ef9d1e03bcea1b575e6cb6a05aaac1e4f0ee646f2837479"
+EXPECTED_CONFIGURATION_HASH = "36505e1b6e587ccafd8c3a5b0d7168b6586c3da028e41bd3e1be3d80f3163118"
 
 
 @pytest.fixture(scope="module")

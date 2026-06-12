@@ -23,6 +23,7 @@
 #   9.  TRUTH SENSOR HEALTH ALERT
 #   11. HVAC TRANSITION LOGGER (V8.3 — audit trail for heating/cooling behavior)
 #   14. V8.4 LR HEATING RECOVERY BOOST PILOT
+#   16. V9-E MASTER PRE-COOL NIGHTLY RESET (evidence-gated exception experiment)
 #
 # DEPENDENCIES (helpers that must exist):
 #   - input_select.hvac_season_mode (heating / shoulder / cooling)
@@ -30,6 +31,13 @@
 #   - timer.manual_hvac_override (1 hour default)
 #   - timer.shade_manual_override (2 hour default)
 #   - input_boolean.away_mode (away/vacation — relaxes all targets)
+#   - input_boolean.precool_aborted_tonight (V9-E abort latch)
+#   - input_text.precool_abort_reason (V9-E abort classifier)
+#   - input_number.precool_runtime_counter / precool_previous_master_temp /
+#     precool_target_temp / precool_thermal_floor / precool_drop_rate_limit /
+#     precool_max_runtime (V9-E envelope; configuration.yaml Section 16)
+#   - sensor.precool_tomorrow_high (V9-E forecast cache; configuration.yaml,
+#     fed by weather.get_forecasts on weather.forecast_home)
 #
 # =============================================================================
 # V8.2 DOCTRINE NOTE — HONEST FRAMING
@@ -324,6 +332,22 @@
           {{ [((as_datetime(finishes) - now()).total_seconds()) | int, 0] | max }}
           {% else %}{% endif %}
 
+        # 16. V9-E MASTER PRE-COOL OBSERVABILITY (evidence-gated experiment)
+        # Observability of the Section 2 V9-E pre-cool envelope. GLOBAL state
+        # reads only — supervisor tick-local variables are not visible here
+        # and must never be referenced. Keeps the V5 blank-on-unknown
+        # convention.
+        # ⚠️  DEPLOYMENT: append these six columns to the live
+        # VTherm_Launch_Data_v5_5 worksheet header row (in this order, after
+        # Manual_Override_Remaining_Sec) BEFORE the first export tick after
+        # this change ships, otherwise rows will be misaligned.
+        Precool_Tomorrow_High: "{% set v = states('sensor.precool_tomorrow_high') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Precool_Aborted: "{% set v = states('input_boolean.precool_aborted_tonight') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Precool_Abort_Reason: "{% set v = states('input_text.precool_abort_reason') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Precool_Runtime: "{% set v = states('input_number.precool_runtime_counter') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Precool_Previous_Master_Temp: "{% set v = states('input_number.precool_previous_master_temp') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+        Precool_Target_Temp: "{% set v = states('input_number.precool_target_temp') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
+
 
 # =============================================================================
 # SECTION 2: MAIN SUPERVISOR (V8.2 Deadband Cooling + V8.3 LR Heating Deadband)
@@ -353,6 +377,22 @@
 #         but noisy. Section 11 logger exists to make behavior observable.
 #       - No multi-head capacity arbitration. Deferred until there is
 #         measured evidence of real starvation under load.
+#
+#     V9-E MASTER PRE-COOL EXCEPTION (evidence-gated, self-terminating):
+#       Narrow runtime experiment per docs/v9_v10_goals.md §2.6. Between
+#       02:00-06:00, when the cached forecast (sensor.precool_tomorrow_high)
+#       predicts tomorrow ≥85°F, Master may be pre-cooled to the room-truth
+#       cutoff input_number.precool_target_temp (default 64°F) using the
+#       unchanged 61°F shove command setpoint. Three guards (thermal floor,
+#       15-min drop slope, runtime budget) are evaluated BEFORE any command
+#       each tick; any trip latches input_boolean.precool_aborted_tonight
+#       for the rest of the night and the Master template falls back to the
+#       standard V8.3 sleep deadband. Master Bedroom ONLY — Lincoln, Lilly,
+#       LR, Nest, Section 3 gates, Section 14, and the Sleep Priority
+#       Interlock are untouched. Evidence basis: May 17-20 + Jun 3-5 2026
+#       heatwaves; Master truth 76.1°F in the May 17 sleep window with
+#       multi-hour pull-down. Latch/counters reset nightly at 22:00 by the
+#       Section 16 reset automation.
 # =============================================================================
 
 - id: v7_5_main_supervisor
@@ -378,6 +418,120 @@
         season: "{{ states('input_select.hvac_season_mode') }}"
         lr_night_primary: "{{ is_state('input_boolean.night_mode_lr_primary', 'on') }}"
         away: "{{ is_state('input_boolean.away_mode', 'on') }}"
+
+        # =============================================================
+        # V9-E MASTER PRE-COOL (Evidence-Gated Exception Experiment)
+        # docs/v9_v10_goals.md §2.6 — Master Bedroom ONLY.
+        # All guard evaluation is pure-template and happens HERE, before
+        # any climate command is issued on this tick. The if/then steps
+        # below write the latch/reason/counters; the Master command
+        # templates in the cooling branch and the shoulder-night escape
+        # consume precool_session_live / precool_engage. No other room,
+        # safety gate, or section reads these variables.
+        # =============================================================
+        is_precool_window: "{{ 2 <= now().hour < 6 }}"
+        is_heatwave_predicted: "{{ states('sensor.precool_tomorrow_high') | float(0) >= 85 }}"
+        is_latch_tripped: "{{ is_state('input_boolean.precool_aborted_tonight', 'on') }}"
+        precool_target_temp: "{{ states('input_number.precool_target_temp') | float(64) }}"
+        precool_floor: "{{ states('input_number.precool_thermal_floor') | float(63.5) }}"
+        precool_drop_limit: "{{ states('input_number.precool_drop_rate_limit') | float(2.5) }}"
+        precool_max_runtime: "{{ states('input_number.precool_max_runtime') | int(180) }}"
+        precool_runtime: "{{ states('input_number.precool_runtime_counter') | int(0) }}"
+        precool_prev_master: "{{ states('input_number.precool_previous_master_temp') | float(0) }}"
+        is_precool_permitted_base: >
+          {{ is_precool_window and is_heatwave_predicted and not is_latch_tripped }}
+        # --- derived guard inputs ---
+        precool_master_truth_valid: "{{ states('sensor.master_bedroom_temperature_truth') | float(none) is not none }}"
+        # Slope memory is only trusted when plausible (55-85°F) and non-zero;
+        # otherwise it is reseeded below and the slope abort is skipped for
+        # this cycle (slope seeding requirement).
+        precool_prev_valid: "{{ precool_prev_master != 0 and 55 <= precool_prev_master <= 85 }}"
+        # Envelope constraints beyond the base gate: Master truth must be
+        # valid, the house must not be away (away relaxation wins), and the
+        # season branch must be one whose Master sleep path can act on the
+        # decision (cooling branch or shoulder-night escape). The top-level
+        # manual-override idle condition already gates this whole automation.
+        precool_envelope_live_pre_guard: >
+          {{ is_precool_permitted_base
+             and season in ['cooling', 'shoulder']
+             and not away
+             and precool_master_truth_valid }}
+        # --- guards (evaluated before any command; first reason wins) ---
+        precool_floor_tripped: "{{ precool_envelope_live_pre_guard and master_temp < precool_floor }}"
+        # 15-minute drop check. Only armed once a pre-cool session has
+        # actually commanded this night (runtime > 0), because the slope
+        # memory is refreshed on envelope ticks only — comparing against the
+        # 22:00 reset seed would measure hours of natural drift against a
+        # 15-minute budget and false-abort every night.
+        precool_slope_tripped: >
+          {{ precool_envelope_live_pre_guard
+             and precool_prev_valid
+             and precool_runtime > 0
+             and (precool_prev_master - master_temp) >= (precool_drop_limit / 4) }}
+        # Runtime budget: abort instead of command when this tick WOULD
+        # reach/exceed the budget. Ticks can occasionally run more often
+        # than 15 minutes apart (season-change trigger); the +15-per-
+        # commanding-tick accounting then over-counts, which only shrinks
+        # the budget — the safe direction.
+        precool_runtime_tripped: >
+          {{ precool_envelope_live_pre_guard
+             and not precool_floor_tripped
+             and not precool_slope_tripped
+             and master_temp > precool_target_temp
+             and (precool_runtime + 15) >= precool_max_runtime }}
+        precool_guard_tripped: "{{ precool_floor_tripped or precool_slope_tripped or precool_runtime_tripped }}"
+        precool_abort_reason_now: >-
+          {% if precool_floor_tripped %}Thermal floor breached
+          {% elif precool_slope_tripped %}Excessive cooling slope exceeded
+          {% else %}Continuous runtime budget exhausted{% endif %}
+        # --- decision surface consumed by the Master command templates ---
+        # session_live false (not permitted / guard tripped) => the Master
+        # templates fall back to the standard V8.3 sleep deadband for the
+        # tick. engage true => command cool (61°F shove). session_live with
+        # engage false => Master truth is at/below the pre-cool cutoff
+        # (precool_target_temp) => command off.
+        precool_session_live: "{{ precool_envelope_live_pre_guard and not precool_guard_tripped }}"
+        precool_engage: "{{ precool_session_live and master_temp > precool_target_temp }}"
+
+    # =================================================================
+    # V9-E PRE-COOL STATE WRITES (latch / reason / budget / slope seed)
+    # These run BEFORE the season choose, so a tripped guard is latched
+    # before any pre-cool command could be issued on this same tick.
+    # if/then (not choose) is intentional: the season choose below must
+    # remain the first `choose` step of this action list.
+    # =================================================================
+    - if:
+        - condition: template
+          value_template: "{{ precool_guard_tripped }}"
+      then:
+        - action: input_boolean.turn_on
+          target: { entity_id: input_boolean.precool_aborted_tonight }
+        - action: input_text.set_value
+          target: { entity_id: input_text.precool_abort_reason }
+          data:
+            value: "{{ precool_abort_reason_now | trim }}"
+    - if:
+        - condition: template
+          value_template: "{{ precool_engage }}"
+      then:
+        # Budget accounting: increment ONLY on ticks where the supervisor
+        # will actually command/hold Master pre-cool cooling (engage true).
+        - action: input_number.set_value
+          target: { entity_id: input_number.precool_runtime_counter }
+          data:
+            value: "{{ [precool_runtime + 15, 300] | min }}"
+    - if:
+        - condition: template
+          value_template: "{{ precool_envelope_live_pre_guard }}"
+      then:
+        # Slope memory write/seed: refresh on every live-envelope tick AFTER
+        # guards were evaluated against the previous value. Clamped to the
+        # helper's 50-90 range so an outlier truth reading cannot fail the
+        # service call.
+        - action: input_number.set_value
+          target: { entity_id: input_number.precool_previous_master_temp }
+          data:
+            value: "{{ [[master_temp, 50] | max, 90] | min }}"
 
     - choose:
         # =============================================
@@ -413,6 +567,11 @@
             # 6am-6pm: Normal    (66°F set / off ≤68 / on >72)
             # Away:    Relaxed   (74°F set / off ≤74 / on >76)
             # Runaway floor at 58°F lives in Section 3 (independent).
+            # V9-E pre-cool (02:00-06:00, forecast ≥85°F, guards green):
+            #   cutoff is precool_target_temp on Master TRUTH; the 61°F
+            #   command setpoint is unchanged shove doctrine. When the
+            #   session is not live this template is byte-equivalent to
+            #   the standard V8.3 deadband below.
             # ---------------------------------------------------------
             - variables:
                 is_master_sleep: "{{ now().hour >= 18 or now().hour < 6 }}"
@@ -424,7 +583,9 @@
               target: { entity_id: climate.master_bedroom_air }
               data:
                 hvac_mode: >-
-                  {% if master_temp > m_on_at %}cool
+                  {% if precool_session_live and precool_engage %}cool
+                  {% elif precool_session_live %}off
+                  {% elif master_temp > m_on_at %}cool
                   {% elif master_temp <= m_off_at %}off
                   {% elif m_current == 'cool' %}cool
                   {% else %}off{% endif %}
@@ -515,6 +676,11 @@
                     # still be allowed to cool. Thresholds mirror the
                     # cooling-season Master sleep band so behavior is
                     # consistent. Safety floor (58°F) lives in Section 3.
+                    # V9-E pre-cool consult mirrors the cooling-branch Master
+                    # block: telemetry shows auto-season flips to shoulder
+                    # mid-night during heatwaves (e.g. 2026-05-18 02:00), so
+                    # the 02:00-06:00 pre-cool window usually lands in THIS
+                    # branch, not the cooling branch.
                     # ---------------------------------------------------------
                     - variables:
                         m_sleep_on_at: "{{ 76 if away else 66 }}"
@@ -525,7 +691,9 @@
                       target: { entity_id: climate.master_bedroom_air }
                       data:
                         hvac_mode: >-
-                          {% if master_temp > m_sleep_on_at %}cool
+                          {% if precool_session_live and precool_engage %}cool
+                          {% elif precool_session_live %}off
+                          {% elif master_temp > m_sleep_on_at %}cool
                           {% elif master_temp <= m_sleep_off_at %}off
                           {% elif m_current == 'cool' %}cool
                           {% else %}off{% endif %}
@@ -1919,3 +2087,38 @@
           related_issue: "#66"
           note: ""
           created_at: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+# =============================================================================
+# SECTION 16: V9-E MASTER PRE-COOL NIGHTLY RESET
+# =============================================================================
+# Daily 22:00 re-arm of the V9-E pre-cool envelope (Section 2 + docs/
+# v9_v10_goals.md §2.6). Re-arms the abort latch, zeroes the runtime budget,
+# seeds the slope memory from current Master truth (70°F fallback when truth
+# is unavailable), and rewrites the abort reason to "ready". Helper writes
+# only — issues no climate commands and reads no telemetry tabs.
+#
+# 22:00 (not midnight) so the seed/reset happens well before the 02:00-06:00
+# pre-cool window opens and never inside it.
+# =============================================================================
+
+- id: v9e_precool_nightly_reset
+  alias: "V9-E: Master Pre-Cool Nightly Reset"
+  mode: single
+  trigger:
+    - platform: time
+      at: "22:00:00"
+  action:
+    - action: input_boolean.turn_off
+      target: { entity_id: input_boolean.precool_aborted_tonight }
+    - action: input_number.set_value
+      target: { entity_id: input_number.precool_runtime_counter }
+      data: { value: 0 }
+    - action: input_number.set_value
+      target: { entity_id: input_number.precool_previous_master_temp }
+      data:
+        value: >-
+          {% set m = states('sensor.master_bedroom_temperature_truth') | float(none) %}
+          {% if m is none %}70{% else %}{{ [[m, 50] | max, 90] | min }}{% endif %}
+    - action: input_text.set_value
+      target: { entity_id: input_text.precool_abort_reason }
+      data: { value: "ready" }
