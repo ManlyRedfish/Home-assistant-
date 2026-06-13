@@ -68,11 +68,17 @@ NEW_FIELDS = {
 #     configuration.yaml gained the Section 16 helpers and forecast cache.
 #     Section 3 (safety gates) and Section 14 hashes were NOT re-pinned —
 #     those surfaces remain byte-for-byte unchanged.
+#   - section2 re-pinned again for two V9-E review refinements: the slope
+#     guard's magic /4 became the named variable precool_slope_limit_15min
+#     (no behavior change), and a config invariant guard (target must
+#     exceed floor) was added that latches the abort with reason
+#     "Invalid config" instead of silently disarming. configuration.yaml,
+#     Section 3, and Section 14 unchanged.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        "ac90562fc16d4a081437e341cdeaa9b1528e36ade12a2229baba84128f012c14",
+        "a8cd7012bff0493e987ec76e33a67551c8a68ce05f8a99ae88d090268bab0b13",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",

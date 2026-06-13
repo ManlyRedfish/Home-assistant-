@@ -138,8 +138,12 @@ Shape (Master Bedroom only; `automations.yaml` Section 2 + Section 16,
   (default 64°F, room-truth cutoff) → cool with the unchanged 61°F shove
   command setpoint; at/below cutoff → off.
 - **Self-termination (guards, evaluated before any command each tick):**
-  thermal floor (`precool_thermal_floor`, 63.5°F), 15-minute drop slope
-  (`precool_drop_rate_limit`/4), continuous runtime budget
+  config invariant (`precool_target_temp` must exceed
+  `precool_thermal_floor` — the helper ranges overlap, so an inverted pair
+  aborts with a recorded reason instead of silently disarming), thermal
+  floor (`precool_thermal_floor`, 63.5°F), 15-minute drop slope
+  (`precool_drop_rate_limit`/4, named `precool_slope_limit_15min`),
+  continuous runtime budget
   (`precool_max_runtime`, 180 min in 15-min increments). Any trip latches
   `input_boolean.precool_aborted_tonight` with a reason in
   `input_text.precool_abort_reason` and falls back to the standard V8.3

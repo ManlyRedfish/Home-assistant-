@@ -431,6 +431,10 @@
         precool_target_temp: "{{ states('input_number.precool_target_temp') | float(64) }}"
         precool_floor: "{{ states('input_number.precool_thermal_floor') | float(63.5) }}"
         precool_drop_limit: "{{ states('input_number.precool_drop_rate_limit') | float(2.5) }}"
+        # The drop-rate tunable is °F/hr; the slope guard compares against a
+        # 15-minute window, so the per-tick limit is the hourly limit over
+        # 0.25 h. Named here so the guard below carries no unit conversion.
+        precool_slope_limit_15min: "{{ precool_drop_limit / 4 }}"
         precool_max_runtime: "{{ states('input_number.precool_max_runtime') | int(180) }}"
         precool_runtime: "{{ states('input_number.precool_runtime_counter') | int(0) }}"
         precool_prev_master: "{{ states('input_number.precool_previous_master_temp') | float(0) }}"
@@ -438,6 +442,13 @@
           {{ is_precool_window and is_heatwave_predicted and not is_latch_tripped }}
         # --- derived guard inputs ---
         precool_master_truth_valid: "{{ states('sensor.master_bedroom_temperature_truth') | float(none) is not none }}"
+        # Config invariant: the room-truth cutoff must sit above the thermal
+        # floor. The helper ranges overlap (target 62-68, floor 60-65), so an
+        # operator CAN invert them in the UI; an inverted pair would make the
+        # floor guard unreachable before the cutoff. Treated as a guard trip
+        # (latch + reason) rather than a silent disarm so the telemetry shows
+        # WHY the experiment refused to run.
+        is_config_valid: "{{ precool_target_temp > precool_floor }}"
         # Slope memory is only trusted when plausible (55-85°F) and non-zero;
         # otherwise it is reseeded below and the slope abort is skipped for
         # this cycle (slope seeding requirement).
@@ -453,6 +464,7 @@
              and not away
              and precool_master_truth_valid }}
         # --- guards (evaluated before any command; first reason wins) ---
+        precool_config_tripped: "{{ precool_envelope_live_pre_guard and not is_config_valid }}"
         precool_floor_tripped: "{{ precool_envelope_live_pre_guard and master_temp < precool_floor }}"
         # 15-minute drop check. Only armed once a pre-cool session has
         # actually commanded this night (runtime > 0), because the slope
@@ -463,7 +475,7 @@
           {{ precool_envelope_live_pre_guard
              and precool_prev_valid
              and precool_runtime > 0
-             and (precool_prev_master - master_temp) >= (precool_drop_limit / 4) }}
+             and (precool_prev_master - master_temp) >= precool_slope_limit_15min }}
         # Runtime budget: abort instead of command when this tick WOULD
         # reach/exceed the budget. Ticks can occasionally run more often
         # than 15 minutes apart (season-change trigger); the +15-per-
@@ -475,9 +487,10 @@
              and not precool_slope_tripped
              and master_temp > precool_target_temp
              and (precool_runtime + 15) >= precool_max_runtime }}
-        precool_guard_tripped: "{{ precool_floor_tripped or precool_slope_tripped or precool_runtime_tripped }}"
+        precool_guard_tripped: "{{ precool_config_tripped or precool_floor_tripped or precool_slope_tripped or precool_runtime_tripped }}"
         precool_abort_reason_now: >-
-          {% if precool_floor_tripped %}Thermal floor breached
+          {% if precool_config_tripped %}Invalid config: target must exceed floor
+          {% elif precool_floor_tripped %}Thermal floor breached
           {% elif precool_slope_tripped %}Excessive cooling slope exceeded
           {% else %}Continuous runtime budget exhausted{% endif %}
         # --- decision surface consumed by the Master command templates ---
