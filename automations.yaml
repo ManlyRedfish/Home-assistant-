@@ -34,8 +34,8 @@
 #   - input_boolean.precool_aborted_tonight (V9-E abort latch)
 #   - input_text.precool_abort_reason (V9-E abort classifier)
 #   - input_number.precool_runtime_counter / precool_previous_master_temp /
-#     precool_target_temp / precool_thermal_floor / precool_drop_rate_limit /
-#     precool_max_runtime (V9-E envelope; configuration.yaml Section 16)
+#     precool_target_temp / precool_thermal_floor
+#     (V9-E envelope; configuration.yaml Section 16)
 #   - sensor.precool_tomorrow_high (V9-E forecast cache; configuration.yaml,
 #     fed by weather.get_forecasts on weather.forecast_home)
 #
@@ -375,20 +375,27 @@
 #         measured evidence of real starvation under load.
 #
 #     V9-E MASTER PRE-COOL EXCEPTION (evidence-gated, self-terminating):
-#       Narrow runtime experiment per docs/v9_v10_goals.md §2.6. Between
-#       02:00-06:00, when the cached forecast (sensor.precool_tomorrow_high)
-#       predicts tomorrow ≥85°F, Master may be pre-cooled to the room-truth
-#       cutoff input_number.precool_target_temp (default 64°F) using the
-#       unchanged 61°F shove command setpoint. Three guards (thermal floor,
-#       15-min drop slope, runtime budget) are evaluated BEFORE any command
-#       each tick; any trip latches input_boolean.precool_aborted_tonight
-#       for the rest of the night and the Master template falls back to the
-#       standard V8.3 sleep deadband. Master Bedroom ONLY — Lincoln, Lilly,
-#       LR, Nest, Section 3 gates, Section 14, and the Sleep Priority
-#       Interlock are untouched. Evidence basis: May 17-20 + Jun 3-5 2026
-#       heatwaves; Master truth 76.1°F in the May 17 sleep window with
-#       multi-hour pull-down. Latch/counters reset nightly at 22:00 by the
-#       Section 16 reset automation.
+#       Narrow runtime experiment per docs/v9_v10_goals.md §2.6 and
+#       docs/analysis/v9e_precool_revision_spec.md. Between 02:00 and a
+#       forecast-conditioned window end (13:00 for ≥90°F, 11:00 for 85-89°F,
+#       hard backstop 14:00), when the cached forecast
+#       (sensor.precool_tomorrow_high) predicts tomorrow ≥85°F, Master may be
+#       pre-cooled to the room-truth cutoff input_number.precool_target_temp
+#       (default 64°F) using the unchanged 61°F shove command setpoint.
+#       Guards (evaluated BEFORE any command each tick):
+#         - config invariant (target > floor — operator error)
+#         - thermal floor (63.5°F — physics; the only thermal guard)
+#       Slope and runtime guards removed per spec §2/§3 (sensor quantization
+#       caused false slope aborts; window-end is the wall-clock ceiling).
+#       Runtime counter kept as telemetry only (cap 720 min).
+#       Any trip latches input_boolean.precool_aborted_tonight for the rest
+#       of the night and the Master template falls back to the standard V8.3
+#       sleep deadband. Master Bedroom ONLY — Lincoln, Lilly, LR, Nest,
+#       Section 3 gates, Section 14, and the Sleep Priority Interlock are
+#       untouched. Evidence basis: May 17-20 + Jun 3-5 2026 heatwaves;
+#       Master truth 76.1°F in the May 17 sleep window with multi-hour
+#       pull-down. Latch/counters reset nightly at 22:00 by the Section 16
+#       reset automation.
 # =============================================================================
 
 - id: v7_5_main_supervisor
@@ -425,23 +432,35 @@
         # consume precool_session_live / precool_engage. No other room,
         # safety gate, or section reads these variables.
         # =============================================================
-        is_precool_window: "{{ 2 <= now().hour < 6 }}"
+        # Forecast-conditioned window end per docs/analysis/v9e_precool_release_trigger.md.
+        # Hotter days hold longer; cooler days release earlier. Hard backstop 14:00.
+        # - ≥90°F forecast → hold until 13:00
+        # - 85-89°F forecast → hold until 11:00
+        # - <85°F (no heatwave) → original 06:00 window (is_heatwave_predicted gates this)
+        is_precool_window: >-
+          {% set h = now().hour %}
+          {% set f = states('sensor.precool_tomorrow_high') | float(0) %}
+          {{ 2 <= h < 14 and (
+            (f >= 90 and h < 13) or
+            (f >= 85 and h < 11) or
+            (h < 6)
+          ) }}
         is_heatwave_predicted: "{{ states('sensor.precool_tomorrow_high') | float(0) >= 85 }}"
         is_latch_tripped: "{{ is_state('input_boolean.precool_aborted_tonight', 'on') }}"
         precool_target_temp: "{{ states('input_number.precool_target_temp') | float(64) }}"
         precool_floor: "{{ states('input_number.precool_thermal_floor') | float(63.5) }}"
-        precool_drop_limit: "{{ states('input_number.precool_drop_rate_limit') | float(2.5) }}"
-        precool_max_runtime: "{{ states('input_number.precool_max_runtime') | int(180) }}"
         precool_runtime: "{{ states('input_number.precool_runtime_counter') | int(0) }}"
-        precool_prev_master: "{{ states('input_number.precool_previous_master_temp') | float(0) }}"
         is_precool_permitted_base: >
           {{ is_precool_window and is_heatwave_predicted and not is_latch_tripped }}
         # --- derived guard inputs ---
         precool_master_truth_valid: "{{ states('sensor.master_bedroom_temperature_truth') | float(none) is not none }}"
-        # Slope memory is only trusted when plausible (55-85°F) and non-zero;
-        # otherwise it is reseeded below and the slope abort is skipped for
-        # this cycle (slope seeding requirement).
-        precool_prev_valid: "{{ precool_prev_master != 0 and 55 <= precool_prev_master <= 85 }}"
+        # Config invariant: the room-truth cutoff must sit above the thermal
+        # floor. The helper ranges overlap (target 62-68, floor 60-65), so an
+        # operator CAN invert them in the UI; an inverted pair would make the
+        # floor guard unreachable before the cutoff. Treated as a guard trip
+        # (latch + reason) rather than a silent disarm so the telemetry shows
+        # WHY the experiment refused to run.
+        is_config_valid: "{{ precool_target_temp > precool_floor }}"
         # Envelope constraints beyond the base gate: Master truth must be
         # valid, the house must not be away (away relaxation wins), and the
         # season branch must be one whose Master sleep path can act on the
@@ -453,33 +472,19 @@
              and not away
              and precool_master_truth_valid }}
         # --- guards (evaluated before any command; first reason wins) ---
+        # Guards: config-invalid (operator error — target must exceed floor),
+        # thermal floor (physics — hardware asymptote is ~63.4°F under the 61°F
+        # shove, so a breach is genuinely terminal). Slope guard removed per
+        # docs/analysis/v9e_precool_revision_spec.md §2 (sensor quantization
+        # caused false trips on physically-fine runs; the floor is the real net).
+        # Runtime guard removed per §3 (window-end is the wall-clock ceiling;
+        # runtime counter kept as telemetry only).
+        precool_config_tripped: "{{ precool_envelope_live_pre_guard and not is_config_valid }}"
         precool_floor_tripped: "{{ precool_envelope_live_pre_guard and master_temp < precool_floor }}"
-        # 15-minute drop check. Only armed once a pre-cool session has
-        # actually commanded this night (runtime > 0), because the slope
-        # memory is refreshed on envelope ticks only — comparing against the
-        # 22:00 reset seed would measure hours of natural drift against a
-        # 15-minute budget and false-abort every night.
-        precool_slope_tripped: >
-          {{ precool_envelope_live_pre_guard
-             and precool_prev_valid
-             and precool_runtime > 0
-             and (precool_prev_master - master_temp) >= (precool_drop_limit / 4) }}
-        # Runtime budget: abort instead of command when this tick WOULD
-        # reach/exceed the budget. Ticks can occasionally run more often
-        # than 15 minutes apart (season-change trigger); the +15-per-
-        # commanding-tick accounting then over-counts, which only shrinks
-        # the budget — the safe direction.
-        precool_runtime_tripped: >
-          {{ precool_envelope_live_pre_guard
-             and not precool_floor_tripped
-             and not precool_slope_tripped
-             and master_temp > precool_target_temp
-             and (precool_runtime + 15) >= precool_max_runtime }}
-        precool_guard_tripped: "{{ precool_floor_tripped or precool_slope_tripped or precool_runtime_tripped }}"
+        precool_guard_tripped: "{{ precool_config_tripped or precool_floor_tripped }}"
         precool_abort_reason_now: >-
-          {% if precool_floor_tripped %}Thermal floor breached
-          {% elif precool_slope_tripped %}Excessive cooling slope exceeded
-          {% else %}Continuous runtime budget exhausted{% endif %}
+          {% if precool_config_tripped %}Invalid config: target must exceed floor
+          {% else %}Thermal floor breached{% endif %}
         # --- decision surface consumed by the Master command templates ---
         # session_live false (not permitted / guard tripped) => the Master
         # templates fall back to the standard V8.3 sleep deadband for the
@@ -515,15 +520,16 @@
         - action: input_number.set_value
           target: { entity_id: input_number.precool_runtime_counter }
           data:
-            value: "{{ [precool_runtime + 15, 300] | min }}"
+            value: "{{ [precool_runtime + 15, 720] | min }}"
     - if:
         - condition: template
           value_template: "{{ precool_envelope_live_pre_guard }}"
       then:
-        # Slope memory write/seed: refresh on every live-envelope tick AFTER
-        # guards were evaluated against the previous value. Clamped to the
-        # helper's 50-90 range so an outlier truth reading cannot fail the
-        # service call.
+        # Telemetry write: refresh Master truth on every live-envelope tick.
+        # Formerly consumed by the slope guard (removed per revision spec §2);
+        # kept as a telemetry column (Precool_Previous_Master_Temp) for
+        # diagnostics and energy analysis. Clamped to the helper's 50-90 range
+        # so an outlier truth reading cannot fail the service call.
         - action: input_number.set_value
           target: { entity_id: input_number.precool_previous_master_temp }
           data:

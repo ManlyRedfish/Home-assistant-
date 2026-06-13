@@ -68,11 +68,18 @@ NEW_FIELDS = {
 #     configuration.yaml gained the Section 16 helpers and forecast cache.
 #     Section 3 (safety gates) and Section 14 hashes were NOT re-pinned —
 #     those surfaces remain byte-for-byte unchanged.
+#   - section2 + configuration re-pinned for V9-E revision
+#     (impl/v9e-precool-revision): window gate changed to forecast-conditioned
+#     release (02:00-13:00/11:00/06:00 with hard 14:00 backstop), slope guard
+#     and runtime guard removed, config-invariant guard added, precool_max_runtime
+#     retired, runtime counter cap raised to 720 min. See
+#     docs/analysis/v9e_precool_revision_spec.md and
+#     docs/analysis/v9e_precool_release_trigger.md.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        "ac90562fc16d4a081437e341cdeaa9b1528e36ade12a2229baba84128f012c14",
+        "47944cb2c61989b9534092168d37cff1adf0dc90807a98907d9d21356bcaaff2",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
@@ -85,7 +92,7 @@ EXPECTED_SECTION_HASHES = {
         "fcb18b5953a9bfb9f1d1e9f10ba8217cc46c7db63cb268bfab5daa6ffd2b71c3",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "bdf2d0ebc9ddb50721c621055c12e17625e8b326a07d332c44e8d7cd93c2543e"
+EXPECTED_CONFIGURATION_HASH = "3346a420f2208e7178c34636c14e4fc966e61505329c2d9e206fe41ef33d5788"
 
 
 @pytest.fixture(scope="module")

@@ -129,7 +129,8 @@ contaminated evidence.
 Shape (Master Bedroom only; `automations.yaml` Section 2 + Section 16,
 `configuration.yaml` Section 16 helpers + forecast cache):
 
-- **Arming:** 02:00–06:00 window AND cached forecast high for tomorrow
+- **Arming:** 02:00–forecast-conditioned window end (13:00 for ≥90°F forecast,
+  11:00 for 85–89°F, hard backstop 14:00) AND cached forecast high for tomorrow
   (`sensor.precool_tomorrow_high`, via `weather.get_forecasts`) ≥ 85°F AND
   nightly abort latch off. Away mode and non-cooling/shoulder seasons
   disarm it. The supervisor's `timer.manual_hvac_override == idle` gate is
@@ -138,9 +139,15 @@ Shape (Master Bedroom only; `automations.yaml` Section 2 + Section 16,
   (default 64°F, room-truth cutoff) → cool with the unchanged 61°F shove
   command setpoint; at/below cutoff → off.
 - **Self-termination (guards, evaluated before any command each tick):**
-  thermal floor (`precool_thermal_floor`, 63.5°F), 15-minute drop slope
-  (`precool_drop_rate_limit`/4), continuous runtime budget
-  (`precool_max_runtime`, 180 min in 15-min increments). Any trip latches
+  config invariant (`precool_target_temp` must exceed
+  `precool_thermal_floor` — the helper ranges overlap, so an inverted pair
+  aborts with a recorded reason instead of silently disarming), thermal
+  floor (`precool_thermal_floor`, 63.5°F — the only thermal guard). Slope
+  and runtime guards removed per
+  [`docs/analysis/v9e_precool_revision_spec.md`](./analysis/v9e_precool_revision_spec.md)
+  §2/§3 (sensor quantization caused false slope aborts; window-end is the
+  wall-clock ceiling). Runtime counter kept as telemetry only (cap 720 min).
+  Any trip latches
   `input_boolean.precool_aborted_tonight` with a reason in
   `input_text.precool_abort_reason` and falls back to the standard V8.3
   Master sleep deadband for the rest of the night. A 22:00 reset automation
@@ -164,8 +171,10 @@ V9 is **not**:
 - Targeted Pre-Chill (aggressive 61°F Master / Turbo at 17:00). Per
   [`./6_proposals.md`](./6_proposals.md) this is deferred until forensic
   recurrence evidence supports it. (The §2.6 evidence-gated pre-cool
-  exception is a different, narrower shape — overnight window, forecast
-  gate, hard guard envelope — and does not reopen this item.)
+  exception is a different, narrower shape — overnight/morning window
+  with daytime hold, forecast gate, forecast-conditioned release, hard
+  guard envelope (thermal floor + config invariant) — and does not
+  reopen this item.)
 - Generic HVAC best-practices reshaping of the deadband contract.
 - Multi-head capacity arbitration without telemetry proof. Already retired
   per [`./3_regression_appendix.md`](./3_regression_appendix.md) §4.5.
