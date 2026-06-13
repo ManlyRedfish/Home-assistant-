@@ -52,6 +52,25 @@ PR can make the system run forever or fight itself.
 
 ---
 
+### Lincoln/Lilly bedtime cooling (operator decision 2026-06-07)
+
+The 61 °F cooling shove doctrine is **preserved and reaffirmed.** For **Lincoln &
+Lilly during the bedtime window (18:00–07:00), in cooling and shoulder seasons**,
+the shove is applied as an explicit room-truth deadband: command **`cool` /
+`61 °F` / `turbo`** while pulling the room down, **release at room truth ≤ 66 °F**,
+and **re-engage at ≥ 70 °F** (hold off between 66–70 °F). 61/turbo is required for
+exactly the reason this spec already gives — moderate setpoints let the head scale
+back prematurely (here, ~18 h without effectively pulling the room down). This is a
+**scoped application** of the shove doctrine, not a change to it, and it is fully
+consistent with "the room is not supposed to reach 61 °F … it runs only from
+band-exit until band-return": band-exit = 70 °F, band-return = 66 °F. Lincoln and
+Lilly are independent; a `cooling → shoulder` flip must not interrupt an active
+pull-down before 66 °F. Status: approved, pending implementation. See AGENTS.md
+"Current Operator Decisions", Doc 1 §5.1, Doc 5 §7.10, and
+`docs/kids-bedroom-overnight-cooling-plan.md`.
+
+---
+
 ## Current Repository Findings
 
 All line numbers are against `main` at the post-#124 merge (`867d720`).

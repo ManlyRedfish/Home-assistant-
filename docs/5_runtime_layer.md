@@ -90,6 +90,7 @@ The live control runtime includes:
   - All rooms: setpoint 68, off ≤68, on >72
   - Master sleep window (6pm–6am): setpoint 63, off ≤62, on >66
   - Away: setpoint 74, off ≤74, on >76
+  - **Lincoln/Lilly bedtime exception — APPROVED, NOT YET LIVE:** the kids' cooling shown above is still 68/72 at all hours in the live file. An operator-approved bedtime (18:00–07:00) 66–70 room-truth deadband with a `cool`/`61 °F`/`turbo` actuator is recorded in §7.10 and is not yet implemented in `automations.yaml`.
 - **Heating deadband logic (V8.3):** The live heating doctrine uses:
   - Heating/Shoulder daytime: top-anchored deadband (target 68, off ≥68, on <64) to prevent short-cycling.
   - Bedtime (18:00-22:00, non-away): LR target drops to 64, deadband 62-64°F, to passively reduce stack-effect upstairs heating.
@@ -334,6 +335,36 @@ locks the four-state ladder as a pure model contract and asserts the live
 config uses report-time freshness; `tests/test_truth_freshness_report_time.py`
 locks the freshness clock (config uses `last_reported`, never `last_changed`;
 `automations.yaml` untouched; CO2/temperature windows and weights preserved).
+
+### 7.10 Lincoln/Lilly Bedtime Cooling Contract (APPROVED — PENDING IMPLEMENTATION)
+
+**Status:** Operator-approved 2026-06-07. **NOT YET LIVE.** The live supervisor still
+runs the legacy all-hours kids cooling deadband (setpoint 68, off ≤68, on >72; see
+§6.1). This subsection records the exact approved target behavior and explicitly
+separates it from current live behavior. Implementation is a separate Section 2 PR;
+see `docs/kids-bedroom-overnight-cooling-plan.md`.
+
+**Currently live (kids, all hours):** cooling-season `cool@61 / off≤68 / on>72`;
+shoulder-night and shoulder-day mild/cold branches bulk-force the kids off.
+
+**Approved target (Lincoln & Lilly, bedtime window 18:00–07:00, cooling AND shoulder):**
+- Room-truth deadband: engage cooling at room truth **≥ 70 °F**; release at
+  **≤ 66 °F**; hold off while 66–70 °F. Lincoln and Lilly **independent**.
+- Actuator during an active pull-down: **`cool` / `61 °F` / `turbo`**
+  (intentional/required; moderate setpoints scale back prematurely and can run
+  ~18 h without pulling the room down).
+- Bedtime logic (per room):
+  - `room_truth ≥ 70` → cool @ 61, turbo
+  - `room_truth ≤ 66` → off
+  - else if current mode is `cool` → continue cool @ 61, turbo  *(this is what
+    prevents a `cooling→shoulder` flip from interrupting an active pull-down
+    before 66 °F)*
+  - else → off
+- Season rule: the same 66–70 pull-down applies in cooling and shoulder; shoulder
+  bulk-off must not override it.
+- Out of scope: daytime (07:00–18:00) kids behavior stays 68–72; heating-season
+  kids behavior unchanged; Section 2 remains the sole comfort writer; manual
+  override and Section 3 safety unchanged; no new controller or helpers.
 
 ## 8. Runtime Change Rules
 
