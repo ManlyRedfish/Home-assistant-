@@ -29,7 +29,7 @@ Evidence labels: **FACT** (directly observed), **OBSERVATION** (pattern),
 | Target temp (room-truth cutoff) | 64°F | **64°F** (keep; 65°F if energy-conservative) | high |
 | Thermal floor (hard stop) | 63.5°F | **63.5°F** (keep) | high |
 | Drop-rate slope guard | 2.5°F/hr per 15-min tick | **Remove** (floor is the real net); if retained, 5°F/hr over a 30-min smoothed window, armed only >3°F above target | high |
-| Max runtime | 180 min, latching abort | **Demote to a non-latching soft backstop; raise cap to 480 min** | medium |
+| Max runtime | 180 min, latching abort | **Remove as a guard; keep counter as telemetry only (raise clamp/helper to 720 min for recording fidelity)** | high |
 | Shove setpoint (hardware) | 61°F | **61°F** (unchanged — doctrine) | n/a |
 | Re-arm / latch | one-shot/night | **Keep one-shot**, but only floor-breach + config-invalid latch | high |
 
@@ -150,36 +150,59 @@ high-probability false abort driven by sensor quantization.
 
 ---
 
-## 3. Runtime budget — demote it; it shouldn't gate a long-window hold
+## 3. Runtime budget — remove it as a guard; keep the counter as telemetry
+
+(Revised 2026-06-13 after operator review: the earlier draft proposed "demote to a
+non-latching backstop, raise cap to 480 min." A 480-min cap from a 02:00 start exhausts
+at 10:00 — *before* the earliest forecast release at 11:00 — so it would pre-empt the
+schedule. Working it through, the runtime guard should be removed entirely, not resized.)
 
 ### Evidence
 
-**FACT — 165/180 min was already near the ceiling** on a 4-h window, so the cap was
-about to become the binding constraint regardless of the slope abort.
-
 **FACT — control is cutoff-gated.** `precool_engage` is true only when
-`master_temp > precool_target_temp`. Once the room reaches 64°F the compressor idles and
-only re-engages on reheat; runtime accrues only on engage ticks. Over a long window
-holding 64°F against ~1°F/hr reheat, duty is modest, not continuous.
+`master_temp > precool_target_temp`, and `precool_runtime_counter` increments +15 only on
+engage ticks. So the counter measures *commanded cooling time*, not wall-clock.
 
-**FACT — the counter and helper are both hard-capped at 300.** The accounting line is
-`[precool_runtime + 15, 300] | min` and the helpers (`precool_runtime_counter`,
-`precool_max_runtime`) declare `max: 300`. A window longer than 5 h cannot even be
-expressed today.
+**FACT — on a legitimately hot night the counter climbs to nearly the full window
+length.** May 17→18: the room took ~7–8 h of near-continuous cooling to fall from 76°F
+(21:00) to ~64°F (04:00). On a ≥90°F-forecast night — exactly when V9-E fires — the room
+stays above the 64°F cutoff for most of the window, so it engages on nearly every tick.
+
+**FACT — both the accounting clamp and the helpers cap at 300.** `[precool_runtime + 15,
+300] | min`, and `precool_runtime_counter` / `precool_max_runtime` declare `max: 300`.
 
 ### Inference
 
-**INFERENCE — a *latching* runtime cap is the wrong tool for a multi-hour hold.** If the
-budget exhausts at, say, 09:00, the one-shot latch would lock out the very morning hold
-we are trying to create. With cutoff-gated control the budget is not needed to prevent
-over-running; it is only a backstop against a stuck-on compressor.
+**INFERENCE — the counter cannot distinguish a legitimately hot day from a runaway.** A
+real hot night and a stuck-high truth sensor produce the *same* signature: engage on
+nearly every tick, counter ≈ full window length. Any cap low enough to catch the runaway
+also clips legitimate hot-day operation; any cap set at window-length is just a redundant
+copy of the window gate. There is no value the cap can take that does its intended job.
+
+**INFERENCE — the failure mode the cap insured against is already covered better.** The
+unique risk was a truth sensor reading *high* — which defeats the cutoff and the floor
+(both truth-based) and would cool indefinitely. But:
+- The **forecast release is itself a wall-clock event** (a clock comparison, independent
+  of any sensor). It ends cooling at window end regardless of sensor state — that *is*
+  the sensor-independent backstop the runtime cap was meant to be. Two wall-clock stops
+  are redundant.
+- The **61°F hardware setpoint** physically bounds the worst case: even with every
+  truth-based guard blind, the Samsung cannot drive the room below its own ~61°F
+  commanded setpoint. Worst case is a cold room held at ~61°F until the 22:00 reset — a
+  comfort/energy nuisance, not an equipment-safety event (the §3 58°F emergency floor,
+  also truth-based, is moot here since 61°F never reaches it).
 
 ### Recommendation
 
-- **Demote runtime from a latching abort to a non-latching soft backstop** (it may pause
-  the session, but should not set the nightly latch).
-- **Raise the cap to 480 min** and lift the `300` clamp in both the accounting template
-  and the two helpers to ≥480 so a long window is representable.
+- **Remove `precool_runtime_tripped` from `precool_guard_tripped`** — drop it as an abort
+  condition entirely. The window-end (forecast release) is the wall-clock ceiling; the
+  thermal floor is the physics guard; the 61°F setpoint bounds the worst case.
+- **Keep `precool_runtime_counter` as a telemetry column.** Raise its accounting clamp
+  and helper `max` to **720 min** so the recorded value does not saturate mid-window on a
+  02:00–14:00 run (needed for the §6 energy analysis). This is for recording fidelity
+  only, not a guard.
+- **Retire `precool_max_runtime`** (or keep it inert as documentation of window length —
+  it no longer gates anything).
 - **UNKNOWN — total kWh / compressor duty for a morning–noon hold is unmeasured.** The
   literature notes pre-cooling *increases* total cooling energy even as it shifts peak.
   Instrument duty-cycle and daily kWh over 2–3 runs before extending end to 14:00.
@@ -260,14 +283,17 @@ terminal/safety conditions** where "stop for the night" is the correct response.
 `automations.yaml` Section 2:
 - Window gate: `is_precool_window: "{{ 2 <= now().hour < 12 }}"` (or `< 14`).
 - Drop `precool_slope_tripped` from `precool_guard_tripped` (or rewrite per §2 option).
-- Move `precool_runtime_tripped` out of the latching path (non-latching session pause),
-  or remove; keep `precool_floor_tripped` and the config-invalid check as the only
-  latch sources.
-- Runtime accounting clamp `[precool_runtime + 15, 300] | min` → `… , 480] | min`.
+- Remove `precool_runtime_tripped` from `precool_guard_tripped` (drop it as an abort
+  condition; see §3). Keep `precool_floor_tripped` and the config-invalid check as the
+  only latch sources.
+- Runtime accounting clamp `[precool_runtime + 15, 300] | min` → `… , 720] | min`
+  (telemetry fidelity only — the counter is no longer a guard).
 
 `configuration.yaml` Section 16:
-- `precool_runtime_counter.max` and `precool_max_runtime.max`: 300 → 480 (and
-  `precool_max_runtime.initial`: 180 → 480, or whatever §3's measurement supports).
+- `precool_runtime_counter.max`: 300 → 720 (so the telemetry column records the full
+  window without saturating).
+- Retire `precool_max_runtime` (or keep inert as window-length documentation; it no
+  longer gates anything).
 - Leave `precool_target_temp` (64), `precool_thermal_floor` (63.5) initials as-is.
 
 Doctrine / process:
