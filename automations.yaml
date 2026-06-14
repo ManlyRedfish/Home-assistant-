@@ -2124,3 +2124,38 @@
     - action: input_text.set_value
       target: { entity_id: input_text.precool_abort_reason }
       data: { value: "ready" }
+
+# =============================================================================
+# SECTION 17: MASTER BEDROOM FAN — AC SYNC
+# =============================================================================
+# SwitchBot fan in master bedroom follows the mini-split: fan on (100%) when
+# the AC is running in any mode, fan off when the AC turns off.
+# =============================================================================
+
+- id: master_bedroom_fan_sync
+  alias: "V10: Master Bedroom Fan Sync"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      to: "off"
+      id: ac_off
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      from: "off"
+      id: ac_on
+  action:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: ac_off
+          sequence:
+            - action: fan.turn_off
+              target: { entity_id: fan.master_bedroom_switch_fan }
+        - conditions:
+            - condition: trigger
+              id: ac_on
+          sequence:
+            - action: fan.turn_on
+              target: { entity_id: fan.master_bedroom_switch_fan }
+              data: { percentage: 100 }
