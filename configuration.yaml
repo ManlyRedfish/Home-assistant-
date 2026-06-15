@@ -1307,4 +1307,3 @@ input_number:
     step: 0.5
     initial: 63.5
     unit_of_measurement: "°F"
-  precool_previous_master_temp:
