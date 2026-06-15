@@ -1975,6 +1975,14 @@
       entity_id: automation.v9_sleep_priority_interlock
       attribute: last_triggered
       id: spi_last_triggered
+    # Track the master bedroom fan actuator for telemetry
+    - platform: state
+      entity_id: fan.master_bedroom_switch_fan
+      id: fan_state
+    - platform: state
+      entity_id: fan.master_bedroom_switch_fan
+      attribute: percentage
+      id: fan_percentage
   condition:
     # Issue #69: skip when fired manually — manual runs do not provide
     # trigger.from_state / trigger.to_state / trigger.entity_id / trigger.id.
@@ -1988,10 +1996,15 @@
     # Skip identical-value writes (noise control per design §8.2).
     - condition: template
       value_template: >-
-        {% set temp_attr_ids = ['lr_temp_attr', 'master_temp_attr', 'lincoln_temp_attr', 'lilly_temp_attr'] %}
+        {% set temp_attr_ids = ['lr_temp_attr', 'master_temp_attr', 'lincoln_temp_attr', 'lilly_temp_attr', 'fan_percentage'] %}
         {% if trigger.id in temp_attr_ids %}
+        {% if trigger.id == 'fan_percentage' %}
+        {% set ov = trigger.from_state.attributes.percentage if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.attributes.percentage if trigger.to_state is not none else none %}
+        {% else %}
         {% set ov = trigger.from_state.attributes.temperature if trigger.from_state is not none else none %}
         {% set nv = trigger.to_state.attributes.temperature if trigger.to_state is not none else none %}
+        {% endif %}
         {% elif trigger.id == 'spi_last_triggered' %}
         {% set ov = trigger.from_state.attributes.last_triggered if trigger.from_state is not none else none %}
         {% set nv = trigger.to_state.attributes.last_triggered if trigger.to_state is not none else none %}
@@ -2002,11 +2015,11 @@
         {{ (ov | string) != (nv | string) }}
   action:
     - variables:
-        temperature_attr_trigger_ids: ['lr_temp_attr', 'master_temp_attr', 'lincoln_temp_attr', 'lilly_temp_attr']
-        attribute_name: "{% if trigger.id in temperature_attr_trigger_ids %}temperature{% elif trigger.id == 'spi_last_triggered' %}last_triggered{% else %}state{% endif %}"
+        temperature_attr_trigger_ids: ['lr_temp_attr', 'master_temp_attr', 'lincoln_temp_attr', 'lilly_temp_attr', 'fan_percentage']
+        attribute_name: "{% if trigger.id in temperature_attr_trigger_ids %}{% if trigger.id == 'fan_percentage' %}percentage{% else %}temperature{% endif %}{% elif trigger.id == 'spi_last_triggered' %}last_triggered{% else %}state{% endif %}"
         old_raw: >-
           {% if trigger.id in temperature_attr_trigger_ids %}
-          {{ trigger.from_state.attributes.temperature if trigger.from_state is not none else '' }}
+          {% if trigger.id == 'fan_percentage' %}{{ trigger.from_state.attributes.percentage if trigger.from_state is not none else '' }}{% else %}{{ trigger.from_state.attributes.temperature if trigger.from_state is not none else '' }}{% endif %}
           {% elif trigger.id == 'spi_last_triggered' %}
           {{ trigger.from_state.attributes.last_triggered if trigger.from_state is not none else '' }}
           {% else %}
@@ -2014,7 +2027,7 @@
           {% endif %}
         new_raw: >-
           {% if trigger.id in temperature_attr_trigger_ids %}
-          {{ trigger.to_state.attributes.temperature if trigger.to_state is not none else '' }}
+          {% if trigger.id == 'fan_percentage' %}{{ trigger.to_state.attributes.percentage if trigger.to_state is not none else '' }}{% else %}{{ trigger.to_state.attributes.temperature if trigger.to_state is not none else '' }}{% endif %}
           {% elif trigger.id == 'spi_last_triggered' %}
           {{ trigger.to_state.attributes.last_triggered if trigger.to_state is not none else '' }}
           {% else %}
@@ -2124,3 +2137,54 @@
     - action: input_text.set_value
       target: { entity_id: input_text.precool_abort_reason }
       data: { value: "ready" }
+
+# =============================================================================
+# SECTION 17: MASTER BEDROOM FAN — AC SYNC
+# =============================================================================
+# SwitchBot fan in master bedroom follows the mini-split: fan on (100%) when
+# the AC is running in any mode, fan off when the AC turns off.
+# =============================================================================
+
+- id: master_bedroom_fan_sync
+  alias: "V10: Master Bedroom Fan Sync"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      to: "off"
+      id: ac_off
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      to: "cool"
+      id: ac_on
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      to: "heat"
+      id: ac_on
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      to: "dry"
+      id: ac_on
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      to: "fan_only"
+      id: ac_on
+    - platform: state
+      entity_id: climate.master_bedroom_air
+      to: "auto"
+      id: ac_on
+  action:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: ac_off
+          sequence:
+            - action: fan.turn_off
+              target: { entity_id: fan.master_bedroom_switch_fan }
+        - conditions:
+            - condition: trigger
+              id: ac_on
+          sequence:
+            - action: fan.turn_on
+              target: { entity_id: fan.master_bedroom_switch_fan }
+              data: { percentage: 100 }
