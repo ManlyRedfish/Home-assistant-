@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -143,3 +144,63 @@ def test_annotation_schema_validation(tmp_path: Path) -> None:
     write_csv(path, ["start_local", "kind"], [{"start_local": "2026-06-05", "kind": "other"}])
     with pytest.raises(ValueError):
         analyzer.load_annotations(path)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # One case per format declared in TIMESTAMP_FORMATS, in declaration order.
+        ("2026-06-05 12:00:00", datetime(2026, 6, 5, 12, 0, 0)),
+        ("2026-06-05T12:00:00", datetime(2026, 6, 5, 12, 0, 0)),
+        ("2026-06-05 12:00", datetime(2026, 6, 5, 12, 0, 0)),
+        ("06/05/2026 12:00:00", datetime(2026, 6, 5, 12, 0, 0)),
+        ("06/05/2026 12:00", datetime(2026, 6, 5, 12, 0, 0)),
+    ],
+)
+def test_parse_timestamp_accepts_each_declared_format(text: str, expected: datetime) -> None:
+    assert analyzer.parse_timestamp(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # Forms that no strptime format matches but datetime.fromisoformat handles.
+        ("2026-06-05", datetime(2026, 6, 5, 0, 0, 0)),  # date-only -> midnight
+        ("2026-06-05T12:00:00.123456", datetime(2026, 6, 5, 12, 0, 0, 123456)),  # microseconds
+    ],
+)
+def test_parse_timestamp_falls_back_to_isoformat(text: str, expected: datetime) -> None:
+    assert analyzer.parse_timestamp(text) == expected
+
+
+def test_parse_timestamp_isoformat_preserves_timezone() -> None:
+    result = analyzer.parse_timestamp("2026-06-05T12:00:00+00:00")
+    assert result == datetime(2026, 6, 5, 12, 0, 0, tzinfo=timezone.utc)
+    assert result is not None and result.tzinfo == timezone.utc
+
+
+def test_parse_timestamp_strips_surrounding_whitespace() -> None:
+    assert analyzer.parse_timestamp("  2026-06-05 12:00:00  ") == datetime(2026, 6, 5, 12, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",  # empty string
+        "   ",  # whitespace only collapses to empty after strip
+        "not a date",  # gibberish
+        "2026-13-45 99:99:99",  # well-shaped but out-of-range components
+        "06/05/2026",  # US date with no time matches no format
+        "12:00:00",  # time with no date
+        "2026-06-05 12:00:00 extra",  # trailing junk defeats full-string match
+    ],
+)
+def test_parse_timestamp_returns_none_for_unparseable_text(text: str) -> None:
+    assert analyzer.parse_timestamp(text) is None
+
+
+@pytest.mark.parametrize("value", [None, 0, 0.0, False])
+def test_parse_timestamp_returns_none_for_falsy_values(value: object) -> None:
+    # `str(value or "")` treats every falsy value as an empty string, so numeric
+    # zero and False are deliberately unparseable rather than epoch timestamps.
+    assert analyzer.parse_timestamp(value) is None
