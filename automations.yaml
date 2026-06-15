@@ -860,6 +860,121 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
+# V8.6 TRUTH-UNAVAILABLE COOLING FAILSAFE
+# -----------------------------------------------------------------------------
+# If a canonical room truth sensor becomes invalid while its mini-split is
+# cooling, force that head OFF after a two-minute persistence window. This is
+# intentionally OFF-only: it prevents hidden 70°F fallbacks from sustaining
+# cooling, but never authorizes new cooling and never relies on template
+# compressor-intent sensors as physical proof.
+# -----------------------------------------------------------------------------
+- id: v8_6_truth_unavailable_cooling_failsafe
+  alias: "V8.6: Truth Unavailable Cooling Failsafe"
+  mode: queued
+  trigger:
+    - platform: template
+      id: living_room_air
+      value_template: >-
+        {% set x = states('sensor.living_room_temperature_truth') | float(none) %}
+        {{ x is none or x != x or x < -90 or x > 200 }}
+      for: "00:02:00"
+    - platform: template
+      id: master_bedroom_air
+      value_template: >-
+        {% set x = states('sensor.master_bedroom_temperature_truth') | float(none) %}
+        {{ x is none or x != x or x < -90 or x > 200 }}
+      for: "00:02:00"
+    - platform: template
+      id: lincoln_air
+      value_template: >-
+        {% set x = states('sensor.lincoln_s_room_temperature_truth') | float(none) %}
+        {{ x is none or x != x or x < -90 or x > 200 }}
+      for: "00:02:00"
+    - platform: template
+      id: lilly_air
+      value_template: >-
+        {% set x = states('sensor.lilly_s_room_temperature_truth') | float(none) %}
+        {{ x is none or x != x or x < -90 or x > 200 }}
+      for: "00:02:00"
+  action:
+    - variables:
+        climate_entity: "{{ 'climate.' ~ trigger.id }}"
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ states(climate_entity) == 'cool' }}"
+          sequence:
+            - action: climate.set_hvac_mode
+              target:
+                entity_id: "{{ climate_entity }}"
+              data:
+                hvac_mode: "off"
+            - action: persistent_notification.create
+              continue_on_error: true
+              data:
+                title: "Truth unavailable cooling failsafe"
+                message: >-
+                  Forced {{ climate_entity }} off because its room truth sensor
+                  was invalid for at least two minutes while the climate entity
+                  reported cool.
+
+# -----------------------------------------------------------------------------
+# V8.6B TRUTH-UNAVAILABLE COOLING RECONCILIATION
+# -----------------------------------------------------------------------------
+# Startup/periodic reconciliation closes the race where HA restarts while a
+# truth sensor is already invalid and a template trigger's `for:` timer has not
+# been armed. It sweeps the same four truth/climate pairs and remains OFF-only.
+# -----------------------------------------------------------------------------
+- id: v8_6b_truth_unavailable_cooling_reconciliation
+  alias: "V8.6B: Truth Unavailable Cooling Reconciliation"
+  mode: single
+  trigger:
+    - platform: homeassistant
+      event: start
+    - platform: time_pattern
+      minutes: "/5"
+  action:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.platform == 'homeassistant' }}"
+          sequence:
+            - delay: "00:03:00"
+    - repeat:
+        for_each:
+          - truth: sensor.living_room_temperature_truth
+            climate: climate.living_room_air
+          - truth: sensor.master_bedroom_temperature_truth
+            climate: climate.master_bedroom_air
+          - truth: sensor.lincoln_s_room_temperature_truth
+            climate: climate.lincoln_air
+          - truth: sensor.lilly_s_room_temperature_truth
+            climate: climate.lilly_air
+        sequence:
+          - variables:
+              truth_entity: "{{ repeat.item.truth }}"
+              climate_entity: "{{ repeat.item.climate }}"
+              truth_invalid: >-
+                {% set x = states(truth_entity) | float(none) %}
+                {{ x is none or x != x or x < -90 or x > 200 }}
+              invalid_age_seconds: >-
+                {% set st = states[truth_entity] if truth_entity in states else none %}
+                {{ 0 if st is none else (as_timestamp(now()) - as_timestamp(st.last_changed, 0)) }}
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {{ states(climate_entity) == 'cool'
+                         and (truth_invalid | bool)
+                         and (invalid_age_seconds | float(0)) >= 120 }}
+                sequence:
+                  - action: climate.set_hvac_mode
+                    target:
+                      entity_id: "{{ climate_entity }}"
+                    data:
+                      hvac_mode: "off"
+
+# -----------------------------------------------------------------------------
 # V9 SLEEP PRIORITY INTERLOCK
 # -----------------------------------------------------------------------------
 # Solves cross-mode contention lockout during shoulder seasons. If the Master
