@@ -83,6 +83,14 @@ NEW_FIELDS = {
 #     input_number.set_value de-registers — surfacing as "V9-E: Master Pre-Cool
 #     Nightly Reset has an unknown action: input_number.set_value". Removing the
 #     stray key (no behavior change; helper set unchanged) restores the action.
+#   - section3 re-pinned for the V8.6 truth-unavailable cooling failsafe restore:
+#     re-introduced the two OFF-only safety automations
+#     (v8_6_truth_unavailable_cooling_failsafe + ...reconciliation) recovered
+#     verbatim from Packet A commit 9e39e42 to re-link the live registry orphans.
+#     Section 3 only; sections 2/14 and configuration.yaml unchanged. These gates
+#     force a head OFF when its room-truth sensor is invalid while cooling; they
+#     never authorize cooling. See the Section 3 V8.6 comment block and
+#     tests/test_packetA_truth_unavailable_failsafe.py.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
@@ -92,7 +100,7 @@ EXPECTED_SECTION_HASHES = {
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
         "# SECTION 4:",
-        "bc762a54c7c33b739a15c4a0d85e40c6141d82f209373f5e0a7cd32591944a75",
+        "9d078092445376affacd1584fbfdf9e15bb5fc5102f92d992e3be91c94d59ec0",
     ),
     "section14_lr_boost": (
         "# SECTION 14: V8.4 LR HEATING RECOVERY BOOST PILOT",
