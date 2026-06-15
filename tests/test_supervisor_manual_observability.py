@@ -75,6 +75,14 @@ NEW_FIELDS = {
 #     retired, runtime counter cap raised to 720 min. See
 #     docs/analysis/v9e_precool_revision_spec.md and
 #     docs/analysis/v9e_precool_release_trigger.md.
+#   - configuration re-pinned to repair a duplicate-key regression from the
+#     V9-E revision: the precool_max_runtime/precool_drop_rate_limit deletion
+#     left a stray, valueless `precool_previous_master_temp:` key at EOF, a
+#     duplicate of the real helper. Home Assistant rejects the input_number:
+#     mapping on the duplicate, so the integration never sets up and
+#     input_number.set_value de-registers — surfacing as "V9-E: Master Pre-Cool
+#     Nightly Reset has an unknown action: input_number.set_value". Removing the
+#     stray key (no behavior change; helper set unchanged) restores the action.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
@@ -92,7 +100,7 @@ EXPECTED_SECTION_HASHES = {
         "fcb18b5953a9bfb9f1d1e9f10ba8217cc46c7db63cb268bfab5daa6ffd2b71c3",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "3346a420f2208e7178c34636c14e4fc966e61505329c2d9e206fe41ef33d5788"
+EXPECTED_CONFIGURATION_HASH = "c91d88966451b1abf3846ff5a810f6b43e8f7cbffb2bfeccee0841998698b81d"
 
 
 @pytest.fixture(scope="module")
