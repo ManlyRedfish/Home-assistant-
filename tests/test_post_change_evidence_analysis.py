@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import sys
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import pytest
@@ -143,3 +144,46 @@ def test_annotation_schema_validation(tmp_path: Path) -> None:
     write_csv(path, ["start_local", "kind"], [{"start_local": "2026-06-05", "kind": "other"}])
     with pytest.raises(ValueError):
         analyzer.load_annotations(path)
+
+@pytest.mark.parametrize("text,expected", [
+    ("2026-06-05 12:34:56", datetime(2026, 6, 5, 12, 34, 56)),
+    ("2026-06-05T12:34:56", datetime(2026, 6, 5, 12, 34, 56)),
+    ("2026-06-05 12:34", datetime(2026, 6, 5, 12, 34)),
+    ("06/05/2026 12:34:56", datetime(2026, 6, 5, 12, 34, 56)),
+    ("06/05/2026 12:34", datetime(2026, 6, 5, 12, 34)),
+])
+def test_parse_timestamp_formats(text: str, expected: datetime) -> None:
+    assert analyzer.parse_timestamp(text) == expected
+
+@pytest.mark.parametrize("text,expected", [
+    ("2026-06-05", datetime(2026, 6, 5)),
+    ("2026-06-05T12:34:56.789123", datetime(2026, 6, 5, 12, 34, 56, 789123)),
+    ("2026-06-05T12:34:56+00:00", datetime(2026, 6, 5, 12, 34, 56, tzinfo=timezone.utc)),
+    ("2026-06-05T12:34:56-04:00", datetime(2026, 6, 5, 12, 34, 56, tzinfo=timezone(timedelta(hours=-4)))),
+])
+def test_parse_timestamp_iso_fallback(text: str, expected: datetime) -> None:
+    assert analyzer.parse_timestamp(text) == expected
+
+def test_parse_timestamp_whitespace() -> None:
+    assert analyzer.parse_timestamp("  2026-06-05 12:34:56  \n") == datetime(2026, 6, 5, 12, 34, 56)
+
+@pytest.mark.parametrize("text", [
+    "",
+    "   ",
+    "invalid",
+    "2026-13-05 12:34:56",
+    "2026-06-05 25:34:56",
+    "2026-06-05 12:34:56 junk",
+    "12:34:56",
+])
+def test_parse_timestamp_invalid(text: str) -> None:
+    assert analyzer.parse_timestamp(text) is None
+
+@pytest.mark.parametrize("value", [
+    None,
+    0,
+    0.0,
+    False,
+])
+def test_parse_timestamp_falsy(value: object) -> None:
+    assert analyzer.parse_timestamp(value) is None
