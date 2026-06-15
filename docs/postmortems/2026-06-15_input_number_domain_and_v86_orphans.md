@@ -95,30 +95,54 @@ change.
 
 ---
 
-## 4. V8.6 automations — registry orphans, NOT reconstructable from the repo
+## 4. V8.6 automations — registry orphans; real source located on an unmerged branch
 
-Both reported V8.6 entities are **absent from the repo and from its entire git
-history**:
+The two V8.6 entities are **absent from `main`** (`automations.yaml` on `main`
+has 23 automations: V7.5, V8.2, V9-* … no V8.6). They are registry-enabled but
+show `restored: true` / `unavailable` because `automation: !include
+automations.yaml` is the **only** automation source (packages are commented
+out) and their definitions are not in the loaded file.
 
-- No definition in `automations.yaml` (23 automations present: V7.5, V8.2,
-  V9-* … **no V8.6**).
-- No commit ever added `truth_unavailable_cooling` / "Truth Unavailable" /
-  "Per-Zone Protective" to `automations.yaml` (`git log -S` ⇒ empty).
-- No V8.6 fail-safe / reconciliation spec anywhere in `docs/`. The string
-  `truth_unavailable` exists only as a **release-reason / event-kind label**
-  and a trigger `id:`, never as these automations.
+**Update (source found — do NOT reconstruct; recover instead).** The real
+definitions exist on the **unmerged Packet A branch**
+`codex/clarify-codex-stage-1-and-2-implementation` (tip = commit `9e39e42`,
+"Implement Packet A truth unavailable cooling failsafe", 2026-06-09):
 
-`automation: !include automations.yaml` is the **only** automation source
-(packages are commented out). So an automation that is registry-enabled but
-shows `restored: true` / `unavailable` means **its definition is not in the
-loaded `automations.yaml`** — i.e. these are stale registry rows from a prior
-(V8.6-era) architecture or live-host-only definitions that were never synced
-to this repo.
+- `automations.yaml` lines 718–774: `id: v8_6_truth_unavailable_cooling_failsafe`
+- `automations.yaml` lines 775–831: `id: v8_6b_truth_unavailable_cooling_reconciliation`
+- companion contract test: `tests/test_packetA_truth_unavailable_failsafe.py`
 
-**Decision: do not reconstruct them.** AGENTS.md forbids inventing entities or
-behavior ("ask instead of inventing"), and these are *safety* automations —
-fabricating per-zone protective-off / restart-reload-safe logic from an entity
-ID alone would be unsafe guesswork. This requires operator input (§7).
+Both are **OFF-only** safety automations (force a head's `climate.set_hvac_mode:
+off` when its room-truth sensor is invalid for ≥2 min while the head reports
+`cool`; the V8.6B variant adds a start/periodic 5-min reconciliation sweep to
+close the restart race). They parse cleanly, and all four referenced truth
+sensors (`sensor.{living_room,master_bedroom,lincoln_s_room,lilly_s_room}_temperature_truth`)
+plus `climate.{living_room,master_bedroom,lincoln,lilly}_air` exist on `main`/live.
+
+### ⚠️ Entity-ID vs unique-ID mismatch (decisive for cleanup)
+
+The branch aliases slugify to **shorter** IDs than the live orphans:
+
+| Live orphan entity_id | Alias in `9e39e42` (slug) |
+| --- | --- |
+| `automation.v8_6_truth_unavailable_cooling_fail_safe_per_zone_protective_off` | `…cooling_failsafe` |
+| `automation.v8_6b_truth_unavailable_cooling_reconciliation_restart_reload_safe` | `…reconciliation` |
+
+The long-form text (`per_zone_protective`, `restart_reload`) appears in **no
+branch**, so the live orphans came from a deployment whose aliases differed from
+`9e39e42`. HA links registry rows by the automation **`id:` (unique_id)**, not
+the alias. Therefore:
+
+- If the orphan rows' unique_id == `v8_6_truth_unavailable_cooling_failsafe` /
+  `…reconciliation`, deploying `9e39e42`'s definitions **re-links** them and they
+  go available (any customized entity_id is retained). Orphans resolved.
+- If the unique_ids differ, deploying `9e39e42` creates **two new** entities and
+  the orphans remain → then delete the orphan rows via the UI.
+
+**Still an operator decision (§7).** AGENTS.md: never simplify away safety
+systems, never invent behavior. Recovering the verbatim `9e39e42` source is
+*not* invention; choosing whether to re-merge that safety layer vs. retire it is
+the operator's call.
 
 ---
 
@@ -153,25 +177,33 @@ After the host reload, confirm:
 - [ ] Logs show no new `input_number` / automation setup errors.
 - [ ] The two V8.6 entities: see §7 (not resolved by this remediation).
 
-Repo-side guard gap to consider: `tests/test_yaml_syntax.py` uses PyYAML
+Repo-side guard gap (now closed): `tests/test_yaml_syntax.py` used PyYAML
 `SafeLoader`, which does **not** flag duplicate keys, so it missed this class of
-bug. A strict duplicate-key check (as used to verify this incident) would have
-caught it — worth adding as a follow-up test.
+bug. A strict duplicate-key check was added (PR #151) and mirrors HA's loader.
 
 ---
 
 ## 7. Follow-ups (handled separately)
 
-1. **V8.6 automations (operator decision required).** Provide the live host's
-   `automations.yaml` (or the original V8.6 definitions). Then either:
-   (a) faithfully restore the two definitions into `automations.yaml` so HA loads
-   them, or (b) if V8.6 was intentionally superseded by V9 safety gates, delete
-   the stale registry rows via the UI. **No reconstruction from the entity ID
-   will be attempted.**
+1. **V8.6 automations (operator decision required — source now located).** The
+   verbatim definitions are on branch
+   `codex/clarify-codex-stage-1-and-2-implementation` @ `9e39e42` (see §4).
+   Choose one:
+   - **(a) Restore:** cherry-pick the two automations (and
+     `tests/test_packetA_truth_unavailable_failsafe.py`) onto a fresh branch,
+     review, merge, deploy, then reload automations. If the orphans' unique_ids
+     match (§4), they re-link and go available; otherwise delete the leftover
+     orphan rows after the new entities appear. Recommended if `main`'s Section 2/3
+     does not already cover *truth-invalid-while-cooling* — the design is OFF-only
+     and low-risk, and AGENTS.md weights toward preserving safety layers.
+   - **(b) Retire:** if V8.6 was deliberately superseded, delete the two orphan
+     rows via Settings → Devices & Services → Entities (filter: Unavailable).
+   This commit does **not** edit `automations.yaml` (per the task's
+   sync-with-GitHub rule); restoration must go through its own reviewed PR.
 2. **Repo ↔ live sync direction.** The recurring "sync live → GitHub" job pushes
    host changes up; it does not push repo fixes down. Confirm the host actually
    picked up `e05a740`, or the duplicate-key state could persist live despite a
    green repo.
-3. **Strict duplicate-key test** (see §6).
+3. **Strict duplicate-key test** — ✅ done in PR #151 (see §6).
 4. **Stale `input_number:` header comment** — fold the target/floor-only tunable
    set into the next intentional config-hash re-pin.
