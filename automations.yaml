@@ -2303,3 +2303,69 @@
             - action: fan.turn_on
               target: { entity_id: fan.master_bedroom_switch_fan }
               data: { percentage: 100 }
+
+# =============================================================================
+# SECTION 18: MASTER BEDROOM FAN — RECONCILE (SELF-HEAL)
+# =============================================================================
+# Safety net for the Section 17 edge-driven sync. The SwitchBot fan reaches HA
+# through the SmartThings cloud, which can drop or stale a single
+# fan.turn_on / fan.turn_off. Because Section 17 only fires on a
+# climate.master_bedroom_air mode *transition*, a dropped command leaves the fan
+# out of sync until the next AC mode change — the observed failure where the fan
+# stayed `on @ 66%` after the AC went `cool -> off` and the lone turn_off never
+# landed.
+#
+# This automation re-asserts the same contract whenever the fan reports a
+# state/percentage change and on a 5-minute time pattern, so a dropped command
+# self-heals instead of persisting as a telemetry mismatch.
+#
+# Contract (identical to Section 17): AC off -> fan off; AC running (any mode)
+# -> fan on @100%. A command is issued ONLY when the fan and AC actually
+# disagree, so a correctly-synced fan generates no commands (and an offline
+# device that never updates simply receives a harmless no-op every 5 minutes
+# until connectivity returns — this path cannot move a physically dead device).
+# =============================================================================
+
+- id: master_bedroom_fan_reconcile
+  alias: "V10: Master Bedroom Fan Reconcile (self-heal)"
+  mode: single
+  max_exceeded: silent
+  trigger:
+    - platform: time_pattern
+      minutes: "/5"
+    - platform: state
+      entity_id: fan.master_bedroom_switch_fan
+  condition:
+    # Skip when the AC mode is unknown/unavailable: the correct fan state is
+    # undefined, so re-asserting would be guessing. Section 17 likewise only
+    # acts on concrete mode transitions.
+    - condition: template
+      value_template: >-
+        {{ states('climate.master_bedroom_air') not in ['unknown', 'unavailable'] }}
+  action:
+    - choose:
+        # AC is off but the fan is still reporting on -> re-issue turn_off.
+        - conditions:
+            - condition: state
+              entity_id: climate.master_bedroom_air
+              state: "off"
+            - condition: state
+              entity_id: fan.master_bedroom_switch_fan
+              state: "on"
+          sequence:
+            - action: fan.turn_off
+              target: { entity_id: fan.master_bedroom_switch_fan }
+        # AC is running (any non-off mode) but the fan is off or not at 100%
+        # -> re-issue turn_on @100% to match the Section 17 on-state.
+        - conditions:
+            - condition: template
+              value_template: >-
+                {{ states('climate.master_bedroom_air') not in ['off', 'unknown', 'unavailable'] }}
+            - condition: template
+              value_template: >-
+                {{ is_state('fan.master_bedroom_switch_fan', 'off')
+                   or (state_attr('fan.master_bedroom_switch_fan', 'percentage') | int(0)) != 100 }}
+          sequence:
+            - action: fan.turn_on
+              target: { entity_id: fan.master_bedroom_switch_fan }
+              data: { percentage: 100 }
