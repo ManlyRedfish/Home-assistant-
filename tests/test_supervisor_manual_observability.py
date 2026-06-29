@@ -91,11 +91,23 @@ NEW_FIELDS = {
 #     force a head OFF when its room-truth sensor is invalid while cooling; they
 #     never authorize cooling. See the Section 3 V8.6 comment block and
 #     tests/test_packetA_truth_unavailable_failsafe.py.
+#   - section2 + configuration re-pinned for the Heat Wave Override — 96h
+#     (automations.yaml Section 19). Section 2's main supervisor gained a single
+#     comfort gate condition (`input_boolean.heat_wave_override == off`) so the
+#     supervisor stands down while the operator override owns the actuators; the
+#     pre-existing `timer.manual_hvac_override == idle` gate is unchanged.
+#     configuration.yaml gained the override helpers (timer.heat_wave_override_96h
+#     @96h restore:true, input_boolean.heat_wave_override,
+#     input_datetime.heat_wave_override_deadline) and the single actuator
+#     script.heat_wave_override_apply. Section 3 (safety gates) and Section 14
+#     hashes were deliberately NOT re-pinned — those surfaces remain byte-for-byte
+#     unchanged, proving the override gates only comfort logic and leaves the
+#     LR 60°F / Master 58°F floors and truth-unavailable failsafes untouched.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        "47944cb2c61989b9534092168d37cff1adf0dc90807a98907d9d21356bcaaff2",
+        "f764563a56582a70da1d72466b4bc011f84b76d1ac96c99020d2dda9a5aeb557",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
@@ -108,7 +120,7 @@ EXPECTED_SECTION_HASHES = {
         "fcb18b5953a9bfb9f1d1e9f10ba8217cc46c7db63cb268bfab5daa6ffd2b71c3",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "c91d88966451b1abf3846ff5a810f6b43e8f7cbffb2bfeccee0841998698b81d"
+EXPECTED_CONFIGURATION_HASH = "5d730a6754361d04e6cf7b02a7e1de761e9e9a97da3dff9cc84949b47db4df62"
 
 
 @pytest.fixture(scope="module")

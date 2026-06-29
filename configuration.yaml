@@ -146,6 +146,20 @@ timer:
     duration: "01:30:00"
     restore: true
     icon: mdi:timer-alert
+  # =============================================================================
+  # HEAT WAVE OVERRIDE HELPER: 96-hour emergency-cool override timer.
+  # =============================================================================
+  # Operator-driven emergency override (see automations.yaml Section 19). This
+  # is deliberately a NEW 96h timer, NOT timer.manual_hvac_override (which is a
+  # 1-hour WAF timer). `restore: true` matches the Section 14 precedent above so
+  # the countdown survives an HA restart. The absolute deadline is ALSO mirrored
+  # into input_datetime.heat_wave_override_deadline so a timer.finished event
+  # missed while HA was offline cannot leave the override latched on forever.
+  heat_wave_override_96h:
+    name: "Heat Wave Override 96h"
+    duration: "96:00:00"
+    restore: true
+    icon: mdi:weather-sunny-alert
 
 
 recorder:
@@ -1201,6 +1215,18 @@ input_boolean:
     name: "LR Heating Recovery Active"
     icon: mdi:fire-alert
   # ---------------------------------------------------------------------------
+  # HEAT WAVE OVERRIDE master switch (automations.yaml Section 19).
+  # Turning this ON forces all four Samsung heads to cool / 61°F / turbo for 96h
+  # and gates the comfort/supervisor automations (Section 2 supervisor, Section 5
+  # auto season mode, Section 6 fan destratification). Section 3 hard-safety
+  # gates remain active and untouched. No `initial:` on purpose — an in-progress
+  # override must survive an HA restart (the startup reassert automation
+  # re-checks the deadline and self-clears if it has passed).
+  # ---------------------------------------------------------------------------
+  heat_wave_override:
+    name: "Heat Wave Override"
+    icon: mdi:weather-sunny-alert
+  # ---------------------------------------------------------------------------
   # SECTION 16 HELPER: V9-E MASTER PRE-COOL nightly abort latch.
   # No `initial:` on purpose — a tripped latch must survive an HA restart
   # mid-night (a restart must not silently re-arm an aborted experiment).
@@ -1255,6 +1281,20 @@ input_datetime:
     icon: mdi:clock-end
     has_date: true
     has_time: true
+  # ---------------------------------------------------------------------------
+  # HEAT WAVE OVERRIDE absolute deadline (automations.yaml Section 19).
+  # Records when the active 96h override is scheduled to expire. The countdown
+  # of record is timer.heat_wave_override_96h; this absolute timestamp is the
+  # missed-event backstop: if HA is offline when the timer would have fired its
+  # `timer.finished` event, the homeassistant-start reassert compares now() to
+  # this deadline and self-clears the override instead of reasserting it. No
+  # `initial:` — it must persist across restarts like the latch it backstops.
+  # ---------------------------------------------------------------------------
+  heat_wave_override_deadline:
+    name: "Heat Wave Override Deadline"
+    icon: mdi:calendar-clock
+    has_date: true
+    has_time: true
 
 # =============================================================================
 # SECTION 16 HELPERS: V9-E MASTER PRE-COOL (Evidence-Gated Runtime Experiment)
@@ -1307,3 +1347,103 @@ input_number:
     step: 0.5
     initial: 63.5
     unit_of_measurement: "°F"
+
+# =============================================================================
+# SECTION 19 HELPER: HEAT WAVE OVERRIDE — APPLY SCRIPT
+# =============================================================================
+# ⚠️  This is the ONLY script in this config; it is the actuator for the
+#     operator-driven "Heat Wave Override — 96h" (automations.yaml Section 19).
+#     It is YAML-defined here (top-level `script:`) to match this repo's
+#     inline-helper convention — timers, input_booleans, input_datetimes and
+#     input_numbers are all defined inline in this file rather than in separate
+#     include files, and there is no scripts.yaml include.
+#
+# WHAT IT DOES:
+#   Commands each of the four Samsung mini-split heads to cool / 61°F / turbo,
+#   using the repo's known-good Samsung actuator pattern (Section 2): a single
+#   climate.set_temperature carrying BOTH hvac_mode: cool and temperature: 61,
+#   followed by a SEPARATE climate.set_fan_mode for fan_mode: turbo. Dining/Nest
+#   (climate.dining_room) is heat-only and is intentionally never touched.
+#
+# PER-ROOM SAFETY GUARDS (defense in depth — these do NOT replace Section 3):
+#   The script never blindly fights the hard safety gates. Each head is only
+#   commanded when its canonical room-truth sensor is VALID, and:
+#     - Living Room: only if truth > 60°F  (respects v8_2_lr_runaway_cooling_cutoff)
+#     - Master:      only if truth > 58°F  (respects v8_2_master_emergency_floor)
+#     - Lincoln/Lilly: only if truth is valid (no new permanent low floor invented;
+#                      Section 3 ceiling/failsafe gates and the existing doctrine
+#                      remain the authority for these rooms).
+#   "Valid" means a finite, in-range number (matches the Section 3 / V8.6
+#   truth-validity test: not none/NaN, between -90 and 200). When a guard fails
+#   the script simply skips that head — it never issues a competing command, so
+#   a fired runaway/floor cutoff is left to hold the head off.
+# =============================================================================
+script:
+  heat_wave_override_apply:
+    alias: "Heat Wave Override: Apply cool/61/turbo to all heads"
+    icon: mdi:weather-sunny-alert
+    mode: single
+    sequence:
+      - variables:
+          # Canonical room-truth entities, discovered from the Section 3 safety
+          # automations (v8_2_* cutoffs, v8_6* failsafes). Kept in sync with them.
+          lr_truth: "{{ states('sensor.living_room_temperature_truth') | float(none) }}"
+          master_truth: "{{ states('sensor.master_bedroom_temperature_truth') | float(none) }}"
+          lincoln_truth: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(none) }}"
+          lilly_truth: "{{ states('sensor.lilly_s_room_temperature_truth') | float(none) }}"
+      # ----- LIVING ROOM: command only if truth valid AND > 60°F -----
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = lr_truth %}
+                  {{ x is not none and x == x and x > -90 and x < 200 and x > 60 }}
+            sequence:
+              - action: climate.set_temperature
+                target: { entity_id: climate.living_room_air }
+                data: { hvac_mode: "cool", temperature: 61 }
+              - action: climate.set_fan_mode
+                target: { entity_id: climate.living_room_air }
+                data: { fan_mode: "turbo" }
+      # ----- MASTER: command only if truth valid AND > 58°F -----
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = master_truth %}
+                  {{ x is not none and x == x and x > -90 and x < 200 and x > 58 }}
+            sequence:
+              - action: climate.set_temperature
+                target: { entity_id: climate.master_bedroom_air }
+                data: { hvac_mode: "cool", temperature: 61 }
+              - action: climate.set_fan_mode
+                target: { entity_id: climate.master_bedroom_air }
+                data: { fan_mode: "turbo" }
+      # ----- LINCOLN: command only if truth valid (no invented low floor) -----
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = lincoln_truth %}
+                  {{ x is not none and x == x and x > -90 and x < 200 }}
+            sequence:
+              - action: climate.set_temperature
+                target: { entity_id: climate.lincoln_air }
+                data: { hvac_mode: "cool", temperature: 61 }
+              - action: climate.set_fan_mode
+                target: { entity_id: climate.lincoln_air }
+                data: { fan_mode: "turbo" }
+      # ----- LILLY: command only if truth valid (no invented low floor) -----
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = lilly_truth %}
+                  {{ x is not none and x == x and x > -90 and x < 200 }}
+            sequence:
+              - action: climate.set_temperature
+                target: { entity_id: climate.lilly_air }
+                data: { hvac_mode: "cool", temperature: 61 }
+              - action: climate.set_fan_mode
+                target: { entity_id: climate.lilly_air }
+                data: { fan_mode: "turbo" }

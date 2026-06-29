@@ -410,6 +410,13 @@
     - condition: state
       entity_id: timer.manual_hvac_override
       state: "idle"
+    # Heat Wave Override (Section 19): while the operator override is engaged,
+    # Section 19 owns the actuators (all heads forced cool/61/turbo). The
+    # comfort supervisor must stand down so it does not fight the override. This
+    # gate is comfort-only; Section 3 safety gates remain active and unconditioned.
+    - condition: state
+      entity_id: input_boolean.heat_wave_override
+      state: "off"
   action:
     - variables:
         outdoor: "{{ states('sensor.deck_temperature_truth') | float(50) }}"
@@ -1221,6 +1228,14 @@
       below: 68
       for: "02:00:00"
       id: to_shoulder
+  condition:
+    # Heat Wave Override (Section 19): freeze automatic season switching while
+    # the operator override is engaged. A deck-truth season flip mid-override
+    # must not change the comfort regime out from under the forced cool. Section
+    # 3 safety gates are independent of season and remain active.
+    - condition: state
+      entity_id: input_boolean.heat_wave_override
+      state: "off"
   action:
     - action: input_select.select_option
       target:
@@ -1260,6 +1275,13 @@
       state: "idle"
     - condition: template
       value_template: "{{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}"
+    # Heat Wave Override (Section 19): suppress shoulder/heating destratification
+    # fan cycling while the override forces every head to active cool. Running
+    # fan_only mixing against a forced pull-down is counterproductive. Comfort-
+    # only gate; Section 3 safety gates remain active.
+    - condition: state
+      entity_id: input_boolean.heat_wave_override
+      state: "off"
   action:
     - variables:
         lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
@@ -2369,3 +2391,226 @@
             - action: fan.turn_on
               target: { entity_id: fan.master_bedroom_switch_fan }
               data: { percentage: 100 }
+
+# =============================================================================
+# SECTION 19: HEAT WAVE OVERRIDE — 96H EMERGENCY COOL (operator-driven)
+# =============================================================================
+# Reversible emergency override. The operator flips input_boolean.heat_wave_override
+# ON; for the next 96 hours every Samsung head is forced to cool / 61°F / turbo
+# and periodically re-asserted, while the comfort/supervisor automations
+# (Section 2 main supervisor, Section 5 auto season mode, Section 6 fan
+# destratification) stand down via their new `heat_wave_override == off` gate.
+#
+# The V9 Sleep Priority Interlock lives in Section 3 and is intentionally NOT
+# gated: it is hash-locked safety-section code, and it is inert during the
+# override anyway (it only acts when the Living Room is HEATING, which cannot
+# occur while every head is forced to cool). Leaving it untouched keeps Section 3
+# byte-for-byte unchanged.
+#
+# SAFETY BOUNDARY (unchanged by this section):
+#   The Section 3 hard-safety gates are NOT gated and keep running underneath:
+#     - v8_2_lr_runaway_cooling_cutoff       (LR 60°F equipment floor)
+#     - v8_2_master_emergency_floor          (Master 58°F equipment floor)
+#     - v8_6_truth_unavailable_cooling_failsafe
+#     - v8_6b_truth_unavailable_cooling_reconciliation
+#   The actuator (script.heat_wave_override_apply) also carries its own per-room
+#   truth-validity + LR>60 / Master>58 guards, so a reassert never re-commands a
+#   head a Section 3 cutoff has just protected. Defense in depth, not a bypass.
+#
+# LIFECYCLE / MISSED-EVENT SAFETY:
+#   start  -> arm timer.heat_wave_override_96h, stamp the absolute deadline,
+#             apply the actuator, notify.
+#   every 10 min while engaged -> re-apply the actuator.
+#   homeassistant start while engaged -> wait 3 min for integrations, then
+#             EITHER self-clear if the 96h deadline already passed while HA was
+#             offline (covers a missed timer.finished event), or re-arm the timer
+#             from the stored deadline and re-apply.
+#   timer.finished -> clear the override, notify expiry.
+#   manual off (operator) -> cancel the timer, notify; gates release and normal
+#             supervision resumes on its own.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 19.1 START — operator engages the override
+# -----------------------------------------------------------------------------
+- id: heat_wave_override_start
+  alias: "Heat Wave Override: Start (96h)"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: input_boolean.heat_wave_override
+      from: "off"
+      to: "on"
+  action:
+    # Arm the 96h countdown (duration + restore:true come from the timer config).
+    - action: timer.start
+      target: { entity_id: timer.heat_wave_override_96h }
+    # Stamp the absolute deadline so a timer.finished missed during an HA outage
+    # cannot leave the override latched on forever (see 19.3 startup reassert).
+    - action: input_datetime.set_datetime
+      target: { entity_id: input_datetime.heat_wave_override_deadline }
+      data:
+        timestamp: "{{ (as_timestamp(now()) + 96 * 3600) | int }}"
+    # Apply the forced cool/61/turbo immediately.
+    - action: script.heat_wave_override_apply
+    - action: notify.notify
+      data:
+        title: "🔥 Heat Wave Override ENGAGED (96h)"
+        message: >
+          Manual heat-wave override is ON. All four Samsung heads forced to
+          cool / 61°F / turbo with 10-minute reassertion for 96 hours
+          (until {{ states('input_datetime.heat_wave_override_deadline') }}).
+          Section 3 hard-safety floors (LR 60°F, Master 58°F) and the
+          truth-unavailable failsafes remain active. Toggle the override OFF to
+          cancel early.
+
+# -----------------------------------------------------------------------------
+# 19.2 REASSERT — every 10 minutes while engaged
+# -----------------------------------------------------------------------------
+- id: heat_wave_override_reassert_10min
+  alias: "Heat Wave Override: Reassert (10 min)"
+  mode: single
+  max_exceeded: silent
+  trigger:
+    - platform: time_pattern
+      minutes: "/10"
+  condition:
+    - condition: state
+      entity_id: input_boolean.heat_wave_override
+      state: "on"
+    # Active (or any non-idle) countdown. If the timer is idle the override is
+    # not truly running, so do not keep commanding the heads.
+    - condition: template
+      value_template: "{{ not is_state('timer.heat_wave_override_96h', 'idle') }}"
+  action:
+    - action: script.heat_wave_override_apply
+
+# -----------------------------------------------------------------------------
+# 19.3 STARTUP REASSERT — re-establish (or expire) the override after a restart
+# -----------------------------------------------------------------------------
+# Covers two restart cases:
+#   (a) HA came back while still inside the 96h window  -> re-arm the timer from
+#       the stored deadline (in case restore did not survive) and re-apply.
+#   (b) HA was offline past the deadline                -> the timer.finished
+#       event was missed, so self-clear the override here instead of reasserting.
+- id: heat_wave_override_startup_reassert
+  alias: "Heat Wave Override: Startup Reassert / Expire"
+  mode: single
+  trigger:
+    - platform: homeassistant
+      event: start
+  condition:
+    - condition: state
+      entity_id: input_boolean.heat_wave_override
+      state: "on"
+  action:
+    # Let integrations / climate entities and truth sensors finish loading.
+    - delay: "00:03:00"
+    - variables:
+        still_on: "{{ is_state('input_boolean.heat_wave_override', 'on') }}"
+        deadline_ts: "{{ as_timestamp(states('input_datetime.heat_wave_override_deadline'), 0) }}"
+        now_ts: "{{ as_timestamp(now()) }}"
+    - choose:
+        # Override was cleared during the 3-minute settle window — do nothing.
+        - conditions:
+            - condition: template
+              value_template: "{{ not still_on }}"
+          sequence:
+            - stop: "Override no longer engaged after settle delay"
+        # Deadline already passed while HA was offline -> expire and clean up.
+        # This is the missed-timer.finished backstop.
+        - conditions:
+            - condition: template
+              value_template: "{{ deadline_ts > 0 and now_ts >= deadline_ts }}"
+          sequence:
+            - action: timer.cancel
+              target: { entity_id: timer.heat_wave_override_96h }
+            - action: input_boolean.turn_off
+              target: { entity_id: input_boolean.heat_wave_override }
+            - action: notify.notify
+              data:
+                title: "✅ Heat Wave Override expired (offline)"
+                message: >
+                  The 96h heat-wave override deadline passed while Home Assistant
+                  was offline, so the missed expiry was reconciled on startup.
+                  Override cleared; normal supervision has resumed.
+      # Still inside the window: make sure the countdown is running, then reapply.
+      default:
+        - choose:
+            - conditions:
+                - condition: template
+                  value_template: "{{ is_state('timer.heat_wave_override_96h', 'idle') and deadline_ts > now_ts }}"
+              sequence:
+                - action: timer.start
+                  target: { entity_id: timer.heat_wave_override_96h }
+                  data:
+                    duration: >-
+                      {% set rem = (deadline_ts - now_ts) | int %}
+                      {{ '%02d:%02d:%02d' % (rem // 3600, (rem % 3600) // 60, rem % 60) }}
+        - action: script.heat_wave_override_apply
+        - action: notify.notify
+          data:
+            title: "🔥 Heat Wave Override re-armed after restart"
+            message: >
+              Home Assistant restarted while the 96h heat-wave override was
+              engaged. Re-applied cool / 61°F / turbo and confirmed the countdown
+              (deadline {{ states('input_datetime.heat_wave_override_deadline') }}).
+
+# -----------------------------------------------------------------------------
+# 19.4 TIMER FINISHED — automatic expiry after 96h
+# -----------------------------------------------------------------------------
+- id: heat_wave_override_timer_finished
+  alias: "Heat Wave Override: Timer Finished Cleanup"
+  mode: single
+  trigger:
+    - platform: event
+      event_type: timer.finished
+      event_data:
+        entity_id: timer.heat_wave_override_96h
+  action:
+    # Turning the boolean off here carries this automation's context, so the
+    # manual-off automation (19.5) — which only acts on a parent-less, operator
+    # toggle — does NOT fire and the expiry notice is not double-sent.
+    - action: input_boolean.turn_off
+      target: { entity_id: input_boolean.heat_wave_override }
+    - action: notify.notify
+      data:
+        title: "✅ Heat Wave Override expired (96h)"
+        message: >
+          The 96-hour heat-wave override has expired. Override cleared and the
+          comfort gates released — normal Section 2 supervision has resumed.
+
+# -----------------------------------------------------------------------------
+# 19.5 MANUAL OFF — operator cancels early
+# -----------------------------------------------------------------------------
+- id: heat_wave_override_manual_off
+  alias: "Heat Wave Override: Manual Off Cleanup"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: input_boolean.heat_wave_override
+      from: "on"
+      to: "off"
+  condition:
+    # Only react to a genuine operator toggle (UI / parent-less context). A
+    # turn-off issued by 19.3/19.4 carries a parent context and is skipped here,
+    # which prevents a duplicate "cancelled" notification on automatic expiry.
+    - condition: template
+      value_template: "{{ trigger.to_state.context.parent_id is none }}"
+  action:
+    # Cancel the countdown if it is still running. timer.cancel emits
+    # timer.cancelled (NOT timer.finished), so 19.4 does not also fire.
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ not is_state('timer.heat_wave_override_96h', 'idle') }}"
+          sequence:
+            - action: timer.cancel
+              target: { entity_id: timer.heat_wave_override_96h }
+    - action: notify.notify
+      data:
+        title: "🛑 Heat Wave Override cancelled (manual)"
+        message: >
+          Heat-wave override was turned off manually. The 96h countdown was
+          cancelled and the comfort gates released — normal supervision resumes
+          automatically. Section 3 safety gates were active throughout.
