@@ -2425,9 +2425,19 @@
 #             EITHER self-clear if the 96h deadline already passed while HA was
 #             offline (covers a missed timer.finished event), or re-arm the timer
 #             from the stored deadline and re-apply.
-#   timer.finished -> clear the override, notify expiry.
-#   manual off (operator) -> cancel the timer, notify; gates release and normal
-#             supervision resumes on its own.
+#   timer.finished -> reconcile season, clear the override, notify expiry.
+#   manual off (operator) -> cancel the timer, reconcile season, notify; gates
+#             release and normal supervision resumes on its own.
+#
+# SEASON RECONCILE AT RELEASE:
+#   Every release path (offline-expire, timer-finished, manual-off) first calls
+#   script.heat_wave_override_season_reconcile, which re-derives
+#   input_select.hvac_season_mode from current deck truth using the SAME
+#   thresholds as Section 5 (cooling >72 / heating <45 / shoulder 50-68). Section
+#   5 is gated off during the override and can miss a 2h-debounced transition, so
+#   without this, normal supervision could resume in a stale season (e.g. the
+#   house entered override in `shoulder` during a heat wave). See the script's
+#   header in configuration.yaml.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -2525,6 +2535,10 @@
           sequence:
             - action: timer.cancel
               target: { entity_id: timer.heat_wave_override_96h }
+            # Reconcile season BEFORE releasing supervision (boolean still on, so
+            # Sections 2/5 stay gated and do not fight this write). Prevents
+            # normal control resuming in a stale season after a long override.
+            - action: script.heat_wave_override_season_reconcile
             - action: input_boolean.turn_off
               target: { entity_id: input_boolean.heat_wave_override }
             - action: notify.notify
@@ -2533,7 +2547,9 @@
                 message: >
                   The 96h heat-wave override deadline passed while Home Assistant
                   was offline, so the missed expiry was reconciled on startup.
-                  Override cleared; normal supervision has resumed.
+                  Season mode was re-derived from deck truth
+                  ({{ states('input_select.hvac_season_mode') }}); override
+                  cleared and normal supervision has resumed.
       # Still inside the window: make sure the countdown is running, then reapply.
       default:
         - choose:
@@ -2568,6 +2584,10 @@
       event_data:
         entity_id: timer.heat_wave_override_96h
   action:
+    # Reconcile season BEFORE releasing supervision. The boolean is still on at
+    # this point, so Sections 2/5 remain gated and cannot fight this write; once
+    # the boolean is cleared below, normal control resumes in the correct regime.
+    - action: script.heat_wave_override_season_reconcile
     # Turning the boolean off here carries this automation's context, so the
     # manual-off automation (19.5) — which only acts on a parent-less, operator
     # toggle — does NOT fire and the expiry notice is not double-sent.
@@ -2577,8 +2597,10 @@
       data:
         title: "✅ Heat Wave Override expired (96h)"
         message: >
-          The 96-hour heat-wave override has expired. Override cleared and the
-          comfort gates released — normal Section 2 supervision has resumed.
+          The 96-hour heat-wave override has expired. Season mode was re-derived
+          from deck truth ({{ states('input_select.hvac_season_mode') }}),
+          override cleared and the comfort gates released — normal Section 2
+          supervision has resumed.
 
 # -----------------------------------------------------------------------------
 # 19.5 MANUAL OFF — operator cancels early
@@ -2607,10 +2629,16 @@
           sequence:
             - action: timer.cancel
               target: { entity_id: timer.heat_wave_override_96h }
+    # Reconcile season from current deck truth. The boolean is already off, so
+    # Sections 2/5 are ungated; this write lands the correct regime and lets the
+    # supervisor resume in-season instead of on a stale season value.
+    - action: script.heat_wave_override_season_reconcile
     - action: notify.notify
       data:
         title: "🛑 Heat Wave Override cancelled (manual)"
         message: >
           Heat-wave override was turned off manually. The 96h countdown was
-          cancelled and the comfort gates released — normal supervision resumes
-          automatically. Section 3 safety gates were active throughout.
+          cancelled, season mode was re-derived from deck truth
+          ({{ states('input_select.hvac_season_mode') }}), and the comfort gates
+          released — normal supervision resumes automatically. Section 3 safety
+          gates were active throughout.

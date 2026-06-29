@@ -98,8 +98,12 @@ NEW_FIELDS = {
 #     pre-existing `timer.manual_hvac_override == idle` gate is unchanged.
 #     configuration.yaml gained the override helpers (timer.heat_wave_override_96h
 #     @96h restore:true, input_boolean.heat_wave_override,
-#     input_datetime.heat_wave_override_deadline) and the single actuator
-#     script.heat_wave_override_apply. Section 3 (safety gates) and Section 14
+#     input_datetime.heat_wave_override_deadline) and the actuator
+#     script.heat_wave_override_apply plus a one-shot
+#     script.heat_wave_override_season_reconcile (called only by the Section 19
+#     release paths to re-derive input_select.hvac_season_mode from deck truth
+#     using Section 5's thresholds, so supervision does not resume in a stale
+#     season after a long override). Section 3 (safety gates) and Section 14
 #     hashes were deliberately NOT re-pinned — those surfaces remain byte-for-byte
 #     unchanged, proving the override gates only comfort logic and leaves the
 #     LR 60°F / Master 58°F floors and truth-unavailable failsafes untouched.
@@ -120,7 +124,7 @@ EXPECTED_SECTION_HASHES = {
         "fcb18b5953a9bfb9f1d1e9f10ba8217cc46c7db63cb268bfab5daa6ffd2b71c3",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "5d730a6754361d04e6cf7b02a7e1de761e9e9a97da3dff9cc84949b47db4df62"
+EXPECTED_CONFIGURATION_HASH = "474e02b944ffa412f21b225cd6cee4be5461a7997d4b31397e411f9e05943c48"
 
 
 @pytest.fixture(scope="module")

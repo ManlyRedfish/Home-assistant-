@@ -1447,3 +1447,61 @@ script:
               - action: climate.set_fan_mode
                 target: { entity_id: climate.lilly_air }
                 data: { fan_mode: "turbo" }
+
+  # ===========================================================================
+  # SEASON RECONCILE — run at override RELEASE only (Section 19 cleanup paths).
+  # ===========================================================================
+  # While the override is engaged, Section 5 Auto Season Mode is gated off, so
+  # it can miss a deck-truth season transition (its triggers need deck above 72 /
+  # below 45 / 50-68 sustained for 2h). When the override ends,
+  # input_select.hvac_season_mode could therefore be STALE — e.g. the house
+  # entered override in `shoulder` during a heat wave and normal supervision
+  # would resume in the wrong regime.
+  #
+  # This one-shot reconcile re-derives the season from the CURRENT deck truth
+  # using the SAME thresholds as Section 5 (cooling >72, heating <45, shoulder
+  # 50-68), then writes input_select.hvac_season_mode if it differs. It is the
+  # instantaneous form of Section 5's logic (no 2h `for:` debounce) and is called
+  # ONLY from the override-release automations (19.3 offline-expire, 19.4
+  # timer-finished, 19.5 manual-off) BEFORE normal supervision is released — it
+  # is NOT a continuous season writer and never runs while the override is live.
+  #
+  # The 68-72 and 45-50 dead zones (and an invalid/unavailable deck truth) leave
+  # the season UNCHANGED — exactly like Section 5, which has no transition there.
+  heat_wave_override_season_reconcile:
+    alias: "Heat Wave Override: Reconcile season from deck truth"
+    icon: mdi:sun-thermometer
+    mode: single
+    sequence:
+      - variables:
+          deck: "{{ states('sensor.deck_temperature_truth') | float(none) }}"
+          current_season: "{{ states('input_select.hvac_season_mode') }}"
+      - choose:
+          # Only act on a valid deck-truth reading (matches the V8.6 validity test).
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = deck %}
+                  {{ x is not none and x == x and x > -90 and x < 200 }}
+            sequence:
+              - variables:
+                  # Same thresholds as Section 5 (v7_5_auto_season_mode):
+                  #   cooling: deck > 72 | heating: deck < 45 | shoulder: 50-68.
+                  # Dead zones (45-50, 68-72) hold the current season.
+                  target_season: >-
+                    {% if deck > 72 %}cooling
+                    {% elif deck < 45 %}heating
+                    {% elif deck > 50 and deck < 68 %}shoulder
+                    {% else %}{{ current_season }}{% endif %}
+              - choose:
+                  # Write only when the regime actually needs to change, so a
+                  # correct season generates no spurious supervisor-retriggering write.
+                  - conditions:
+                      - condition: template
+                        value_template: >-
+                          {{ target_season in ['cooling', 'heating', 'shoulder']
+                             and target_season != current_season }}
+                    sequence:
+                      - action: input_select.select_option
+                        target: { entity_id: input_select.hvac_season_mode }
+                        data: { option: "{{ target_season }}" }
