@@ -1360,10 +1360,24 @@ input_number:
 #
 # WHAT IT DOES:
 #   Commands each of the four Samsung mini-split heads to cool / 61°F / turbo,
-#   using the repo's known-good Samsung actuator pattern (Section 2): a single
-#   climate.set_temperature carrying BOTH hvac_mode: cool and temperature: 61,
-#   followed by a SEPARATE climate.set_fan_mode for fan_mode: turbo. Dining/Nest
-#   (climate.dining_room) is heat-only and is intentionally never touched.
+#   using a split-command Samsung-safe sequence per head:
+#     1. climate.set_hvac_mode -> cool
+#     2. ~2s delay
+#     3. climate.set_temperature -> temperature: 61 ONLY (no hvac_mode bundled)
+#     4. ~1s delay
+#     5. climate.set_fan_mode -> turbo
+#   Dining/Nest (climate.dining_room) is heat-only and is never touched.
+#
+#   WHY SPLIT (reliability, 2026 live finding): the Samsung/SmartThings
+#   integration can SILENTLY drop the temperature parameter when it is bundled
+#   with hvac_mode in one climate.set_temperature call. Observed live on
+#   climate.living_room_air during the first override: the head went cool+turbo
+#   but kept its stale 79°F target until a follow-up set_temperature with
+#   temperature ONLY corrected it. Issuing set_hvac_mode first, then a short
+#   settle delay, then a temperature-only set_temperature makes the setpoint land
+#   reliably. The same pattern is applied to ALL FOUR heads (not just LR) so the
+#   override uses one consistent, proven command path. The small delays serialize
+#   the cloud round-trips so a later call does not clobber an in-flight earlier one.
 #
 # PER-ROOM SAFETY GUARDS (defense in depth — these do NOT replace Section 3):
 #   The script never blindly fights the hard safety gates. Each head is only
@@ -1399,9 +1413,14 @@ script:
                   {% set x = lr_truth %}
                   {{ x is not none and x == x and x > -90 and x < 200 and x > 60 }}
             sequence:
+              - action: climate.set_hvac_mode
+                target: { entity_id: climate.living_room_air }
+                data: { hvac_mode: "cool" }
+              - delay: "00:00:02"
               - action: climate.set_temperature
                 target: { entity_id: climate.living_room_air }
-                data: { hvac_mode: "cool", temperature: 61 }
+                data: { temperature: 61 }
+              - delay: "00:00:01"
               - action: climate.set_fan_mode
                 target: { entity_id: climate.living_room_air }
                 data: { fan_mode: "turbo" }
@@ -1413,9 +1432,14 @@ script:
                   {% set x = master_truth %}
                   {{ x is not none and x == x and x > -90 and x < 200 and x > 58 }}
             sequence:
+              - action: climate.set_hvac_mode
+                target: { entity_id: climate.master_bedroom_air }
+                data: { hvac_mode: "cool" }
+              - delay: "00:00:02"
               - action: climate.set_temperature
                 target: { entity_id: climate.master_bedroom_air }
-                data: { hvac_mode: "cool", temperature: 61 }
+                data: { temperature: 61 }
+              - delay: "00:00:01"
               - action: climate.set_fan_mode
                 target: { entity_id: climate.master_bedroom_air }
                 data: { fan_mode: "turbo" }
@@ -1427,9 +1451,14 @@ script:
                   {% set x = lincoln_truth %}
                   {{ x is not none and x == x and x > -90 and x < 200 }}
             sequence:
+              - action: climate.set_hvac_mode
+                target: { entity_id: climate.lincoln_air }
+                data: { hvac_mode: "cool" }
+              - delay: "00:00:02"
               - action: climate.set_temperature
                 target: { entity_id: climate.lincoln_air }
-                data: { hvac_mode: "cool", temperature: 61 }
+                data: { temperature: 61 }
+              - delay: "00:00:01"
               - action: climate.set_fan_mode
                 target: { entity_id: climate.lincoln_air }
                 data: { fan_mode: "turbo" }
@@ -1441,9 +1470,14 @@ script:
                   {% set x = lilly_truth %}
                   {{ x is not none and x == x and x > -90 and x < 200 }}
             sequence:
+              - action: climate.set_hvac_mode
+                target: { entity_id: climate.lilly_air }
+                data: { hvac_mode: "cool" }
+              - delay: "00:00:02"
               - action: climate.set_temperature
                 target: { entity_id: climate.lilly_air }
-                data: { hvac_mode: "cool", temperature: 61 }
+                data: { temperature: 61 }
+              - delay: "00:00:01"
               - action: climate.set_fan_mode
                 target: { entity_id: climate.lilly_air }
                 data: { fan_mode: "turbo" }

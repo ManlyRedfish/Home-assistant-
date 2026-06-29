@@ -107,6 +107,16 @@ NEW_FIELDS = {
 #     hashes were deliberately NOT re-pinned — those surfaces remain byte-for-byte
 #     unchanged, proving the override gates only comfort logic and leaves the
 #     LR 60°F / Master 58°F floors and truth-unavailable failsafes untouched.
+#   - configuration re-pinned for the Heat Wave Override Samsung command
+#     reliability patch: script.heat_wave_override_apply now issues a split,
+#     serialized Samsung-safe sequence per head — set_hvac_mode cool, ~2s delay,
+#     set_temperature 61 (temperature ONLY, no bundled hvac_mode), ~1s delay,
+#     set_fan_mode turbo. This replaces the single bundled set_temperature that
+#     the Samsung/SmartThings integration could silently ignore the temperature
+#     on (observed live on climate.living_room_air retaining a stale 79°F
+#     target). Same per-room truth guards (LR>60 / Master>58 / valid). Only the
+#     actuator script body changed — automations.yaml (Section 2/3/14 and the
+#     Section 19 lifecycle), helpers, and season reconcile are untouched.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
@@ -124,7 +134,7 @@ EXPECTED_SECTION_HASHES = {
         "fcb18b5953a9bfb9f1d1e9f10ba8217cc46c7db63cb268bfab5daa6ffd2b71c3",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "474e02b944ffa412f21b225cd6cee4be5461a7997d4b31397e411f9e05943c48"
+EXPECTED_CONFIGURATION_HASH = "ea7fd177eaeb1d998e611ba2851cdcc49303099c56d3a2db7d248512713cc70e"
 
 
 @pytest.fixture(scope="module")
