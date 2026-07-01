@@ -86,7 +86,7 @@ def test_section2_cooling_setpoint_and_threshold_doctrine():
 
     assert templates['l_off_at'] == "{{ 74 if away else 68 }}"
     assert templates['l_on_at'] == "{{ 76 if away else 72 }}"
-    assert templates['ly_off_at'] == "{{ 74 if away else 68 }}"
-    assert templates['ly_on_at'] == "{{ 76 if away else 72 }}"
+    assert templates['ly_off_at'] == "{{ 74 if away else (66 if lilly_heatwave_sleep_guard and is_lilly_sleep else 68) }}"
+    assert templates['ly_on_at'] == "{{ 76 if away else (70 if lilly_heatwave_sleep_guard and is_lilly_sleep else 72) }}"
     assert templates['lr_off_at'] == "{{ 74 if away else 68 }}"
     assert templates['lr_on_at'] == "{{ 76 if away else 72 }}"
