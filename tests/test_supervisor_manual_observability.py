@@ -117,11 +117,19 @@ NEW_FIELDS = {
 #     target). Same per-room truth guards (LR>60 / Master>58 / valid). Only the
 #     actuator script body changed — automations.yaml (Section 2/3/14 and the
 #     Section 19 lifecycle), helpers, and season reconcile are untouched.
+#   - section2 re-pinned for the Lilly Heatwave Sleep Guard: a toggle-armed,
+#     Lilly-only exception in the cooling-season block. Two new local
+#     variables (is_lilly_sleep — 19:00-07:00; lilly_heatwave_sleep_guard —
+#     reads input_boolean.lilly_heatwave_sleep_guard) gate ly_off_at/ly_on_at
+#     down to 66/70 ONLY when the helper is on AND the clock is in the sleep
+#     window; helper off, or daytime with the helper on, falls through to the
+#     unchanged 68/72. Away (74/76) still takes priority over the guard.
+#     Master, Lincoln, Living Room, heating, and away logic are untouched.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        "f764563a56582a70da1d72466b4bc011f84b76d1ac96c99020d2dda9a5aeb557",
+        "de80f126e78c75a4230483c4a2624a7ca30bfa9871b0cdfa6113680db58dbc33",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",

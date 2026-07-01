@@ -622,13 +622,16 @@
 
             # ---------------------------------------------------------
             # LILLY'S ROOM
-            # All hours: 66°F set / off ≤68 / on >72
-            # Away:      74°F set / off ≤74 / on >76
+            # Heatwave Sleep Guard ON + 19:00-07:00: 61°F shove / off ≤66 / on >70
+            # Normal behavior:                         61°F shove / off ≤68 / on >72
+            # Away:                                    away thresholds / off ≤74 / on >76
             # ---------------------------------------------------------
             - variables:
                 ly_setpoint: "{{ 61 }}"
-                ly_off_at: "{{ 74 if away else 68 }}"
-                ly_on_at: "{{ 76 if away else 72 }}"
+                is_lilly_sleep: "{{ now().hour >= 19 or now().hour < 7 }}"
+                lilly_heatwave_sleep_guard: "{{ is_state('input_boolean.lilly_heatwave_sleep_guard', 'on') }}"
+                ly_off_at: "{{ 74 if away else (66 if lilly_heatwave_sleep_guard and is_lilly_sleep else 68) }}"
+                ly_on_at: "{{ 76 if away else (70 if lilly_heatwave_sleep_guard and is_lilly_sleep else 72) }}"
                 ly_current: "{{ states('climate.lilly_air') }}"
             - action: climate.set_temperature
               target: { entity_id: climate.lilly_air }
