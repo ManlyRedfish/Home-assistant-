@@ -644,15 +644,16 @@
                 temperature: "{{ ly_setpoint }}"
 
             # ---------------------------------------------------------
-            # LIVING ROOM (V8.2: around-the-clock 68/72 truth thresholds)
-            # All hours: 66°F set / off ≤68 / on >72
-            # Away:      74°F set / off ≤74 / on >76
+            # LIVING ROOM (V8.2 + LR night conservation)
+            # Daytime/default: 61°F set / off ≤68 / on >72
+            # Away or LR night conservation: 61°F set / off ≤74 / on >76
             # Runaway cutoff at 60°F lives in Section 3 (independent).
             # ---------------------------------------------------------
             - variables:
                 lr_setpoint: "{{ 61 }}"
-                lr_off_at: "{{ 74 if away else 68 }}"
-                lr_on_at: "{{ 76 if away else 72 }}"
+                lr_conservation: "{{ away or lr_night_primary }}"
+                lr_off_at: "{{ 74 if lr_conservation else 68 }}"
+                lr_on_at: "{{ 76 if lr_conservation else 72 }}"
                 lr_current: "{{ states('climate.living_room_air') }}"
             - action: climate.set_temperature
               target: { entity_id: climate.living_room_air }
