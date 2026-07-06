@@ -1170,7 +1170,7 @@
         - climate.lilly_air
   condition:
     - condition: template
-      value_template: "{{ trigger.context.parent_id is none }}"
+      value_template: "{{ trigger.to_state.context.parent_id is none }}"
   action:
     - action: timer.start
       target: { entity_id: timer.manual_hvac_override }
@@ -1457,7 +1457,7 @@
         - cover.shade_2
   condition:
     - condition: template
-      value_template: "{{ trigger.context.parent_id is none }}"
+      value_template: "{{ trigger.to_state.context.parent_id is none }}"
   action:
     - action: timer.start
       target:
