@@ -125,16 +125,41 @@ NEW_FIELDS = {
 #     window; helper off, or daytime with the helper on, falls through to the
 #     unchanged 68/72. Away (74/76) still takes priority over the guard.
 #     Master, Lincoln, Living Room, heating, and away logic are untouched.
+#   - section2 re-pinned for Packet B Rev 4 CHANGE-3: LR night conservation
+#     profile (P4) wired into the cooling branch. Adds one local variable
+#     (`lr_conservation: away or lr_night_primary`) and switches the LR
+#     lr_off_at / lr_on_at ternaries from `74/76 if away else 68/72` to
+#     `74/76 if lr_conservation else 68/72`. When
+#     input_boolean.night_mode_lr_primary is on and not away, LR cools to
+#     the 74/76 conservation band instead of the daytime 68/72; away (P1)
+#     precedence is preserved because the disjunction still activates
+#     conservation via `away` alone. LR cooling command remains
+#     cool@61 (CHANGE-2 turbo on every cooling call is deferred). Master,
+#     Lincoln, Lilly, shoulder, and heating logic are byte-for-byte
+#     unchanged. Section 14 hash deliberately NOT re-pinned — that surface
+#     remains unchanged, proving CHANGE-3 is scoped to the comfort branch.
+#     Evidence gate satisfied by
+#     docs/analysis/lr-night-cooling-capacity-discovery.md (9 Master
+#     starvation events with 100% LR co-fire, 90°F outdoor crossover) per
+#     docs/3_regression_appendix.md §4.5 reopen condition.
+#   - section3 re-pinned for the V7.5 + V8 shade watcher template bug fix
+#     (PR #156, same commit as CHANGE-3): `trigger.context.parent_id`
+#     corrected to `trigger.to_state.context.parent_id` on the Section 3
+#     shade watcher's manual-only guard (the state-trigger dict on HA
+#     2024+ carries `context` on `to_state`, not on `trigger` itself; the
+#     bad accessor raised 1,029+ UndefinedError entries in the log). One
+#     accessor path corrected; no threshold, gate, or safety behavior
+#     changed. Section 3 remains OFF-only safety.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        "de80f126e78c75a4230483c4a2624a7ca30bfa9871b0cdfa6113680db58dbc33",
+        "c296b50335b302ae4067082d0af2e094a8a687d0e8e1febd2e2da0b84424eb38",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
         "# SECTION 4:",
-        "9d078092445376affacd1584fbfdf9e15bb5fc5102f92d992e3be91c94d59ec0",
+        "6e77d4a81a5deb686533f3e54e7814fdbe8ec817f6a110258f2af0ae527e6c2a",
     ),
     "section14_lr_boost": (
         "# SECTION 14: V8.4 LR HEATING RECOVERY BOOST PILOT",
