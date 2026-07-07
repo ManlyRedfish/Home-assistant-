@@ -123,16 +123,20 @@ def test_shoulder_night_bulk_off_excludes_master(supervisor):
     )
 
 
-def test_shoulder_night_bulk_off_still_covers_lincoln_lilly_dining(supervisor):
+def test_shoulder_night_bulk_off_covers_dining_only(supervisor):
+    # 2026-06-07 operator decision: Lincoln + Lilly are owned by the KIDS BEDTIME
+    # COOLING block above the season choose during 18:00-07:00 in cooling +
+    # shoulder. Since is_night (22:00-06:00) is a strict subset of kids_bedtime
+    # (18:00-07:00), the shoulder-night bulk-off must exclude both kids' heads
+    # and cover Dining only. Master is owned by the cooling escape step.
     targets = _bulk_off_targets(_shoulder_night_sequence(supervisor))
-    for entity_id in (
-        "climate.lincoln_air",
-        "climate.lilly_air",
-        "climate.dining_room",
-    ):
-        assert entity_id in targets, (
-            f"Shoulder-night bulk-off list must still include {entity_id}; "
-            f"only master_bedroom_air is intentionally excluded."
+    assert "climate.dining_room" in targets, (
+        "Shoulder-night bulk-off must still cover climate.dining_room."
+    )
+    for kid_entity in ("climate.lincoln_air", "climate.lilly_air"):
+        assert kid_entity not in targets, (
+            f"Shoulder-night bulk-off must not include {kid_entity}; the kids' "
+            f"bedtime block owns Lincoln + Lilly here."
         )
 
 

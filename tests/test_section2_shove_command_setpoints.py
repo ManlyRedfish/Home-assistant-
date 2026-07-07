@@ -143,7 +143,11 @@ def test_section2_cooling_actuator_commands_use_61_separate_from_thresholds():
             cooling_commands.append(command)
             assert _temperature_value(command, variables) == 61
 
-    assert len(cooling_commands) == 8, "Expected the existing eight mini-split cooling command paths."
+    # Ten cooling command paths: 4 in the cooling branch (Master, Lincoln, Lilly,
+    # LR), 3 in the shoulder-day warm block (Master, Lincoln, Lilly), 1 in the
+    # shoulder-night Master escape, and 2 in the kids' bedtime block (Lincoln
+    # and Lilly, added by the 2026-06-07 operator decision).
+    assert len(cooling_commands) == 10, "Expected the ten mini-split cooling command paths."
 
     text = _section2_text()
     # Cooling comparisons / stop thresholds remain exactly as before; command
