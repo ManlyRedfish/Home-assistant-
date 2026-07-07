@@ -361,6 +361,45 @@ def test_long_clean_dataset_does_not_validate_at_67_band(analyzer, tmp_path):
     assert result.verdict.label == analyzer.VERDICT_PARTIAL
 
 
+def test_sparse_dataset_over_14_days_fails_contiguity_gate(analyzer, tmp_path):
+    """A dataset that spans >= 14 days but is sparse (rows > 30 min apart)
+    must NOT reach VALIDATED_CANDIDATE. Doctrine requires ≥ 14 CONTIGUOUS
+    days, not a wide max−min span with holes."""
+    rows = [
+        _row("2026-04-01 10:00:00", LR_Temp_Truth="68.00"),
+        _row("2026-04-05 10:00:00", LR_Temp_Truth="68.00"),
+        _row("2026-04-10 10:00:00", LR_Temp_Truth="68.00"),
+        _row("2026-04-15 10:00:00", LR_Temp_Truth="68.00"),
+        _row("2026-04-20 10:00:00", LR_Temp_Truth="68.00"),
+    ]
+    csv_path = tmp_path / "sparse.csv"
+    _write_csv(csv_path, ALL_REQUIRED_HEADERS, rows)
+    result = analyzer.analyze(csv_path)
+    assert result.loaded.span_days is not None
+    assert result.loaded.span_days >= 14
+    assert result.loaded.timestamp_gaps_count > 0
+    assert result.verdict.label == analyzer.VERDICT_TOO_FEW_DAYS
+    assert any("gap" in r.lower() or "contigu" in r.lower()
+               for r in result.verdict.reasons)
+
+
+def test_assess_verdict_gap_gate_direct(analyzer):
+    """assess_verdict must reject a 14+ day span with any gap > 30 min,
+    even when called directly with no cycles present."""
+    rows = [{"Timestamp": "2026-04-01 00:00:00"}]
+    normalized = {c: c for c in analyzer.REQUIRED_SECTION14_COLS}
+    normalized["Timestamp"] = "Timestamp"
+    verdict = analyzer.assess_verdict(
+        rows,
+        normalized,
+        cycles=[],
+        span_days=21.0,
+        timestamp_gaps_count=3,
+    )
+    assert verdict.label == analyzer.VERDICT_TOO_FEW_DAYS
+    assert any("gap" in r.lower() for r in verdict.reasons)
+
+
 def test_truncated_cycle_at_end_is_indeterminate(analyzer, tmp_path):
     """If boost is still active in the final row, the cycle is truncated and
     must be classified indeterminate (not clean)."""

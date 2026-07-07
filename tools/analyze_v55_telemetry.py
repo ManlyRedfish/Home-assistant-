@@ -375,6 +375,7 @@ def assess_verdict(
     normalized: dict,
     cycles: Sequence[BoostCycle],
     span_days: Optional[float],
+    timestamp_gaps_count: int = 0,
 ) -> Verdict:
     if not rows:
         return Verdict(VERDICT_NO_DATA, ["No data rows present in CSV."])
@@ -403,6 +404,15 @@ def assess_verdict(
         reasons.append(
             f"Telemetry span is {span_text} day(s); "
             f"requires ≥ {MIN_VALIDATION_DAYS} contiguous days."
+        )
+        return Verdict(VERDICT_TOO_FEW_DAYS, reasons)
+
+    if timestamp_gaps_count > 0:
+        reasons.append(
+            f"Telemetry span is {span_days:.2f} day(s) but has "
+            f"{timestamp_gaps_count} gap(s) > 30 min; contiguity broken. "
+            f"Requires ≥ {MIN_VALIDATION_DAYS} contiguous days without "
+            f"missing capture windows."
         )
         return Verdict(VERDICT_TOO_FEW_DAYS, reasons)
 
@@ -748,7 +758,13 @@ def analyze(input_path: Path) -> AnalysisResult:
     loaded = load_csv(input_path)
     normalized = normalize_columns(loaded.header)
     cycles = detect_boost_cycles(loaded.rows, normalized)
-    verdict = assess_verdict(loaded.rows, normalized, cycles, loaded.span_days)
+    verdict = assess_verdict(
+        loaded.rows,
+        normalized,
+        cycles,
+        loaded.span_days,
+        loaded.timestamp_gaps_count,
+    )
     lincoln = lincoln_msr_summary(loaded.rows, normalized)
     report = render_report(input_path, loaded, normalized, cycles, verdict, lincoln)
     return AnalysisResult(
