@@ -376,6 +376,10 @@ This direction is delivered in phases.
 
 ### 11.2 Later PRs (deferred)
 
+The canonical tripwire for deferred, blocked, and retired runtime proposals is
+[`./deferred_until_telemetry.md`](./deferred_until_telemetry.md). Keep this
+section as a phase overview rather than duplicating the register.
+
 - Provenance fan-out (§2.5) — observability-only YAML, scoped to one
   trigger surface at a time.
 - Section 2 latch consult against Section 14 (§2.2) — requires forensic
