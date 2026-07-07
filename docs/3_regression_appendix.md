@@ -209,6 +209,10 @@ The following guardrails apply across all proposals, even when a specific retire
 
 ## 6. Reopen Conditions
 
+The regression appendix remains the owner of retirement and reopen doctrine.
+The canonical tracking surface for deferred, blocked, and retired runtime
+proposals is [`deferred_until_telemetry.md`](deferred_until_telemetry.md).
+
 A retired approach may only be reconsidered if at least one of the following is true:
 
 * New telemetry evidence demonstrates that the old rejection no longer holds.

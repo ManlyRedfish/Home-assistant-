@@ -50,6 +50,18 @@ Deadbands are not a draft to be iterated. They are the contract. When a
 complaint suggests the contract was violated, the contract is not what is on
 trial — the system's adherence to the contract is.
 
+**Operator-approved revision (exception, 2026-06-07).** The contract *can* be
+revised by an explicit, dated, narrowly-scoped operator decision. The
+Lincoln/Lilly **bedtime cooling contract** (room-truth 66–70 deadband; actuator
+`cool`/`61 °F`/`turbo`; window 18:00–07:00; cooling and shoulder) is such a
+revision: it is operator-approved and **supported by the June 5–6 hot-night
+failure investigation**, not an automatic redesign inferred from a single
+complaint. This is consistent with §10 — the prohibition is on inferring deadband
+redesigns from anecdotes, not on the operator deliberately revising the contract
+for a defined room/time slice. Daytime and other-room deadbands are unchanged.
+See AGENTS.md "Current Operator Decisions", Doc 1 §5.1, Doc 5 §7.10, and
+`docs/kids-bedroom-overnight-cooling-plan.md`.
+
 ## 4. What a Comfort Complaint Means
 
 A complaint such as "my room was too hot/cold last night" is an *observation*,

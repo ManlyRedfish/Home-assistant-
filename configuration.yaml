@@ -1,6 +1,6 @@
 # =============================================================================
 # MOOSE HOUSE CLIMATE — COMPLETE CONFIGURATION.YAML
-# Last Updated: May 6, 2026
+# Last Updated: June 5, 2026
 # Architecture: V3.1 — Audited Truth / Smoothed / Control
 # =============================================================================
 #
@@ -23,10 +23,15 @@
 #  10. CONTROL WRAPPERS (smoothed pass-through for UI / supervisor)
 #  11. RUNTIME TRACKING (history_stats for boiler + all heat pumps)
 #  12. SMOOTHED SENSORS (lowpass filter on all truth temps)
+#  14. SECTION 14 HELPERS (V8.4 LR heating recovery boost)
+#  16. SECTION 16 FORECAST CACHE + HELPERS (V9-E Master pre-cool experiment)
 #
 # DESIGN PRINCIPLES:
 #   - Per-room weighted-average truth from multiple physical sensors
-#   - 2-hour staleness rejection on all inputs
+#   - 2-hour staleness rejection on all inputs, measured by REPORT time
+#     (last_reported), not value-change time (last_changed). A stable sensor
+#     that keeps reporting the same temperature is NOT stale. (See
+#     docs/comfort_band_and_truth_confidence_plan.md and Doc 5 §7.9.)
 #   - Outlier rejection (Lincoln pilot, 3°F limit)
 #   - Mini-split internal sensors always low-weight (biased hardware)
 #   - MSR-2 DPS310 sensors removed (both units hardware-failed)
@@ -38,6 +43,7 @@
 #   V6.1:     LR delay_off tuned 3min → 20min; Lincoln 3min → 15min
 #   V3.1:     Full audit against HA device registry + telemetry (see below)
 #   STEP 2:   Surgical trim of legacy/fallback sensors from weighted truth
+#   SYNC-0605: Repo ↔ live truth-source sync (2026-06-05, see below)
 #
 # =====================================================================
 # V3.1 AUDIT CHANGES (April 6, 2026)
@@ -63,6 +69,40 @@
 #   - sensor.lincoln_temp_temperature              (Outdoor Meter 18, w=1.0)
 #   - sensor.laundry_temperature                   (WoTHP, w=1.0)
 #   + all corresponding humidity entities
+# =====================================================================
+#
+# =====================================================================
+# LIVE-SYNC CHANGES (June 5, 2026) — durability/sync only
+# =====================================================================
+# Purpose: make already-verified LIVE truth-source edits durable in the
+#   repo. Entity-source changes ONLY. No weighting redesign, no change to
+#   the statistical truth model. New Matter routes use w=1.0, matching the
+#   existing Matter-route precedent (Lincoln lincoln_temp_temperature, w=1.0)
+#   and the sibling BT room-probe weight.
+#
+# ADDED — Matter transport copies already reporting live (telemetry
+#         columns *_RoomProbe_Matter), now restored to weighted truth:
+#   - sensor.master_bedroom_temp_temperature_3  (Master, Matter, w=1.0)
+#   - sensor.master_bedroom_temp_humidity_3     (Master, Matter, w=1.0)
+#   - sensor.lilly_temp_temperature_2           (Lilly,  Matter, w=1.0)
+#   - sensor.lilly_temp_humidity_2              (Lilly,  Matter, w=1.0)
+#
+# REMOVED — Living Room Matter route (per the live HA entity registry),
+#           disabled_by:user with no live state, excluded from truth. It is
+#           historically logged under telemetry cols
+#           LR_Temp/Hum_RoomProbe_BT_Secondary — a historical export label that
+#           does NOT make this a Bluetooth route. Telemetry cols are preserved:
+#   - sensor.hub_2_tempsensor_temperature       (LR temp, Matter, disabled)
+#   - sensor.hub_2_humisensor_humidity          (LR humidity, Matter, disabled)
+#
+# CONTRIBUTOR COUNTS AFTER SYNC (verified live 2026-06-05):
+#   Living Room 3 · Master 4 · Lincoln 4 (unchanged) · Lilly 4
+#
+# TRANSPORT MODEL: BT / SmartThings(ST) / Matter rows for a room are
+#   alternate transports of ONE physical SwitchBot probe, not independent
+#   thermometers. Truth currently averages all available transports. Whether
+#   it should instead pick the single best transport per physical probe is a
+#   DEFERRED design question — not addressed here. See docs/2_reference_map.md §7.
 # =====================================================================
 
 
@@ -106,6 +146,20 @@ timer:
     duration: "01:30:00"
     restore: true
     icon: mdi:timer-alert
+  # =============================================================================
+  # HEAT WAVE OVERRIDE HELPER: 96-hour emergency-cool override timer.
+  # =============================================================================
+  # Operator-driven emergency override (see automations.yaml Section 19). This
+  # is deliberately a NEW 96h timer, NOT timer.manual_hvac_override (which is a
+  # 1-hour WAF timer). `restore: true` matches the Section 14 precedent above so
+  # the countdown survives an HA restart. The absolute deadline is ALSO mirrored
+  # into input_datetime.heat_wave_override_deadline so a timer.finished event
+  # missed while HA was offline cannot leave the override latched on forever.
+  heat_wave_override_96h:
+    name: "Heat Wave Override 96h"
+    duration: "96:00:00"
+    restore: true
+    icon: mdi:weather-sunny-alert
 
 
 recorder:
@@ -177,15 +231,30 @@ template:
       #     gates (meatlocker/overcool), and the smoothed control sensor.
       #     Without this, the supervisor loses its primary first-floor input.
       #
-      # ACTIVE SENSORS (V3.1):
-      #   hub_temperature          (SwitchBot Hub 2, Hue room)   w=1.0
-      #   hub_temperature_2        (WonderLabs Hub)              w=0.9
-      #   hub_2_tempsensor_temperature (SwitchBot Hub 2)         w=1.0
+      # ACTIVE SENSORS (V3.1; disabled Matter route pulled 2026-06-05 live-sync):
+      #   hub_temperature          (SwitchBot Hub 2 — BT)        w=1.0   [BT]
+      #   hub_temperature_2        (SwitchBot Hub 2 — ST)        w=0.9   [ST]
       #   living_room_air_temperature  (Samsung internal, -10°F) w=0.20
+      #   → 3 active temperature contributors (verified live 2026-06-05)
       #
-      # REMOVED (V3.1):
-      #   living_room_temperature_temperature — phantom, never existed
-      #   living_room_msr_dps310_temperature  — hardware failure
+      # TRANSPORT NOTE: hub_temperature [BT] and hub_temperature_2 [ST] are
+      #   alternate transports of the SAME physical SwitchBot room probe, not
+      #   independent thermometers. The room probe's Matter transport is the
+      #   disabled route listed under REMOVED below. Samsung internal is separate
+      #   hardware (low weight, biased). Full inventory: docs/2_reference_map.md §7.
+      #   AUTHORITY: live HA registry/platform metadata defines transport identity;
+      #   automations.yaml telemetry column names are historical/export labels.
+      #
+      # REMOVED:
+      #   hub_2_tempsensor_temperature — Living Room MATTER route per the live HA
+      #     entity registry; disabled_by:user, has no live state, excluded from
+      #     truth + active-count (pulled in the 2026-06-05 live-sync). Historically
+      #     logged under telemetry column LR_Temp_RoomProbe_BT_Secondary — a
+      #     historical label that does NOT make this a Bluetooth route.
+      #   hub_2_humisensor_humidity   — humidity counterpart; same disabled Matter
+      #     route, no live state (telemetry col LR_Hum_RoomProbe_BT_Secondary).
+      #   living_room_temperature_temperature — phantom, never existed (V3.1)
+      #   living_room_msr_dps310_temperature  — hardware failure (V3.1)
       # =========================================================
       - name: "Living Room Temperature Truth"
         unique_id: living_room_temperature_truth_v3
@@ -196,28 +265,23 @@ template:
           {% set fresh = namespace(count=0) %}
           {% set max_age = 7200 %}
           {% set hub = states('sensor.hub_temperature') | float(none) %}
-          {% if hub is not none and (now() - states.sensor.hub_temperature.last_changed).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
+          {% if hub is not none and (now() - states.sensor.hub_temperature.last_reported).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
           {% set hub2_legacy = states('sensor.hub_temperature_2') | float(none) %}
-          {% if hub2_legacy is not none and (now() - states.sensor.hub_temperature_2.last_changed).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
-          {% set hub2 = states('sensor.hub_2_tempsensor_temperature') | float(none) %}
-          {% if hub2 is not none and (now() - states.sensor.hub_2_tempsensor_temperature.last_changed).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
+          {% if hub2_legacy is not none and (now() - states.sensor.hub_temperature_2.last_reported).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
           {% set hp = states('sensor.living_room_air_temperature') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.living_room_air_temperature.last_changed).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.living_room_air_temperature.last_reported).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
           {{ fresh.count > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set hub = states('sensor.hub_temperature') | float(none) %}
-          {% set hub_ok = hub is not none and (now() - states.sensor.hub_temperature.last_changed).total_seconds() < max_age %}
+          {% set hub_ok = hub is not none and (now() - states.sensor.hub_temperature.last_reported).total_seconds() < max_age %}
           {% set hub2_legacy = states('sensor.hub_temperature_2') | float(none) %}
-          {% set hub2_legacy_ok = hub2_legacy is not none and (now() - states.sensor.hub_temperature_2.last_changed).total_seconds() < max_age %}
-          {% set hub2 = states('sensor.hub_2_tempsensor_temperature') | float(none) %}
-          {% set hub2_ok = hub2 is not none and (now() - states.sensor.hub_2_tempsensor_temperature.last_changed).total_seconds() < max_age %}
+          {% set hub2_legacy_ok = hub2_legacy is not none and (now() - states.sensor.hub_temperature_2.last_reported).total_seconds() < max_age %}
           {% set hp = states('sensor.living_room_air_temperature') | float(none) %}
-          {% set hp_ok = hp is not none and (now() - states.sensor.living_room_air_temperature.last_changed).total_seconds() < max_age %}
+          {% set hp_ok = hp is not none and (now() - states.sensor.living_room_air_temperature.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if hub_ok %}{% set ns.total = ns.total + (hub * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if hub2_legacy_ok %}{% set ns.total = ns.total + (hub2_legacy * 0.9) %}{% set ns.weight = ns.weight + 0.9 %}{% endif %}
-          {% if hub2_ok %}{% set ns.total = ns.total + (hub2 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if hp_ok %}{% set ns.total = ns.total + (hp * 0.20) %}{% set ns.weight = ns.weight + 0.20 %}{% endif %}
           {{ (ns.total / ns.weight) | round(2) }}
 
@@ -230,28 +294,23 @@ template:
           {% set fresh = namespace(count=0) %}
           {% set max_age = 7200 %}
           {% set hub = states('sensor.hub_humidity') | float(none) %}
-          {% if hub is not none and (now() - states.sensor.hub_humidity.last_changed).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
+          {% if hub is not none and (now() - states.sensor.hub_humidity.last_reported).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
           {% set hub2_legacy = states('sensor.hub_humidity_2') | float(none) %}
-          {% if hub2_legacy is not none and (now() - states.sensor.hub_humidity_2.last_changed).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
-          {% set hub2 = states('sensor.hub_2_humisensor_humidity') | float(none) %}
-          {% if hub2 is not none and (now() - states.sensor.hub_2_humisensor_humidity.last_changed).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
+          {% if hub2_legacy is not none and (now() - states.sensor.hub_humidity_2.last_reported).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
           {% set hp = states('sensor.living_room_air_humidity') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.living_room_air_humidity.last_changed).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.living_room_air_humidity.last_reported).total_seconds() < max_age %}{% set fresh.count = fresh.count + 1 %}{% endif %}
           {{ fresh.count > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set hub = states('sensor.hub_humidity') | float(none) %}
-          {% set hub_ok = hub is not none and (now() - states.sensor.hub_humidity.last_changed).total_seconds() < max_age %}
+          {% set hub_ok = hub is not none and (now() - states.sensor.hub_humidity.last_reported).total_seconds() < max_age %}
           {% set hub2_legacy = states('sensor.hub_humidity_2') | float(none) %}
-          {% set hub2_legacy_ok = hub2_legacy is not none and (now() - states.sensor.hub_humidity_2.last_changed).total_seconds() < max_age %}
-          {% set hub2 = states('sensor.hub_2_humisensor_humidity') | float(none) %}
-          {% set hub2_ok = hub2 is not none and (now() - states.sensor.hub_2_humisensor_humidity.last_changed).total_seconds() < max_age %}
+          {% set hub2_legacy_ok = hub2_legacy is not none and (now() - states.sensor.hub_humidity_2.last_reported).total_seconds() < max_age %}
           {% set hp = states('sensor.living_room_air_humidity') | float(none) %}
-          {% set hp_ok = hp is not none and (now() - states.sensor.living_room_air_humidity.last_changed).total_seconds() < max_age %}
+          {% set hp_ok = hp is not none and (now() - states.sensor.living_room_air_humidity.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if hub_ok %}{% set ns.total = ns.total + (hub * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if hub2_legacy_ok %}{% set ns.total = ns.total + (hub2_legacy * 0.9) %}{% set ns.weight = ns.weight + 0.9 %}{% endif %}
-          {% if hub2_ok %}{% set ns.total = ns.total + (hub2 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if hp_ok %}{% set ns.total = ns.total + (hp * 0.25) %}{% set ns.weight = ns.weight + 0.25 %}{% endif %}
           {{ (ns.total / ns.weight) | round(1) }}
 
@@ -261,7 +320,7 @@ template:
         device_class: carbon_dioxide
         state_class: measurement
         availability: >
-          {{ states('sensor.living_room_msr_co2') | float(none) is not none and (now() - states.sensor.living_room_msr_co2.last_changed).total_seconds() < 10800 }}
+          {{ states('sensor.living_room_msr_co2') | float(none) is not none and (now() - states.sensor.living_room_msr_co2.last_reported).total_seconds() < 10800 }}
         state: >
           {{ states('sensor.living_room_msr_co2') | float(none) | round(0) }}
 
@@ -271,13 +330,11 @@ template:
           {% set max_age = 7200 %}
           {% set parts = namespace(items=[]) %}
           {% set hub = states('sensor.hub_temperature') | float(none) %}
-          {% if hub is not none and (now() - states.sensor.hub_temperature.last_changed).total_seconds() < max_age %}{% set parts.items = parts.items + ['hub_temperature'] %}{% endif %}
+          {% if hub is not none and (now() - states.sensor.hub_temperature.last_reported).total_seconds() < max_age %}{% set parts.items = parts.items + ['hub_temperature'] %}{% endif %}
           {% set hub2_legacy = states('sensor.hub_temperature_2') | float(none) %}
-          {% if hub2_legacy is not none and (now() - states.sensor.hub_temperature_2.last_changed).total_seconds() < max_age %}{% set parts.items = parts.items + ['hub_temperature_2'] %}{% endif %}
-          {% set hub2 = states('sensor.hub_2_tempsensor_temperature') | float(none) %}
-          {% if hub2 is not none and (now() - states.sensor.hub_2_tempsensor_temperature.last_changed).total_seconds() < max_age %}{% set parts.items = parts.items + ['hub_2_tempsensor_temperature'] %}{% endif %}
+          {% if hub2_legacy is not none and (now() - states.sensor.hub_temperature_2.last_reported).total_seconds() < max_age %}{% set parts.items = parts.items + ['hub_temperature_2'] %}{% endif %}
           {% set hp = states('sensor.living_room_air_temperature') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.living_room_air_temperature.last_changed).total_seconds() < max_age %}{% set parts.items = parts.items + ['living_room_air_temperature'] %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.living_room_air_temperature.last_reported).total_seconds() < max_age %}{% set parts.items = parts.items + ['living_room_air_temperature'] %}{% endif %}
           {{ parts.items | join(', ') if parts.items | length > 0 else 'none' }}
 
       - name: "Living Room Temperature Truth Active Count"
@@ -286,13 +343,11 @@ template:
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
           {% set hub = states('sensor.hub_temperature') | float(none) %}
-          {% if hub is not none and (now() - states.sensor.hub_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hub is not none and (now() - states.sensor.hub_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set hub2_legacy = states('sensor.hub_temperature_2') | float(none) %}
-          {% if hub2_legacy is not none and (now() - states.sensor.hub_temperature_2.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
-          {% set hub2 = states('sensor.hub_2_tempsensor_temperature') | float(none) %}
-          {% if hub2 is not none and (now() - states.sensor.hub_2_tempsensor_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hub2_legacy is not none and (now() - states.sensor.hub_temperature_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set hp = states('sensor.living_room_air_temperature') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.living_room_air_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.living_room_air_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v }}
 
       # =========================================================
@@ -302,10 +357,20 @@ template:
       #     and safety ceiling gates. In V8 summer doctrine, Master is
       #     the primary cooling engine / thermal shield.
       #
-      # ACTIVE SENSORS (STEP 2):
-      #   master_bedroom_temp_temperature_2  (I/O Meter 7C3F)   w=1.0
-      #   master_bedroom_temperature_temperature_2 (WonderLabs) w=0.9
+      # ACTIVE SENSORS (STEP 2; Matter route added 2026-06-05 live-sync):
+      #   master_bedroom_temp_temperature_2  (I/O Meter 7C3F)   w=1.0   [BT]
+      #   master_bedroom_temperature_temperature_2 (WonderLabs) w=0.9   [ST]
+      #   master_bedroom_temp_temperature_3  (I/O Meter 7C3F)   w=1.0   [Matter]  ← added 2026-06-05
       #   master_bedroom_air_temperature     (Samsung, +6.9°F)  w=0.20
+      #   → 4 active temperature contributors (verified live 2026-06-05)
+      #
+      # TRANSPORT NOTE: the [BT], [ST], and [Matter] rows are alternate transports
+      #   of the SAME physical Master room probe (telemetry cols
+      #   Master_Temp_RoomProbe_BT / _ST / _Matter), not independent sensors.
+      #   Current truth averages every available transport with its weight; the
+      #   live-sync only restores the Matter copy that was already live. Whether
+      #   truth should instead pick ONE best transport per physical probe is a
+      #   deferred design question — NOT changed here. See docs/2_reference_map.md §7.
       #
       # REMOVED (STEP 2):
       #   master_bedroom_temp_temperature (Outdoor Meter 3F)
@@ -319,23 +384,29 @@ template:
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.master_bedroom_temp_temperature_2') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.master_bedroom_temp_temperature_2.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s1 is not none and (now() - states.sensor.master_bedroom_temp_temperature_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.master_bedroom_temperature_temperature_2') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.master_bedroom_temperature_temperature_2.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.master_bedroom_temperature_temperature_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s3 = states('sensor.master_bedroom_temp_temperature_3') | float(none) %}
+          {% if s3 is not none and (now() - states.sensor.master_bedroom_temp_temperature_3.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set hp = states('sensor.master_bedroom_air_temperature') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.master_bedroom_air_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.master_bedroom_air_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set s1 = states('sensor.master_bedroom_temp_temperature_2') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.master_bedroom_temp_temperature_2.last_changed).total_seconds() < max_age %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.master_bedroom_temp_temperature_2.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.master_bedroom_temperature_temperature_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.master_bedroom_temperature_temperature_2.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.master_bedroom_temperature_temperature_2.last_reported).total_seconds() < max_age %}
+          {# Matter transport of the same physical Master room probe (added 2026-06-05 live-sync; telemetry col Master_Temp_RoomProbe_Matter) #}
+          {% set s3 = states('sensor.master_bedroom_temp_temperature_3') | float(none) %}
+          {% set s3_ok = s3 is not none and (now() - states.sensor.master_bedroom_temp_temperature_3.last_reported).total_seconds() < max_age %}
           {% set hp = states('sensor.master_bedroom_air_temperature') | float(none) %}
-          {% set hp_ok = hp is not none and (now() - states.sensor.master_bedroom_air_temperature.last_changed).total_seconds() < max_age %}
+          {% set hp_ok = hp is not none and (now() - states.sensor.master_bedroom_air_temperature.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.9) %}{% set ns.weight = ns.weight + 0.9 %}{% endif %}
+          {% if s3_ok %}{% set ns.total = ns.total + (s3 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if hp_ok %}{% set ns.total = ns.total + (hp * 0.20) %}{% set ns.weight = ns.weight + 0.20 %}{% endif %}
           {{ (ns.total / ns.weight) | round(2) }}
 
@@ -348,23 +419,29 @@ template:
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.master_bedroom_temp_humidity_2') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.master_bedroom_temp_humidity_2.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s1 is not none and (now() - states.sensor.master_bedroom_temp_humidity_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.master_bedroom_temperature_humidity_2') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.master_bedroom_temperature_humidity_2.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.master_bedroom_temperature_humidity_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s3 = states('sensor.master_bedroom_temp_humidity_3') | float(none) %}
+          {% if s3 is not none and (now() - states.sensor.master_bedroom_temp_humidity_3.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set hp = states('sensor.master_bedroom_air_humidity') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.master_bedroom_air_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.master_bedroom_air_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set s1 = states('sensor.master_bedroom_temp_humidity_2') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.master_bedroom_temp_humidity_2.last_changed).total_seconds() < max_age %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.master_bedroom_temp_humidity_2.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.master_bedroom_temperature_humidity_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.master_bedroom_temperature_humidity_2.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.master_bedroom_temperature_humidity_2.last_reported).total_seconds() < max_age %}
+          {# Matter transport of the same physical Master room probe (added 2026-06-05 live-sync; telemetry col Master_Hum_RoomProbe_Matter) #}
+          {% set s3 = states('sensor.master_bedroom_temp_humidity_3') | float(none) %}
+          {% set s3_ok = s3 is not none and (now() - states.sensor.master_bedroom_temp_humidity_3.last_reported).total_seconds() < max_age %}
           {% set hp = states('sensor.master_bedroom_air_humidity') | float(none) %}
-          {% set hp_ok = hp is not none and (now() - states.sensor.master_bedroom_air_humidity.last_changed).total_seconds() < max_age %}
+          {% set hp_ok = hp is not none and (now() - states.sensor.master_bedroom_air_humidity.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.9) %}{% set ns.weight = ns.weight + 0.9 %}{% endif %}
+          {% if s3_ok %}{% set ns.total = ns.total + (s3 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if hp_ok %}{% set ns.total = ns.total + (hp * 0.25) %}{% set ns.weight = ns.weight + 0.25 %}{% endif %}
           {{ (ns.total / ns.weight) | round(1) }}
 
@@ -396,24 +473,24 @@ template:
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.lincoln_s_temp_temperature') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.lincoln_s_room_temperature_temperature') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s3 = states('sensor.lincoln_temp_temperature') | float(none) %}
-          {% if s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set hp = states('sensor.lincoln_air_temperature') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.lincoln_air_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.lincoln_air_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set outlier_limit = 3.0 %}
 
           {% set s1 = states('sensor.lincoln_s_temp_temperature') | float(none) %}
-          {% set s1_fresh = s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s1_fresh = s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.lincoln_s_room_temperature_temperature') | float(none) %}
-          {% set s2_fresh = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_changed).total_seconds() < max_age %}
+          {% set s2_fresh = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_reported).total_seconds() < max_age %}
           {% set s3 = states('sensor.lincoln_temp_temperature') | float(none) %}
-          {% set s3_fresh = s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s3_fresh = s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_reported).total_seconds() < max_age %}
 
           {% set base_total = (s1 if s1_fresh else 0) + (s2 if s2_fresh else 0) + (s3 if s3_fresh else 0) %}
           {% set base_count = (1 if s1_fresh else 0) + (1 if s2_fresh else 0) + (1 if s3_fresh else 0) %}
@@ -423,7 +500,7 @@ template:
           {% set s2_ok = s2_fresh and (base_mean is none or ((s2 - base_mean) | abs <= outlier_limit)) %}
           {% set s3_ok = s3_fresh and (base_mean is none or ((s3 - base_mean) | abs <= outlier_limit)) %}
           {% set hp = states('sensor.lincoln_air_temperature') | float(none) %}
-          {% set hp_ok = hp is not none and (now() - states.sensor.lincoln_air_temperature.last_changed).total_seconds() < max_age %}
+          {% set hp_ok = hp is not none and (now() - states.sensor.lincoln_air_temperature.last_reported).total_seconds() < max_age %}
 
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
@@ -441,24 +518,24 @@ template:
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.lincoln_s_temp_humidity') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.lincoln_s_temp_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s1 is not none and (now() - states.sensor.lincoln_s_temp_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.lincoln_s_room_temperature_humidity') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s3 = states('sensor.lincoln_temp_humidity') | float(none) %}
-          {% if s3 is not none and (now() - states.sensor.lincoln_temp_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s3 is not none and (now() - states.sensor.lincoln_temp_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set hp = states('sensor.lincoln_air_humidity') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.lincoln_air_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.lincoln_air_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set s1 = states('sensor.lincoln_s_temp_humidity') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.lincoln_s_temp_humidity.last_changed).total_seconds() < max_age %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.lincoln_s_temp_humidity.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.lincoln_s_room_temperature_humidity') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_humidity.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_humidity.last_reported).total_seconds() < max_age %}
           {% set s3 = states('sensor.lincoln_temp_humidity') | float(none) %}
-          {% set s3_ok = s3 is not none and (now() - states.sensor.lincoln_temp_humidity.last_changed).total_seconds() < max_age %}
+          {% set s3_ok = s3 is not none and (now() - states.sensor.lincoln_temp_humidity.last_reported).total_seconds() < max_age %}
           {% set hp = states('sensor.lincoln_air_humidity') | float(none) %}
-          {% set hp_ok = hp is not none and (now() - states.sensor.lincoln_air_humidity.last_changed).total_seconds() < max_age %}
+          {% set hp_ok = hp is not none and (now() - states.sensor.lincoln_air_humidity.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if s2_ok %}{% set ns.total = ns.total + (s2 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
@@ -473,11 +550,11 @@ template:
           {% set outlier_limit = 3.0 %}
           {% set parts = namespace(items=[]) %}
           {% set s1 = states('sensor.lincoln_s_temp_temperature') | float(none) %}
-          {% set s1_fresh = s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s1_fresh = s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.lincoln_s_room_temperature_temperature') | float(none) %}
-          {% set s2_fresh = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_changed).total_seconds() < max_age %}
+          {% set s2_fresh = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_reported).total_seconds() < max_age %}
           {% set s3 = states('sensor.lincoln_temp_temperature') | float(none) %}
-          {% set s3_fresh = s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s3_fresh = s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_reported).total_seconds() < max_age %}
           {% set base_total = (s1 if s1_fresh else 0) + (s2 if s2_fresh else 0) + (s3 if s3_fresh else 0) %}
           {% set base_count = (1 if s1_fresh else 0) + (1 if s2_fresh else 0) + (1 if s3_fresh else 0) %}
           {% set base_mean = (base_total / base_count) if base_count > 0 else none %}
@@ -485,7 +562,7 @@ template:
           {% if s2_fresh and (base_mean is none or ((s2 - base_mean) | abs <= outlier_limit)) %}{% set parts.items = parts.items + ['lincoln_s_room_temperature_temperature'] %}{% endif %}
           {% if s3_fresh and (base_mean is none or ((s3 - base_mean) | abs <= outlier_limit)) %}{% set parts.items = parts.items + ['lincoln_temp_temperature'] %}{% endif %}
           {% set hp = states('sensor.lincoln_air_temperature') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.lincoln_air_temperature.last_changed).total_seconds() < max_age %}{% set parts.items = parts.items + ['lincoln_air_temperature'] %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.lincoln_air_temperature.last_reported).total_seconds() < max_age %}{% set parts.items = parts.items + ['lincoln_air_temperature'] %}{% endif %}
           {{ parts.items | join(', ') if parts.items | length > 0 else 'none' }}
 
       - name: "Lincoln Temperature Truth Rejected"
@@ -500,9 +577,9 @@ template:
           {% set s1 = s1_raw | float(none) %}
           {% set s2 = s2_raw | float(none) %}
           {% set s3 = s3_raw | float(none) %}
-          {% set s1_fresh = s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_changed).total_seconds() < max_age %}
-          {% set s2_fresh = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_changed).total_seconds() < max_age %}
-          {% set s3_fresh = s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s1_fresh = s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_reported).total_seconds() < max_age %}
+          {% set s2_fresh = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_reported).total_seconds() < max_age %}
+          {% set s3_fresh = s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_reported).total_seconds() < max_age %}
           {% set base_total = (s1 if s1_fresh else 0) + (s2 if s2_fresh else 0) + (s3 if s3_fresh else 0) %}
           {% set base_count = (1 if s1_fresh else 0) + (1 if s2_fresh else 0) + (1 if s3_fresh else 0) %}
           {% set base_mean = (base_total / base_count) if base_count > 0 else none %}
@@ -536,11 +613,11 @@ template:
           {% set outlier_limit = 3.0 %}
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.lincoln_s_temp_temperature') | float(none) %}
-          {% set s1_fresh = s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s1_fresh = s1 is not none and (now() - states.sensor.lincoln_s_temp_temperature.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.lincoln_s_room_temperature_temperature') | float(none) %}
-          {% set s2_fresh = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_changed).total_seconds() < max_age %}
+          {% set s2_fresh = s2 is not none and (now() - states.sensor.lincoln_s_room_temperature_temperature.last_reported).total_seconds() < max_age %}
           {% set s3 = states('sensor.lincoln_temp_temperature') | float(none) %}
-          {% set s3_fresh = s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s3_fresh = s3 is not none and (now() - states.sensor.lincoln_temp_temperature.last_reported).total_seconds() < max_age %}
           {% set base_total = (s1 if s1_fresh else 0) + (s2 if s2_fresh else 0) + (s3 if s3_fresh else 0) %}
           {% set base_count = (1 if s1_fresh else 0) + (1 if s2_fresh else 0) + (1 if s3_fresh else 0) %}
           {% set base_mean = (base_total / base_count) if base_count > 0 else none %}
@@ -548,7 +625,7 @@ template:
           {% if s2_fresh and (base_mean is none or ((s2 - base_mean) | abs <= outlier_limit)) %}{% set count.v = count.v + 1 %}{% endif %}
           {% if s3_fresh and (base_mean is none or ((s3 - base_mean) | abs <= outlier_limit)) %}{% set count.v = count.v + 1 %}{% endif %}
           {% set hp = states('sensor.lincoln_air_temperature') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.lincoln_air_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.lincoln_air_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v }}
 
       # =========================================================
@@ -558,14 +635,25 @@ template:
       #     safety ceiling gates, and comfort fan. V8 doctrine flags
       #     Lilly as potential drift/insulation risk due to path distance.
       #
-      # ACTIVE SENSORS (STEP 2):
-      #   lilly_temperature                   (Wyze cam sensor)     w=1.0
-      #   lilly_room_temperature_temperature  (WonderLabs)          w=0.9
+      # ACTIVE SENSORS (STEP 2; Matter route added 2026-06-05 live-sync):
+      #   lilly_temperature                   (Wyze cam sensor)     w=1.0   [BT]
+      #   lilly_room_temperature_temperature  (WonderLabs)          w=0.9   [ST]
+      #   lilly_temp_temperature_2            (Outdoor Meter 58)    w=1.0   [Matter]  ← added 2026-06-05
       #   lilly_air_temperature               (Samsung, +8.6°F)     w=0.20
+      #   → 4 active temperature contributors (verified live 2026-06-05)
+      #
+      # TRANSPORT NOTE: the [BT], [ST], and [Matter] rows are alternate transports
+      #   of the SAME physical Lilly room probe (telemetry cols
+      #   Lilly_Temp_RoomProbe_BT / _ST / _Matter), not independent sensors.
+      #   lilly_temp_temperature_2 is the Matter copy of the Outdoor Meter 58 probe
+      #   and is ACTIVE — it was previously (and wrongly) listed below as removed.
+      #   That contradiction is resolved here. Whether truth should pick ONE best
+      #   transport per probe is a deferred design question (see docs/2_reference_map.md §7).
       #
       # REMOVED (STEP 2):
-      #   lilly_temp_temperature (Outdoor Meter 58)
-      #   lilly_temp_temperature_2 (Outdoor Meter 58 fallback)
+      #   lilly_temp_temperature (Outdoor Meter 58) — legacy non-_2 transport of the
+      #     same probe; not wired to telemetry or truth. Superseded by the Matter
+      #     copy (lilly_temp_temperature_2) above. (Do NOT relist _2 as removed.)
       # =========================================================
       - name: "Lilly's Room Temperature Truth"
         unique_id: lilly_s_room_temperature_truth_v3
@@ -576,23 +664,29 @@ template:
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.lilly_temperature') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.lilly_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s1 is not none and (now() - states.sensor.lilly_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.lilly_room_temperature_temperature') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.lilly_room_temperature_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.lilly_room_temperature_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s3 = states('sensor.lilly_temp_temperature_2') | float(none) %}
+          {% if s3 is not none and (now() - states.sensor.lilly_temp_temperature_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set hp = states('sensor.lilly_air_temperature') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.lilly_air_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.lilly_air_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set s1 = states('sensor.lilly_temperature') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.lilly_temperature.last_changed).total_seconds() < max_age %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.lilly_temperature.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.lilly_room_temperature_temperature') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.lilly_room_temperature_temperature.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.lilly_room_temperature_temperature.last_reported).total_seconds() < max_age %}
+          {# Matter transport of the same physical Lilly room probe (Outdoor Meter 58; added 2026-06-05 live-sync; telemetry col Lilly_Temp_RoomProbe_Matter) #}
+          {% set s3 = states('sensor.lilly_temp_temperature_2') | float(none) %}
+          {% set s3_ok = s3 is not none and (now() - states.sensor.lilly_temp_temperature_2.last_reported).total_seconds() < max_age %}
           {% set hp = states('sensor.lilly_air_temperature') | float(none) %}
-          {% set hp_ok = hp is not none and (now() - states.sensor.lilly_air_temperature.last_changed).total_seconds() < max_age %}
+          {% set hp_ok = hp is not none and (now() - states.sensor.lilly_air_temperature.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.9) %}{% set ns.weight = ns.weight + 0.9 %}{% endif %}
+          {% if s3_ok %}{% set ns.total = ns.total + (s3 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if hp_ok %}{% set ns.total = ns.total + (hp * 0.20) %}{% set ns.weight = ns.weight + 0.20 %}{% endif %}
           {{ (ns.total / ns.weight) | round(2) }}
 
@@ -605,23 +699,29 @@ template:
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.lilly_humidity') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.lilly_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s1 is not none and (now() - states.sensor.lilly_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.lilly_room_temperature_humidity') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.lilly_room_temperature_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.lilly_room_temperature_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s3 = states('sensor.lilly_temp_humidity_2') | float(none) %}
+          {% if s3 is not none and (now() - states.sensor.lilly_temp_humidity_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set hp = states('sensor.lilly_air_humidity') | float(none) %}
-          {% if hp is not none and (now() - states.sensor.lilly_air_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if hp is not none and (now() - states.sensor.lilly_air_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set s1 = states('sensor.lilly_humidity') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.lilly_humidity.last_changed).total_seconds() < max_age %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.lilly_humidity.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.lilly_room_temperature_humidity') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.lilly_room_temperature_humidity.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.lilly_room_temperature_humidity.last_reported).total_seconds() < max_age %}
+          {# Matter transport of the same physical Lilly room probe (Outdoor Meter 58; added 2026-06-05 live-sync; telemetry col Lilly_Hum_RoomProbe_Matter) #}
+          {% set s3 = states('sensor.lilly_temp_humidity_2') | float(none) %}
+          {% set s3_ok = s3 is not none and (now() - states.sensor.lilly_temp_humidity_2.last_reported).total_seconds() < max_age %}
           {% set hp = states('sensor.lilly_air_humidity') | float(none) %}
-          {% set hp_ok = hp is not none and (now() - states.sensor.lilly_air_humidity.last_changed).total_seconds() < max_age %}
+          {% set hp_ok = hp is not none and (now() - states.sensor.lilly_air_humidity.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.9) %}{% set ns.weight = ns.weight + 0.9 %}{% endif %}
+          {% if s3_ok %}{% set ns.total = ns.total + (s3 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if hp_ok %}{% set ns.total = ns.total + (hp * 0.25) %}{% set ns.weight = ns.weight + 0.25 %}{% endif %}
           {{ (ns.total / ns.weight) | round(1) }}
 
@@ -650,20 +750,20 @@ template:
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.office_temp_temperature') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.office_temp_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s1 is not none and (now() - states.sensor.office_temp_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.office_temperature_2') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.office_temperature_2.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.office_temperature_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set net = states('sensor.indoor_temperature') | float(none) %}
-          {% if net is not none and (now() - states.sensor.indoor_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if net is not none and (now() - states.sensor.indoor_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set s1 = states('sensor.office_temp_temperature') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.office_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.office_temp_temperature.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.office_temperature_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.office_temperature_2.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.office_temperature_2.last_reported).total_seconds() < max_age %}
           {% set net = states('sensor.indoor_temperature') | float(none) %}
-          {% set net_ok = net is not none and (now() - states.sensor.indoor_temperature.last_changed).total_seconds() < max_age %}
+          {% set net_ok = net is not none and (now() - states.sensor.indoor_temperature.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 0.95) %}{% set ns.weight = ns.weight + 0.95 %}{% endif %}
           {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.95) %}{% set ns.weight = ns.weight + 0.95 %}{% endif %}
@@ -679,20 +779,20 @@ template:
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
           {% set s1 = states('sensor.office_temp_humidity') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.office_temp_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s1 is not none and (now() - states.sensor.office_temp_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.office_humidity_2') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.office_humidity_2.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.office_humidity_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set net = states('sensor.indoor_humidity') | float(none) %}
-          {% if net is not none and (now() - states.sensor.indoor_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if net is not none and (now() - states.sensor.indoor_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
           {% set s1 = states('sensor.office_temp_humidity') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.office_temp_humidity.last_changed).total_seconds() < max_age %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.office_temp_humidity.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.office_humidity_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.office_humidity_2.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.office_humidity_2.last_reported).total_seconds() < max_age %}
           {% set net = states('sensor.indoor_humidity') | float(none) %}
-          {% set net_ok = net is not none and (now() - states.sensor.indoor_humidity.last_changed).total_seconds() < max_age %}
+          {% set net_ok = net is not none and (now() - states.sensor.indoor_humidity.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 0.95) %}{% set ns.weight = ns.weight + 0.95 %}{% endif %}
           {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.95) %}{% set ns.weight = ns.weight + 0.95 %}{% endif %}
@@ -705,24 +805,26 @@ template:
         device_class: carbon_dioxide
         state_class: measurement
         availability: >
-          {{ states('sensor.indoor_carbon_dioxide') | float(none) is not none and (now() - states.sensor.indoor_carbon_dioxide.last_changed).total_seconds() < 10800 }}
+          {{ states('sensor.indoor_carbon_dioxide') | float(none) is not none and (now() - states.sensor.indoor_carbon_dioxide.last_reported).total_seconds() < 10800 }}
         state: >
           {{ states('sensor.indoor_carbon_dioxide') | float(none) | round(0) }}
 
       # =========================================================
-      # SECTION 8: TRUTH SENSORS — LAUNDRY / DOWNSTAIRS BATH
+      # SECTION 8: TRUTH SENSORS — LAUNDRY ROOM
       # =========================================================
-      # ⚠️  DO NOT DELETE — Laundry truth monitors the coolest zone
-      #     in the house (basement-adjacent). Useful as a thermal
-      #     baseline and for detecting boiler spill-over.
+      # ⚠️  DO NOT DELETE — Laundry truth is a satellite zone.
+      #     Phase 1 (Jun 2026): Added Matter source to dual-source this zone.
+      #     BT tier dead from lath-and-plaster RF attenuation — awaiting
+      #     dedicated ESP32 BT proxy (Phase 2) to restore triple-source.
       #
       # ACTIVE SENSORS (STEP 2):
-      #   laundry_temperature             (SwitchBot WoTHP)         w=1.0
-      #   bathroom_downstairs_temperature (WonderLabs WoIOSensor)   w=0.8
+      #   laundry_temperature                (SwitchBot 7C BT)      w=1.0  (unavailable, proxy pending)
+      #   laundry_room_temperature_2          (SwitchBot 7C Matter) w=1.0  ✅ live
+      #   bathroom_downstairs_temperature     (WoIOSensor hallway)  w=0.8  (ambient fallback)
       #
-      # REMOVED (STEP 2):
-      #   laundry_room_temperature (SwitchBot Outdoor Meter 7C)
-      #   laundry_room_temperature_2 (Outdoor Meter 7C fallback)
+      # PHASE 2 ROADMAP: Deploy ESP32 BT proxy inside Laundry →
+      #   laundry_temperature recovers automatically (template already references it) →
+      #   Triple-source fusion: BT (1.0) + Matter (1.0) + hallway (0.8)
       # =========================================================
       - name: "Laundry Temperature Truth"
         unique_id: laundry_temperature_truth_v3
@@ -732,17 +834,17 @@ template:
         availability: >
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
-          {% set s1 = states('sensor.laundry_temperature') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.laundry_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s1 = states('sensor.laundry_room_temperature_2') | float(none) %}
+          {% if s1 is not none and (now() - states.sensor.laundry_room_temperature_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.laundry_temperature') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_temperature.last_changed).total_seconds() < max_age %}
+          {% set s1 = states('sensor.laundry_room_temperature_2') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_room_temperature_2.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.bathroom_downstairs_temperature') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.bathroom_downstairs_temperature.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
@@ -756,21 +858,21 @@ template:
         availability: >
           {% set max_age = 7200 %}
           {% set count = namespace(v=0) %}
-          {% set s1 = states('sensor.laundry_humidity') | float(none) %}
-          {% if s1 is not none and (now() - states.sensor.laundry_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% set s1 = states('sensor.laundry_room_humidity_2') | float(none) %}
+          {% if s1 is not none and (now() - states.sensor.laundry_room_humidity_2.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {% set s2 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
-          {% if s2 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_changed).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
+          {% if s2 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}{% set count.v = count.v + 1 %}{% endif %}
           {{ count.v > 0 }}
         state: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.laundry_humidity') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_humidity.last_changed).total_seconds() < max_age %}
+          {% set s1 = states('sensor.laundry_room_humidity_2') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.laundry_room_humidity_2.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.bathroom_downstairs_humidity') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.bathroom_downstairs_humidity.last_reported).total_seconds() < max_age %}
           {% set ns = namespace(total=0.0, weight=0.0) %}
           {% if s1_ok %}{% set ns.total = ns.total + (s1 * 1.0) %}{% set ns.weight = ns.weight + 1.0 %}{% endif %}
           {% if s2_ok %}{% set ns.total = ns.total + (s2 * 0.8) %}{% set ns.weight = ns.weight + 0.8 %}{% endif %}
-          {{ (ns.total / ns.weight) | round(1) }}
+          {{ (ns.total / ns.weight) | round(2) }}
 
       # =========================================================
       # SECTION 9: TRUTH SENSORS — DECK / OUTDOOR
@@ -780,12 +882,12 @@ template:
       #     and deep-freeze boiler logic all depend on this sensor.
       #     If both deck sensors die, the supervisor defaults to 50°F.
       #
-      # ACTIVE SENSORS (STEP 2):
-      #   deck_temp_temperature    (SwitchBot Outdoor Meter 4481) w=equal
-      #   deck_temp_temperature_2  (WonderLabs WoIOSensor)        w=equal
+      # ACTIVE SENSORS:
+      #   deck_temp_temperature_3  (SwitchBot Outdoor Meter — Matter)  w=equal
+      #   deck_temp_temperature_2  (WonderLabs WoIOSensor — ST)        w=equal
       #
-      # REMOVED (STEP 2):
-      #   deck_temp_temperature_3  (SwitchBot Outdoor Meter 81)
+      # REMOVED:
+      #   deck_temp_temperature    (BT — pruned from registry, RF-attenuated)
       # =========================================================
       - name: "Deck Temperature Truth"
         unique_id: deck_temperature_truth_v3
@@ -794,17 +896,17 @@ template:
         state_class: measurement
         availability: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.deck_temp_temperature') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s1 = states('sensor.deck_temp_temperature_3') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_temperature_3.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.deck_temp_temperature_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_temperature_2.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_temperature_2.last_reported).total_seconds() < max_age %}
           {{ s1_ok or s2_ok }}
         state: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.deck_temp_temperature') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_temperature.last_changed).total_seconds() < max_age %}
+          {% set s1 = states('sensor.deck_temp_temperature_3') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_temperature_3.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.deck_temp_temperature_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_temperature_2.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_temperature_2.last_reported).total_seconds() < max_age %}
           {% if s1_ok and s2_ok %}
             {{ ((s1 + s2) / 2) | round(2) }}
           {% elif s1_ok %}
@@ -820,17 +922,17 @@ template:
         state_class: measurement
         availability: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.deck_temp_humidity') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_humidity.last_changed).total_seconds() < max_age %}
+          {% set s1 = states('sensor.deck_temp_humidity_3') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_humidity_3.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.deck_temp_humidity_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_humidity_2.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_humidity_2.last_reported).total_seconds() < max_age %}
           {{ s1_ok or s2_ok }}
         state: >
           {% set max_age = 7200 %}
-          {% set s1 = states('sensor.deck_temp_humidity') | float(none) %}
-          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_humidity.last_changed).total_seconds() < max_age %}
+          {% set s1 = states('sensor.deck_temp_humidity_3') | float(none) %}
+          {% set s1_ok = s1 is not none and (now() - states.sensor.deck_temp_humidity_3.last_reported).total_seconds() < max_age %}
           {% set s2 = states('sensor.deck_temp_humidity_2') | float(none) %}
-          {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_humidity_2.last_changed).total_seconds() < max_age %}
+          {% set s2_ok = s2 is not none and (now() - states.sensor.deck_temp_humidity_2.last_reported).total_seconds() < max_age %}
           {% if s1_ok and s2_ok %}
             {{ ((s1 + s2) / 2) | round(1) }}
           {% elif s1_ok %}
@@ -920,6 +1022,52 @@ template:
           {{ states('sensor.deck_temperature_smoothed') | float(none) is not none }}
         state: >
           {{ states('sensor.deck_temperature_smoothed') | float(none) | round(2) }}
+
+  # =============================================================================
+  # SECTION 16 FORECAST CACHE: V9-E MASTER PRE-COOL (Evidence-Gated Experiment)
+  # =============================================================================
+  # Trigger-based forecast cache for the V9 Exception Master pre-cool
+  # experiment (automations.yaml Sections 2 + 16). Calls weather.get_forecasts
+  # hourly (and on HA start) and caches tomorrow's forecast daily high.
+  # This is the supported pattern — the legacy state_attr(weather.x,
+  # 'forecast') attribute no longer exists; do not regress to it.
+  #
+  # Fallback ladder: tomorrow's forecast temperature → own last value →
+  # 70°F (a value below the 85°F heatwave gate, so a dead forecast source
+  # fails SAFE: pre-cool simply never arms).
+  #
+  # ⚠️ DEPLOY VERIFY: confirm weather.forecast_home exists on the live HA
+  # instance (it is the default Met.no entity). It is not referenced
+  # anywhere else in this repo, so it could not be verified offline.
+  - triggers:
+      - trigger: time_pattern
+        hours: "/1"
+      - trigger: homeassistant
+        event: start
+    actions:
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.forecast_home
+        data:
+          type: daily
+        response_variable: daily_forecast
+    sensor:
+      - name: Precool Tomorrow High
+        unique_id: precool_tomorrow_high
+        device_class: temperature
+        state_class: measurement
+        unit_of_measurement: "°F"
+        availability: >
+          {{ daily_forecast is defined }}
+        state: >
+          {% set f = daily_forecast.get('weather.forecast_home', {}).get('forecast', []) %}
+          {% if f | length > 1 and f[1].temperature is defined %}
+            {{ f[1].temperature | float }}
+          {% elif has_value('sensor.precool_tomorrow_high') %}
+            {{ states('sensor.precool_tomorrow_high') }}
+          {% else %}
+            70
+          {% endif %}
 
 sensor:
   # =============================================================================
@@ -1066,6 +1214,27 @@ input_boolean:
   lr_heating_recovery_boost_active:
     name: "LR Heating Recovery Active"
     icon: mdi:fire-alert
+  # ---------------------------------------------------------------------------
+  # HEAT WAVE OVERRIDE master switch (automations.yaml Section 19).
+  # Turning this ON forces all four Samsung heads to cool / 61°F / turbo for 96h
+  # and gates the comfort/supervisor automations (Section 2 supervisor, Section 5
+  # auto season mode, Section 6 fan destratification). Section 3 hard-safety
+  # gates remain active and untouched. No `initial:` on purpose — an in-progress
+  # override must survive an HA restart (the startup reassert automation
+  # re-checks the deadline and self-clears if it has passed).
+  # ---------------------------------------------------------------------------
+  heat_wave_override:
+    name: "Heat Wave Override"
+    icon: mdi:weather-sunny-alert
+  # ---------------------------------------------------------------------------
+  # SECTION 16 HELPER: V9-E MASTER PRE-COOL nightly abort latch.
+  # No `initial:` on purpose — a tripped latch must survive an HA restart
+  # mid-night (a restart must not silently re-arm an aborted experiment).
+  # The Section 16 reset automation clears it daily at 22:00.
+  # ---------------------------------------------------------------------------
+  precool_aborted_tonight:
+    name: "Precool Aborted Tonight"
+    icon: mdi:snowflake-alert
 
 # =============================================================================
 # SECTION 14 OBSERVABILITY HELPERS (v5.5)
@@ -1090,6 +1259,16 @@ input_text:
     icon: mdi:stop-circle-outline
     initial: ""
     max: 64
+  # ---------------------------------------------------------------------------
+  # SECTION 16 HELPER: V9-E MASTER PRE-COOL abort-reason memory.
+  # No `initial:` on purpose — the forensic reason must survive an HA
+  # restart together with the abort latch above. The Section 16 reset
+  # automation rewrites it to "ready" daily at 22:00.
+  # ---------------------------------------------------------------------------
+  precool_abort_reason:
+    name: "Precool Abort Reason"
+    icon: mdi:snowflake-melt
+    max: 255
 
 input_datetime:
   lr_heating_recovery_boost_last_engage_at:
@@ -1102,3 +1281,261 @@ input_datetime:
     icon: mdi:clock-end
     has_date: true
     has_time: true
+  # ---------------------------------------------------------------------------
+  # HEAT WAVE OVERRIDE absolute deadline (automations.yaml Section 19).
+  # Records when the active 96h override is scheduled to expire. The countdown
+  # of record is timer.heat_wave_override_96h; this absolute timestamp is the
+  # missed-event backstop: if HA is offline when the timer would have fired its
+  # `timer.finished` event, the homeassistant-start reassert compares now() to
+  # this deadline and self-clears the override instead of reasserting it. No
+  # `initial:` — it must persist across restarts like the latch it backstops.
+  # ---------------------------------------------------------------------------
+  heat_wave_override_deadline:
+    name: "Heat Wave Override Deadline"
+    icon: mdi:calendar-clock
+    has_date: true
+    has_time: true
+
+# =============================================================================
+# SECTION 16 HELPERS: V9-E MASTER PRE-COOL (Evidence-Gated Runtime Experiment)
+# =============================================================================
+# Helpers for the V9 Exception Master pre-cool experiment (automations.yaml
+# Sections 2 + 16; docs/v9_v10_goals.md §2.6). YAML-defined to match the
+# Section 14 helper precedent in this file.
+#
+# `initial:` policy (deliberate, two classes):
+#   - TUNABLES (target/floor/drop-limit/max-runtime) declare `initial:` so the
+#     experiment envelope re-asserts its documented thresholds on every HA
+#     restart. Deterministic thresholds keep the telemetry interpretable.
+#   - STATE/MEMORY helpers (runtime counter, previous-master slope memory —
+#     plus the latch and reason above) omit `initial:` so envelope state
+#     survives a mid-night restart. A restart must not refill the runtime
+#     budget or clear a tripped latch. The Section 16 reset automation
+#     re-initializes all of them daily at 22:00.
+#
+# precool_target_temp is a ROOM-TRUTH cutoff (comfort threshold), not the
+# Samsung actuator setpoint. Pre-cool commands keep the 61°F shove doctrine.
+# =============================================================================
+input_number:
+  precool_runtime_counter:
+    name: "Precool Runtime Counter"
+    icon: mdi:timer-outline
+    min: 0
+    max: 720
+    step: 15
+    unit_of_measurement: "min"
+  precool_previous_master_temp:
+    name: "Precool Previous Master Temp"
+    icon: mdi:history
+    min: 50
+    max: 90
+    step: 0.1
+    unit_of_measurement: "°F"
+  precool_target_temp:
+    name: "Precool Target Temp"
+    icon: mdi:thermometer-low
+    min: 62
+    max: 68
+    step: 0.5
+    initial: 64
+    unit_of_measurement: "°F"
+  precool_thermal_floor:
+    name: "Precool Thermal Floor"
+    icon: mdi:thermometer-alert
+    min: 60
+    max: 65
+    step: 0.5
+    initial: 63.5
+    unit_of_measurement: "°F"
+
+# =============================================================================
+# SECTION 19 HELPER: HEAT WAVE OVERRIDE — APPLY SCRIPT
+# =============================================================================
+# ⚠️  This is the ONLY script in this config; it is the actuator for the
+#     operator-driven "Heat Wave Override — 96h" (automations.yaml Section 19).
+#     It is YAML-defined here (top-level `script:`) to match this repo's
+#     inline-helper convention — timers, input_booleans, input_datetimes and
+#     input_numbers are all defined inline in this file rather than in separate
+#     include files, and there is no scripts.yaml include.
+#
+# WHAT IT DOES:
+#   Commands each of the four Samsung mini-split heads to cool / 61°F / turbo,
+#   using a split-command Samsung-safe sequence per head:
+#     1. climate.set_hvac_mode -> cool
+#     2. ~2s delay
+#     3. climate.set_temperature -> temperature: 61 ONLY (no hvac_mode bundled)
+#     4. ~1s delay
+#     5. climate.set_fan_mode -> turbo
+#   Dining/Nest (climate.dining_room) is heat-only and is never touched.
+#
+#   WHY SPLIT (reliability, 2026 live finding): the Samsung/SmartThings
+#   integration can SILENTLY drop the temperature parameter when it is bundled
+#   with hvac_mode in one climate.set_temperature call. Observed live on
+#   climate.living_room_air during the first override: the head went cool+turbo
+#   but kept its stale 79°F target until a follow-up set_temperature with
+#   temperature ONLY corrected it. Issuing set_hvac_mode first, then a short
+#   settle delay, then a temperature-only set_temperature makes the setpoint land
+#   reliably. The same pattern is applied to ALL FOUR heads (not just LR) so the
+#   override uses one consistent, proven command path. The small delays serialize
+#   the cloud round-trips so a later call does not clobber an in-flight earlier one.
+#
+# PER-ROOM SAFETY GUARDS (defense in depth — these do NOT replace Section 3):
+#   The script never blindly fights the hard safety gates. Each head is only
+#   commanded when its canonical room-truth sensor is VALID, and:
+#     - Living Room: only if truth > 60°F  (respects v8_2_lr_runaway_cooling_cutoff)
+#     - Master:      only if truth > 58°F  (respects v8_2_master_emergency_floor)
+#     - Lincoln/Lilly: only if truth is valid (no new permanent low floor invented;
+#                      Section 3 ceiling/failsafe gates and the existing doctrine
+#                      remain the authority for these rooms).
+#   "Valid" means a finite, in-range number (matches the Section 3 / V8.6
+#   truth-validity test: not none/NaN, between -90 and 200). When a guard fails
+#   the script simply skips that head — it never issues a competing command, so
+#   a fired runaway/floor cutoff is left to hold the head off.
+# =============================================================================
+script:
+  heat_wave_override_apply:
+    alias: "Heat Wave Override: Apply cool/61/turbo to all heads"
+    icon: mdi:weather-sunny-alert
+    mode: single
+    sequence:
+      - variables:
+          # Canonical room-truth entities, discovered from the Section 3 safety
+          # automations (v8_2_* cutoffs, v8_6* failsafes). Kept in sync with them.
+          lr_truth: "{{ states('sensor.living_room_temperature_truth') | float(none) }}"
+          master_truth: "{{ states('sensor.master_bedroom_temperature_truth') | float(none) }}"
+          lincoln_truth: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(none) }}"
+          lilly_truth: "{{ states('sensor.lilly_s_room_temperature_truth') | float(none) }}"
+      # ----- LIVING ROOM: command only if truth valid AND > 60°F -----
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = lr_truth %}
+                  {{ x is not none and x == x and x > -90 and x < 200 and x > 60 }}
+            sequence:
+              - action: climate.set_hvac_mode
+                target: { entity_id: climate.living_room_air }
+                data: { hvac_mode: "cool" }
+              - delay: "00:00:02"
+              - action: climate.set_temperature
+                target: { entity_id: climate.living_room_air }
+                data: { temperature: 61 }
+              - delay: "00:00:01"
+              - action: climate.set_fan_mode
+                target: { entity_id: climate.living_room_air }
+                data: { fan_mode: "turbo" }
+      # ----- MASTER: command only if truth valid AND > 58°F -----
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = master_truth %}
+                  {{ x is not none and x == x and x > -90 and x < 200 and x > 58 }}
+            sequence:
+              - action: climate.set_hvac_mode
+                target: { entity_id: climate.master_bedroom_air }
+                data: { hvac_mode: "cool" }
+              - delay: "00:00:02"
+              - action: climate.set_temperature
+                target: { entity_id: climate.master_bedroom_air }
+                data: { temperature: 61 }
+              - delay: "00:00:01"
+              - action: climate.set_fan_mode
+                target: { entity_id: climate.master_bedroom_air }
+                data: { fan_mode: "turbo" }
+      # ----- LINCOLN: command only if truth valid (no invented low floor) -----
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = lincoln_truth %}
+                  {{ x is not none and x == x and x > -90 and x < 200 }}
+            sequence:
+              - action: climate.set_hvac_mode
+                target: { entity_id: climate.lincoln_air }
+                data: { hvac_mode: "cool" }
+              - delay: "00:00:02"
+              - action: climate.set_temperature
+                target: { entity_id: climate.lincoln_air }
+                data: { temperature: 61 }
+              - delay: "00:00:01"
+              - action: climate.set_fan_mode
+                target: { entity_id: climate.lincoln_air }
+                data: { fan_mode: "turbo" }
+      # ----- LILLY: command only if truth valid (no invented low floor) -----
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = lilly_truth %}
+                  {{ x is not none and x == x and x > -90 and x < 200 }}
+            sequence:
+              - action: climate.set_hvac_mode
+                target: { entity_id: climate.lilly_air }
+                data: { hvac_mode: "cool" }
+              - delay: "00:00:02"
+              - action: climate.set_temperature
+                target: { entity_id: climate.lilly_air }
+                data: { temperature: 61 }
+              - delay: "00:00:01"
+              - action: climate.set_fan_mode
+                target: { entity_id: climate.lilly_air }
+                data: { fan_mode: "turbo" }
+
+  # ===========================================================================
+  # SEASON RECONCILE — run at override RELEASE only (Section 19 cleanup paths).
+  # ===========================================================================
+  # While the override is engaged, Section 5 Auto Season Mode is gated off, so
+  # it can miss a deck-truth season transition (its triggers need deck above 72 /
+  # below 45 / 50-68 sustained for 2h). When the override ends,
+  # input_select.hvac_season_mode could therefore be STALE — e.g. the house
+  # entered override in `shoulder` during a heat wave and normal supervision
+  # would resume in the wrong regime.
+  #
+  # This one-shot reconcile re-derives the season from the CURRENT deck truth
+  # using the SAME thresholds as Section 5 (cooling >72, heating <45, shoulder
+  # 50-68), then writes input_select.hvac_season_mode if it differs. It is the
+  # instantaneous form of Section 5's logic (no 2h `for:` debounce) and is called
+  # ONLY from the override-release automations (19.3 offline-expire, 19.4
+  # timer-finished, 19.5 manual-off) BEFORE normal supervision is released — it
+  # is NOT a continuous season writer and never runs while the override is live.
+  #
+  # The 68-72 and 45-50 dead zones (and an invalid/unavailable deck truth) leave
+  # the season UNCHANGED — exactly like Section 5, which has no transition there.
+  heat_wave_override_season_reconcile:
+    alias: "Heat Wave Override: Reconcile season from deck truth"
+    icon: mdi:sun-thermometer
+    mode: single
+    sequence:
+      - variables:
+          deck: "{{ states('sensor.deck_temperature_truth') | float(none) }}"
+          current_season: "{{ states('input_select.hvac_season_mode') }}"
+      - choose:
+          # Only act on a valid deck-truth reading (matches the V8.6 validity test).
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set x = deck %}
+                  {{ x is not none and x == x and x > -90 and x < 200 }}
+            sequence:
+              - variables:
+                  # Same thresholds as Section 5 (v7_5_auto_season_mode):
+                  #   cooling: deck > 72 | heating: deck < 45 | shoulder: 50-68.
+                  # Dead zones (45-50, 68-72) hold the current season.
+                  target_season: >-
+                    {% if deck > 72 %}cooling
+                    {% elif deck < 45 %}heating
+                    {% elif deck > 50 and deck < 68 %}shoulder
+                    {% else %}{{ current_season }}{% endif %}
+              - choose:
+                  # Write only when the regime actually needs to change, so a
+                  # correct season generates no spurious supervisor-retriggering write.
+                  - conditions:
+                      - condition: template
+                        value_template: >-
+                          {{ target_season in ['cooling', 'heating', 'shoulder']
+                             and target_season != current_season }}
+                    sequence:
+                      - action: input_select.select_option
+                        target: { entity_id: input_select.hvac_season_mode }
+                        data: { option: "{{ target_season }}" }

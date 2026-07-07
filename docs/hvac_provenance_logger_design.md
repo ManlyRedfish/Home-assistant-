@@ -76,7 +76,7 @@ Section 3, Section 14, truth-sensor math, or any other control surface.
 | Automation `id`                              | Entities of interest                          | Why relevant to #66                                                                                          |
 | -------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `vtherm_mega_tracker_v5`                     | All four climate entities, Section 14 helpers | The proven Google Sheets sink (`google_sheets.append_sheet` + `!secret google_sheets_config_entry`). Pattern to mirror. |
-| `v7_5_main_supervisor`                       | All climate entities, `timer.manual_hvac_override` | Must not be touched. Reads `manual_hvac_override` as a gate.                                          |
+| `v7_5_main_supervisor`                       | All climate entities, `timer.manual_hvac_override`; runtime entity `automation.v7_5_main_supervisor` | Control logic must not be touched. Reads `manual_hvac_override` as a gate. The provenance logger may observe the automation entity's enabled/disabled state only. |
 | `v7_5_waf_manual_override`                   | All four climate entities (`temperature` attr) | **Validates `trigger.context.parent_id is none` works on this stack.** Starts `timer.manual_hvac_override` when an operator nudges a setpoint. |
 | `v8_3_hvac_transition_log`                   | All four climate entities (state changes)     | Logbook-only diagnostic logger. Provenance logger should mirror its `mode: parallel, max: 20` shape.         |
 | `v8_4_lr_heating_recovery_boost_engage`      | `climate.living_room_air`, `input_boolean.lr_heating_recovery_boost_active`, `timer.lr_heating_recovery_boost_max_runtime` | Boost path. Must not be touched. Provenance logger will *observe* its writes, not modify it. |
@@ -87,6 +87,7 @@ Section 3, Section 14, truth-sensor math, or any other control surface.
 
 - `climate.living_room_air` — state (`heat`/`cool`/`off`) and `temperature` attribute.
 - `timer.manual_hvac_override` — UI-defined helper (not declared in `configuration.yaml`); state changes between `idle` and `active`.
+- `automation.v7_5_main_supervisor` — verified live Home Assistant entity id for Section 2's main supervisor. This runtime entity id is documented explicitly and must not be assumed from the YAML `id:` alone.
 - `input_boolean.lr_heating_recovery_boost_active` — declared `configuration.yaml:1066`.
 - (Out of first-pass scope) `climate.master_bedroom_air`, `climate.lincoln_air`, `climate.lilly_air`, `timer.lr_heating_recovery_boost_max_runtime`.
 
@@ -193,6 +194,9 @@ hint string only**, not a control input. Suggested values:
 - `"v7_5_main_supervisor"` when the changed entity is a climate setpoint
   or mode and `origin_kind = automation_or_script` and the time matches
   the `:00 / :15 / :30 / :45` supervisor cadence.
+- `"v7_5_main_supervisor"` when the changed entity is
+  `automation.v7_5_main_supervisor`, so enable/disable transitions are
+  visible in `hvac_provenance_log` even when they are operator/admin actions.
 - `"v8_4_lr_heating_recovery_boost_engage"` when
   `climate.living_room_air` state goes to `heat` with setpoint moving to
   77 and `origin_kind = automation_or_script`.
@@ -339,9 +343,11 @@ it lands, it must satisfy all of the following:
 - `automations.yaml` Section 14
   (`v8_4_lr_heating_recovery_boost_engage`,
   `v8_4_lr_heating_recovery_boost_release`).
-- `automations.yaml` Section 1 — leave `vtherm_mega_tracker_v5`
-  untouched. The provenance logger does not belong inside the v5.5
-  wide-table schema.
+- `automations.yaml` Section 1 — do not put provenance-event logic inside
+  `vtherm_mega_tracker_v5`. The narrow exception adopted after the June 3–5
+  cold-experiment misclassification is adding forensic-only wide-row fields
+  for supervisor enabled state and manual-override timer state/remain time;
+  those fields must never feed control behavior.
 - ESPHome YAML.
 - Any truth-sensor template.
 - Any threshold (64 °F engage, 67 °F truth_cap, 90-min boost timer,

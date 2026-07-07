@@ -109,6 +109,60 @@ honors the
 [`./hvac_provenance_logger_design.md`](./hvac_provenance_logger_design.md)
 forbidden-path discipline: tab is HA-write-only; no automation reads it.
 
+### 2.6 V9 Exception: Evidence-Gated Master Pre-Cool Runtime Experiment
+
+**Status: LIVE (runtime exception).** This is the single sanctioned V9
+runtime experiment with new control behavior. It is an **exception** to the
+V9 simplification posture, not a reopening of comfort aggression, and it is
+**not** the retired Targeted Pre-Chill (§3): no 17:00 trigger, no Turbo, no
+new actuator setpoint.
+
+Telemetry evidence (`VTherm_Launch_Data_v5_5`, May–June 2026): during the
+May 17–20 heatwave (deck highs 90–95°F) Master truth reached 76.1°F inside
+the sleep window and needed until ~02:00 to pull down into the sleep band
+(78°F at 18:00 on May 18); the June 3–5 heatwave repeated the pattern. The
+operator-suppressed and manual windows documented in
+[`./telemetry_confounders.md`](./telemetry_confounders.md) (canonical:
+Apr 28–May 1; Master manual-cool on Jun 2 17:05) were excluded as
+contaminated evidence.
+
+Shape (Master Bedroom only; `automations.yaml` Section 2 + Section 16,
+`configuration.yaml` Section 16 helpers + forecast cache):
+
+- **Arming:** 02:00–forecast-conditioned window end (13:00 for ≥90°F forecast,
+  11:00 for 85–89°F, hard backstop 14:00) AND cached forecast high for tomorrow
+  (`sensor.precool_tomorrow_high`, via `weather.get_forecasts`) ≥ 85°F AND
+  nightly abort latch off. Away mode and non-cooling/shoulder seasons
+  disarm it. The supervisor's `timer.manual_hvac_override == idle` gate is
+  inherited, so the manual-override contract (§7) holds from inception.
+- **Command:** Master truth above `input_number.precool_target_temp`
+  (default 64°F, room-truth cutoff) → cool with the unchanged 61°F shove
+  command setpoint; at/below cutoff → off.
+- **Self-termination (guards, evaluated before any command each tick):**
+  config invariant (`precool_target_temp` must exceed
+  `precool_thermal_floor` — the helper ranges overlap, so an inverted pair
+  aborts with a recorded reason instead of silently disarming), thermal
+  floor (`precool_thermal_floor`, 63.5°F — the only thermal guard). Slope
+  and runtime guards removed per
+  [`docs/analysis/v9e_precool_revision_spec.md`](./analysis/v9e_precool_revision_spec.md)
+  §2/§3 (sensor quantization caused false slope aborts; window-end is the
+  wall-clock ceiling). Runtime counter kept as telemetry only (cap 720 min).
+  Any trip latches
+  `input_boolean.precool_aborted_tonight` with a reason in
+  `input_text.precool_abort_reason` and falls back to the standard V8.3
+  Master sleep deadband for the rest of the night. A 22:00 reset automation
+  re-arms the envelope daily.
+- **Unchanged:** Eric's deadbands for every non-pre-cool tick, Lincoln /
+  Lilly / LR / Nest paths, Section 3 safety gates (58°F Master floor
+  included), Section 14, solar/shade logic, Samsung guardrails, and the
+  Sleep Priority Interlock.
+- **Evidence out:** six `Precool_*` columns in the Section 1 export (global
+  state only). Worksheet header must be extended before deploy.
+
+The experiment is judged on telemetry: if guards trip repeatedly or the
+pre-cooled nights show no sleep-window improvement, the exception is
+removed, not tuned hotter.
+
 ## 3. V9 Non-Goals
 
 V9 is **not**:
@@ -116,7 +170,11 @@ V9 is **not**:
 - New comfort branches or new aggressive setpoints.
 - Targeted Pre-Chill (aggressive 61°F Master / Turbo at 17:00). Per
   [`./6_proposals.md`](./6_proposals.md) this is deferred until forensic
-  recurrence evidence supports it.
+  recurrence evidence supports it. (The §2.6 evidence-gated pre-cool
+  exception is a different, narrower shape — overnight/morning window
+  with daytime hold, forecast gate, forecast-conditioned release, hard
+  guard envelope (thermal floor + config invariant) — and does not
+  reopen this item.)
 - Generic HVAC best-practices reshaping of the deadband contract.
 - Multi-head capacity arbitration without telemetry proof. Already retired
   per [`./3_regression_appendix.md`](./3_regression_appendix.md) §4.5.
@@ -317,6 +375,10 @@ This direction is delivered in phases.
   threshold, or test changes.
 
 ### 11.2 Later PRs (deferred)
+
+The canonical tripwire for deferred, blocked, and retired runtime proposals is
+[`./deferred_until_telemetry.md`](./deferred_until_telemetry.md). Keep this
+section as a phase overview rather than duplicating the register.
 
 - Provenance fan-out (§2.5) — observability-only YAML, scoped to one
   trigger surface at a time.

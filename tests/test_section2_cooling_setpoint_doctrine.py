@@ -58,7 +58,7 @@ def _extract_cooling_variable_templates(actions):
                                 'm_setpoint', 'm_off_at', 'm_on_at',
                                 'l_setpoint', 'l_off_at', 'l_on_at',
                                 'ly_setpoint', 'ly_off_at', 'ly_on_at',
-                                'lr_setpoint', 'lr_off_at', 'lr_on_at',
+                                'lr_setpoint', 'lr_conservation', 'lr_off_at', 'lr_on_at',
                             }:
                                 templates[k] = v
             break
@@ -67,7 +67,7 @@ def _extract_cooling_variable_templates(actions):
         'm_setpoint', 'm_off_at', 'm_on_at',
         'l_setpoint', 'l_off_at', 'l_on_at',
         'ly_setpoint', 'ly_off_at', 'ly_on_at',
-        'lr_setpoint', 'lr_off_at', 'lr_on_at',
+        'lr_setpoint', 'lr_conservation', 'lr_off_at', 'lr_on_at',
     } - templates.keys()
     assert not missing, f"Missing expected Section 2 cooling variable templates: {sorted(missing)}"
     return templates
@@ -76,17 +76,18 @@ def _extract_cooling_variable_templates(actions):
 def test_section2_cooling_setpoint_and_threshold_doctrine():
     templates = _extract_cooling_variable_templates(_load_main_supervisor_actions())
 
-    assert templates['m_setpoint'] == "{{ 74 if away else (61 if is_master_sleep else 66) }}"
-    assert templates['l_setpoint'] == "{{ 74 if away else 66 }}"
-    assert templates['ly_setpoint'] == "{{ 74 if away else 66 }}"
-    assert templates['lr_setpoint'] == "{{ 74 if away else 66 }}"
+    assert templates['m_setpoint'] == "{{ 61 }}"
+    assert templates['l_setpoint'] == "{{ 61 }}"
+    assert templates['ly_setpoint'] == "{{ 61 }}"
+    assert templates['lr_setpoint'] == "{{ 61 }}"
 
     assert templates['m_off_at'] == "{{ 74 if away else (62 if is_master_sleep else 68) }}"
     assert templates['m_on_at'] == "{{ 76 if away else (66 if is_master_sleep else 72) }}"
 
     assert templates['l_off_at'] == "{{ 74 if away else 68 }}"
     assert templates['l_on_at'] == "{{ 76 if away else 72 }}"
-    assert templates['ly_off_at'] == "{{ 74 if away else 68 }}"
-    assert templates['ly_on_at'] == "{{ 76 if away else 72 }}"
-    assert templates['lr_off_at'] == "{{ 74 if away else 68 }}"
-    assert templates['lr_on_at'] == "{{ 76 if away else 72 }}"
+    assert templates['ly_off_at'] == "{{ 74 if away else (66 if lilly_heatwave_sleep_guard and is_lilly_sleep else 68) }}"
+    assert templates['ly_on_at'] == "{{ 76 if away else (70 if lilly_heatwave_sleep_guard and is_lilly_sleep else 72) }}"
+    assert templates['lr_conservation'] == "{{ away or lr_night_primary }}"
+    assert templates['lr_off_at'] == "{{ 74 if lr_conservation else 68 }}"
+    assert templates['lr_on_at'] == "{{ 76 if lr_conservation else 72 }}"

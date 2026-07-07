@@ -90,6 +90,7 @@ The live control runtime includes:
   - All rooms: setpoint 68, off ≤68, on >72
   - Master sleep window (6pm–6am): setpoint 63, off ≤62, on >66
   - Away: setpoint 74, off ≤74, on >76
+  - **Lincoln/Lilly bedtime exception — APPROVED, NOT YET LIVE:** the kids' cooling shown above is still 68/72 at all hours in the live file. An operator-approved bedtime (18:00–07:00) 66–70 room-truth deadband with a `cool`/`61 °F`/`turbo` actuator is recorded in §7.10 and is not yet implemented in `automations.yaml`.
 - **Heating deadband logic (V8.3):** The live heating doctrine uses:
   - Heating/Shoulder daytime: top-anchored deadband (target 68, off ≥68, on <64) to prevent short-cycling.
   - Bedtime (18:00-22:00, non-away): LR target drops to 64, deadband 62-64°F, to passively reduce stack-effect upstairs heating.
@@ -166,7 +167,9 @@ The live file explicitly identifies:
 `configuration.yaml` currently describes both MSR-2 DPS310 sensors as removed from truth because of hardware failure. That is the active runtime position in the config file, even if later operational notes may nuance the exact diagnosis. Runtime truth comes from what the live config currently excludes, not from retrospective reinterpretation.
 
 ### 7.6 Operator-Suppressed Telemetry Windows
-On occasion the operator has manually disabled `automation.v7_5_main_supervisor` (Section 2) during disrupted-sleep nights/days. Section 1 telemetry continues to write rows in those windows, but the rows reflect operator-managed state, not Section 2 doctrine. Apr 28–May 1 (2026) is the canonical contaminated window: three consecutive days of `LR_HP_Runtime_Today_Hrs = 0.00` with LR truth dropping to 60.3°F while LR was pinned `off@68`. Cold-drift, zero-runtime, or `Section 2 did/did not do X` claims drawn from operator-suppressed windows are category errors. The classification rules and the canonical contaminated window are documented in `docs/telemetry_confounders.md`. No runtime change is required; this is a forward-analysis guardrail, addressed against Issue #31.
+On occasion the operator has manually disabled `automation.v7_5_main_supervisor` (Section 2) during disrupted-sleep nights/days. The verified live Home Assistant entity id is `automation.v7_5_main_supervisor`; this is documented explicitly because HA automation `entity_id`s are runtime entities and must not be inferred solely from the YAML `id:`. Section 1 telemetry continues to write rows in those windows, but the rows reflect operator-managed state, not Section 2 doctrine. Apr 28–May 1 (2026) is the canonical contaminated window: three consecutive days of `LR_HP_Runtime_Today_Hrs = 0.00` with LR truth dropping to 60.3°F while LR was pinned `off@68`. Cold-drift, zero-runtime, or `Section 2 did/did not do X` claims drawn from operator-suppressed windows are category errors. The classification rules and the canonical contaminated window are documented in `docs/telemetry_confounders.md`.
+
+V5.5 rows now carry three forensic-only fields for this classification problem: `Supervisor_Enabled` (`true` when `automation.v7_5_main_supervisor` is `on`, `false` when it is `off`, blank when unknown/unavailable), `Manual_Override_State` (the full state of `timer.manual_hvac_override`), and `Manual_Override_Remaining_Sec` (seconds until the timer's `finishes_at`, blank unless active and never negative). These fields are evidence outputs only. They are not read by Section 2, Section 3, Section 14, truth calculations, setpoints, thresholds, or any control branch.
 
 ### 7.7 Apollo / MSR Observability Boundary
 Apollo / MSR data (mmWave presence, CO2, DPS310 temperature/pressure, ESP temperature) is observability-only. MSR entities are exported through Section 1 (`vtherm_mega_tracker_v5` → `VTherm_Launch_Data_v5_5`) for forensic analysis but do not feed VTherm room truth, setpoints, the Section 2 supervisor, Section 3 safety gates, Section 7.5 ceiling gates, Section 14 LR boost, or any Samsung guardrail.
@@ -242,6 +245,126 @@ No runtime classification change is selected in this document, and no runtime PR
 - The 76°F ceiling gate is comfort, not equipment protection. It correctly gates on override.
 - Samsung Auto Guardrail (Section 8) and Ghost Assassin (Section 4) are both integration-anomaly gates protecting against known device misbehavior, but they disagree on whether to gate on override. Picking a consistent rule is V9 doctrine work, not a runtime change.
 - Section 14 boost release is the canonical example of a comfort-policy automation that *yields* to manual intent rather than fighting it: when the override timer goes `active`, release fires and the release path skips the climate-off command if override is still active.
+
+### 7.9 Planned Comfort-Profile and Truth-Confidence Model (NOT YET LIVE)
+
+This subsection records *planned* doctrine from
+[`comfort_band_and_truth_confidence_plan.md`](comfort_band_and_truth_confidence_plan.md)
+(accepted in PR #122). **None of it is live runtime.** It is documented here so
+the runtime boundary is explicit and future agents do not mistake the plan for
+implementation. The live control layer remains V8.3 and the live truth layer
+remains V3.1, exactly as described in §5 and §6 above.
+
+**Comfort bands, not thermostat targets.** Moose House controls with comfort
+bands / deadbands. The system holds while room truth is inside the active band
+and acts only on band exit. The commanded Samsung / mini-split setpoint is an
+actuator demand, not comfort truth — it already is in the live supervisor
+(`automations.yaml` Section 2 comments), and the planned model keeps it that
+way. Samsung's preferred 72–75°F is not comfort truth for this house.
+
+**Runtime shove command scope.** Section 2 now uses Samsung saturation command
+setpoints on existing mini-split command paths only: cooling commands shove to
+61°F and heating commands shove to 79°F. The room is not intended to reach those
+values; the existing Moose House room-truth start/stop thresholds still decide
+when to run and when to shut down. Runtime house-wide arbitration,
+destratification changes, comfort profiles, watchdog changes, and live truth
+confidence/status sensors remain deferred.
+
+**Comfort bands are preferences; safety gates are physical protection.** Comfort
+bands are tunable household preference. Section 3 safety gates (LR runaway
+60°F, Master emergency floor 58°F) are absolute equipment protection and stay
+separate. A comfort band may never be defined as a safety gate, and a comfort
+threshold may never alias a safety floor. The 76°F ceiling is a comfort ceiling
+(see §7.8 doctrine notes), not a safety invariant.
+
+**Planned comfort profiles (single global selector first; per-room deferred):**
+
+| Profile | Intent |
+|---|---|
+| `eric_cold` | Meat-locker; coldest comfort profile; Eric's default preference. |
+| `family_normal` | Normal household comfort. Closest to the current live bands. |
+| `sleep_cold` | Sleep-window cold profile; room-specific (Master) application deferred. |
+| `away_relaxed` | House protection / energy savings, not comfort optimization. |
+| `safety_only` | Comfort bands disabled; only Section 3 emergency cutoffs and structural protection remain. |
+
+Draft band numbers in the plan doc are non-binding. A band-number change is a
+separate, evidence-gated runtime PR per [`v9_v10_goals.md`](v9_v10_goals.md) §10.
+
+**Planned truth-confidence outputs (per room, not yet built):**
+`sensor.<room>_temperature_truth_confidence` (numeric) and
+`sensor.<room>_temperature_truth_status` with the four-state ladder:
+
+| Status | Rule |
+|---|---|
+| `healthy` | 2+ valid **primary** sources (Matter / Bluetooth / SmartThings) fresh and within tolerance. |
+| `degraded` | exactly one valid primary source, or primary + fallback only. |
+| `fallback` | only Samsung/mini-split internal or held-last-good remains. **Never `healthy`.** |
+| `failed` | no usable source. |
+
+Source classes: **primary** = human-space Matter / BT / SmartThings (current
+weight 0.9–1.0); **fallback** = Samsung internal thermistor (weight 0.20,
+always biased); **experimental / observability-only** = Apollo / MSR / ESP
+temperature, DPS310, CO2, radar, pressure — these never feed the weighted value
+and never raise confidence to `healthy`, preserving the §7.7 observability
+boundary.
+
+**Three invariants that are doctrine now (runtime deferred):**
+
+1. Samsung/mini-split-only truth must never be `healthy` (today's
+   `availability` cliff counts the Samsung internal as a valid source, which is
+   the gap this model closes).
+2. An unavailable ESP/Apollo source must not equal total truth failure when
+   Matter / Bluetooth / SmartThings remain available — partial degradation must
+   not collapse into `failed` (consistent with Startup Canon §4 and §6).
+3. A stable temperature sensor must not be treated as stale merely because its
+   value did not change. **LANDED:** the live truth templates now measure
+   freshness by report time (`last_reported`) instead of value-change time
+   (`last_changed`), so an unchanging-but-reporting sensor is no longer
+   false-staled. The 2-hour (`max_age = 7200`) temperature/humidity window and
+   the 3-hour (`10800`) CO2 window are unchanged; only the freshness clock
+   moved. `last_updated` was rejected as the clock because it also fails to
+   advance when a stable sensor reports an unchanged value with unchanged
+   attributes. `automations.yaml` still uses `climate.*.last_changed` for
+   state-duration (how long a unit has held a mode) — that is value-transition
+   measurement, not reporting freshness, and is correctly left unchanged.
+
+**Regression guardrails:**
+`tests/test_comfort_band_safety_separation.py` locks the comfort-vs-safety
+separation and the 60°F/58°F floors; `tests/test_truth_confidence_model_contract.py`
+locks the four-state ladder as a pure model contract and asserts the live
+config uses report-time freshness; `tests/test_truth_freshness_report_time.py`
+locks the freshness clock (config uses `last_reported`, never `last_changed`;
+`automations.yaml` untouched; CO2/temperature windows and weights preserved).
+
+### 7.10 Lincoln/Lilly Bedtime Cooling Contract (APPROVED — PENDING IMPLEMENTATION)
+
+**Status:** Operator-approved 2026-06-07. **NOT YET LIVE.** The live supervisor still
+runs the legacy all-hours kids cooling deadband (setpoint 68, off ≤68, on >72; see
+§6.1). This subsection records the exact approved target behavior and explicitly
+separates it from current live behavior. Implementation is a separate Section 2 PR;
+see `docs/kids-bedroom-overnight-cooling-plan.md`.
+
+**Currently live (kids, all hours):** cooling-season `cool@61 / off≤68 / on>72`;
+shoulder-night and shoulder-day mild/cold branches bulk-force the kids off.
+
+**Approved target (Lincoln & Lilly, bedtime window 18:00–07:00, cooling AND shoulder):**
+- Room-truth deadband: engage cooling at room truth **≥ 70 °F**; release at
+  **≤ 66 °F**; hold off while 66–70 °F. Lincoln and Lilly **independent**.
+- Actuator during an active pull-down: **`cool` / `61 °F` / `turbo`**
+  (intentional/required; moderate setpoints scale back prematurely and can run
+  ~18 h without pulling the room down).
+- Bedtime logic (per room):
+  - `room_truth ≥ 70` → cool @ 61, turbo
+  - `room_truth ≤ 66` → off
+  - else if current mode is `cool` → continue cool @ 61, turbo  *(this is what
+    prevents a `cooling→shoulder` flip from interrupting an active pull-down
+    before 66 °F)*
+  - else → off
+- Season rule: the same 66–70 pull-down applies in cooling and shoulder; shoulder
+  bulk-off must not override it.
+- Out of scope: daytime (07:00–18:00) kids behavior stays 68–72; heating-season
+  kids behavior unchanged; Section 2 remains the sole comfort writer; manual
+  override and Section 3 safety unchanged; no new controller or helpers.
 
 ## 8. Runtime Change Rules
 

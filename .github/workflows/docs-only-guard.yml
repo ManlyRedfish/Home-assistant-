@@ -1,0 +1,48 @@
+name: Docs-only PR guard
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  docs-only-scope:
+    name: Enforce docs-only file scope
+    runs-on: ubuntu-latest
+
+    steps:
+      # Security boundary: pull_request_target runs the workflow from the base
+      # branch. Check out only the trusted base SHA; never execute code from the
+      # pull request head in this job.
+      - name: Check out trusted base revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Collect complete pull request changed-file list
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --paginate \
+            "repos/${GH_REPO}/pulls/${PR_NUMBER}/files?per_page=100" \
+            --jq '.[].filename' > changed-files.txt
+          echo "Changed files:"
+          cat changed-files.txt
+
+      - name: Enforce docs-only label scope
+        run: >-
+          python tools/docs_only_guard.py
+          --event "$GITHUB_EVENT_PATH"
+          --changed-files changed-files.txt

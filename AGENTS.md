@@ -4,6 +4,42 @@ IMPORTANT:
 This is NOT a normal thermostat setup.
 This is an evidence-driven environmental control research system built around telemetry, regression tracking, and iterative experimentation.
 
+---
+
+## Current Operator Decisions (HIGHEST PRIORITY — read first)
+
+Explicit, dated operator decisions override older general doctrine when they are
+narrowly scoped. A scoped operator decision is authoritative for its room/time
+slice even if a general rule elsewhere (canonical docs, older deadband doctrine)
+still describes the prior behavior. When you find such a decision, update the
+affected canonical docs to record the exception; do not treat the older general
+rule as a reason to ignore or "correct" the decision.
+
+### 2026-06-07 — Lincoln & Lilly bedtime cooling (66–70 room-truth deadband)
+
+- **Scope:** `climate.lincoln_air` and `climate.lilly_air`, **bedtime window
+  18:00–07:00**, in **cooling and shoulder** seasons. Daytime (07:00–18:00) and
+  heating-season behavior are unchanged.
+- **Room-truth deadband:** engage cooling at room truth **≥ 70 °F**, release at
+  **≤ 66 °F**, hold off between 66–70 °F. Lincoln and Lilly operate
+  **independently**.
+- **Actuator during an active pull-down:** **`cool` / `61 °F` / `turbo`** —
+  intentional and required. Moderate Samsung setpoints let the head scale back
+  prematurely and can run ~18 h without effectively pulling the room down.
+- **Season rule:** a `cooling → shoulder` flip must **not** interrupt an active
+  pull-down before the room reaches 66 °F; shoulder bulk-off logic must not
+  override this contract.
+- **This is a room/time-specific exception, NOT a global deadband redesign.** The
+  older "all non-Master rooms 68–72 at all hours" rule and the "do not tighten a
+  deadband from a complaint" caution remain valid outside this scope. Section 2
+  stays the sole comfort-policy writer; no new controller/helpers; manual override
+  and Section 3 safety unchanged.
+- **Status: approved, pending implementation** (planning/docs only; live YAML
+  still runs the legacy 68–72). See `docs/kids-bedroom-overnight-cooling-plan.md`,
+  Doc 1 §5.1, and Doc 5 §7.10.
+
+---
+
 You are being given a production automations.yaml file.
 DO NOT rewrite the entire file unless explicitly requested.
 Preserve all unrelated systems and sections.
