@@ -172,12 +172,16 @@ def test_waf_manual_override_has_mode_and_setpoint_triggers(automations_data):
 
     conditions = waf.get("condition", [])
     assert isinstance(conditions, list), "WAF manual override conditions must be a list"
+    # PR #156 corrected the trigger context path from `trigger.context` (which
+    # does not exist on HA 2024+ state-trigger dicts and was causing 1,029+
+    # UndefinedError failures) to `trigger.to_state.context`. The manual-only
+    # guard doctrine is unchanged; only the accessor path was fixed.
     assert any(
         isinstance(c, dict)
         and c.get("condition") == "template"
-        and c.get("value_template") == "{{ trigger.context.parent_id is none }}"
+        and c.get("value_template") == "{{ trigger.to_state.context.parent_id is none }}"
         for c in conditions
-    ), "Expected manual-only guard condition '{{ trigger.context.parent_id is none }}'"
+    ), "Expected manual-only guard condition '{{ trigger.to_state.context.parent_id is none }}'"
 
     actions = waf.get("action", [])
     assert isinstance(actions, list), "WAF manual override actions must be a list"
