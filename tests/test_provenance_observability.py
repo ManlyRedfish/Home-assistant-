@@ -54,9 +54,7 @@ MooseProvenanceLoader.add_constructor("!input", _input)
 MooseProvenanceLoader.add_constructor(
     "!include_dir_merge_list", _include_dir_merge_list
 )
-MooseProvenanceLoader.add_constructor(
-    "!include_dir_named", _include_dir_merge_list
-)
+MooseProvenanceLoader.add_constructor("!include_dir_named", _include_dir_merge_list)
 
 
 PROVENANCE_ID = "v8_5_hvac_provenance_logger"
@@ -93,9 +91,7 @@ def provenance_logger(automations_data):
     for auto in automations_data:
         if auto.get("id") == PROVENANCE_ID:
             return auto
-    pytest.fail(
-        f"Provenance logger automation with id '{PROVENANCE_ID}' not found"
-    )
+    pytest.fail(f"Provenance logger automation with id '{PROVENANCE_ID}' not found")
 
 
 @pytest.fixture(scope="module")
@@ -178,12 +174,10 @@ def _provenance_variables_dict(provenance_logger):
 def test_provenance_logger_exists(provenance_logger):
     """Automation `v8_5_hvac_provenance_logger` exists with mode=parallel, max=20."""
     assert provenance_logger.get("id") == PROVENANCE_ID
-    assert provenance_logger.get("mode") == "parallel", (
-        "Provenance logger must declare mode: parallel"
-    )
-    assert provenance_logger.get("max") == 20, (
-        "Provenance logger must declare max: 20"
-    )
+    assert (
+        provenance_logger.get("mode") == "parallel"
+    ), "Provenance logger must declare mode: parallel"
+    assert provenance_logger.get("max") == 20, "Provenance logger must declare max: 20"
 
 
 def test_provenance_logger_uses_google_sheets_secret(provenance_logger):
@@ -396,6 +390,45 @@ def test_provenance_logger_does_not_mutate_control(provenance_logger):
     )
 
 
+def _contains_string_reference(value, needle):
+    if isinstance(value, dict):
+        return any(
+            _contains_string_reference(key, needle)
+            or _contains_string_reference(item, needle)
+            for key, item in value.items()
+        )
+
+    if isinstance(value, list):
+        return any(_contains_string_reference(item, needle) for item in value)
+
+    if isinstance(value, str):
+        return needle in value
+
+    return False
+
+
+def test_contains_string_reference_helper():
+    """Verify that _contains_string_reference correctly finds strings in nested structures."""
+    needle = "find_me"
+
+    # Should find in string values
+    assert _contains_string_reference("find_me_here", needle) is True
+
+    # Should find in dict values
+    assert _contains_string_reference({"key": "yes_find_me"}, needle) is True
+
+    # Should find in dict keys
+    assert _contains_string_reference({"find_me_key": "value"}, needle) is True
+
+    # Should find in nested lists
+    assert _contains_string_reference(["a", ["b", "c_find_me_d"]], needle) is True
+
+    # Should ignore non-strings correctly
+    assert _contains_string_reference(123, needle) is False
+    assert _contains_string_reference({"key": 456}, needle) is False
+    assert _contains_string_reference(True, needle) is False
+
+
 def test_no_automation_reads_hvac_provenance_log(
     automations_data, automations_yaml_text
 ):
@@ -408,9 +441,7 @@ def test_no_automation_reads_hvac_provenance_log(
     # disallowed.
     occurrences = [
         m.start()
-        for m in re.finditer(
-            re.escape(PROVENANCE_WORKSHEET), automations_yaml_text
-        )
+        for m in re.finditer(re.escape(PROVENANCE_WORKSHEET), automations_yaml_text)
     ]
     assert occurrences, (
         f"Expected at least one mention of '{PROVENANCE_WORKSHEET}' in "
@@ -422,8 +453,7 @@ def test_no_automation_reads_hvac_provenance_log(
     for auto in automations_data:
         if auto.get("id") == PROVENANCE_ID:
             continue
-        rendered = yaml.safe_dump(auto, default_flow_style=False)
-        assert PROVENANCE_WORKSHEET not in rendered, (
+        assert not _contains_string_reference(auto, PROVENANCE_WORKSHEET), (
             f"Automation '{auto.get('id')}' references "
             f"'{PROVENANCE_WORKSHEET}'. The provenance tab must remain "
             "HA-write-only — no other automation may read or mention it."
