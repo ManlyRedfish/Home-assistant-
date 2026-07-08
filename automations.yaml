@@ -425,6 +425,9 @@
         lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
         lilly_temp: "{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}"
         is_night: "{{ now().hour >= 22 or now().hour < 6 }}"
+        # Kids' bedtime window per 2026-06-07 operator decision (AGENTS.md).
+        # Applies to Lincoln + Lilly in cooling and shoulder seasons only.
+        kids_bedtime: "{{ now().hour >= 18 or now().hour < 7 }}"
         season: "{{ states('input_select.hvac_season_mode') }}"
         lr_night_primary: "{{ is_state('input_boolean.night_mode_lr_primary', 'on') }}"
         away: "{{ is_state('input_boolean.away_mode', 'on') }}"
@@ -542,6 +545,76 @@
           data:
             value: "{{ [[master_temp, 50] | max, 90] | min }}"
 
+    # =================================================================
+    # KIDS BEDTIME COOLING (2026-06-07 operator decision)
+    # =================================================================
+    # Lincoln & Lilly, independent per room, during 18:00-07:00 in
+    # cooling and shoulder seasons: engage cool@61/turbo at room truth
+    # >= 70, release to off at <= 66, hold state between 66-70 (continue
+    # cool while pulling down, stay off while resting). Season-agnostic
+    # across cooling/shoulder — a cooling->shoulder flip mid-pull-down
+    # keeps commanding cool until <= 66. Outside this window the legacy
+    # cooling / shoulder Lincoln+Lilly branches run unchanged, gated on
+    # `not kids_bedtime` further below so we do not double-command.
+    #
+    # Master / LR / Dining / Nest / heating are untouched here.
+    # Section 3 safety floors and the manual_hvac_override / heat_wave
+    # override gates on the supervisor above are all preserved as-is.
+    #
+    # See docs/kids-bedroom-overnight-cooling-plan.md v6 and AGENTS.md
+    # "Current Operator Decisions". Fan turbo is explicit and required
+    # (moderate setpoints stall ~18h). #155 lilly_heatwave_sleep_guard
+    # remains present but is a no-op during bedtime — the two overlap
+    # only inside 19:00-07:00, and this block owns that window; the
+    # guard's daytime slice (never — its is_lilly_sleep is 19:00-07:00)
+    # is empty. Flag #155 for follow-up cleanup outside this PR.
+    # =================================================================
+    - if:
+        - condition: template
+          value_template: "{{ kids_bedtime and season in ['cooling', 'shoulder'] }}"
+      then:
+        - variables:
+            kb_lincoln_current: "{{ states('climate.lincoln_air') }}"
+            kb_lilly_current: "{{ states('climate.lilly_air') }}"
+            # cool = engage at >=70, or continue while pulling down (66<truth<70 & currently cool).
+            # Anything else (truth<=66, or 66<truth<70 & not currently cool) => off.
+            kb_lincoln_cool: >-
+              {{ lincoln_temp >= 70
+                 or (lincoln_temp > 66 and kb_lincoln_current == 'cool') }}
+            kb_lilly_cool: >-
+              {{ lilly_temp >= 70
+                 or (lilly_temp > 66 and kb_lilly_current == 'cool') }}
+        # Lincoln (independent)
+        - if:
+            - condition: template
+              value_template: "{{ kb_lincoln_cool }}"
+          then:
+            - action: climate.set_temperature
+              target: { entity_id: climate.lincoln_air }
+              data: { hvac_mode: "cool", temperature: 61 }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.lincoln_air }
+              data: { fan_mode: "turbo" }
+          else:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lincoln_air }
+              data: { hvac_mode: "off" }
+        # Lilly (independent)
+        - if:
+            - condition: template
+              value_template: "{{ kb_lilly_cool }}"
+          then:
+            - action: climate.set_temperature
+              target: { entity_id: climate.lilly_air }
+              data: { hvac_mode: "cool", temperature: 61 }
+            - action: climate.set_fan_mode
+              target: { entity_id: climate.lilly_air }
+              data: { fan_mode: "turbo" }
+          else:
+            - action: climate.set_hvac_mode
+              target: { entity_id: climate.lilly_air }
+              data: { hvac_mode: "off" }
+
     - choose:
         # =============================================
         # BRANCH 1: COOLING SEASON (V8.2 Deadband)
@@ -602,29 +675,44 @@
 
             # ---------------------------------------------------------
             # LINCOLN'S ROOM
-            # All hours: 66°F set / off ≤68 / on >72
-            # Away:      74°F set / off ≤74 / on >76
+            # Daytime (07:00-18:00): 61°F set / off ≤68 / on >72
+            # Away:                  74°F set / off ≤74 / on >76
+            # Bedtime (18:00-07:00): OWNED by the "KIDS BEDTIME COOLING"
+            #                        block above (66/70 deadband). The
+            #                        `not kids_bedtime` guard below keeps
+            #                        this legacy command silent so the two
+            #                        writers never race.
             # ---------------------------------------------------------
             - variables:
                 l_setpoint: "{{ 61 }}"
                 l_off_at: "{{ 74 if away else 68 }}"
                 l_on_at: "{{ 76 if away else 72 }}"
                 l_current: "{{ states('climate.lincoln_air') }}"
-            - action: climate.set_temperature
-              target: { entity_id: climate.lincoln_air }
-              data:
-                hvac_mode: >-
-                  {% if lincoln_temp > l_on_at %}cool
-                  {% elif lincoln_temp <= l_off_at %}off
-                  {% elif l_current == 'cool' %}cool
-                  {% else %}off{% endif %}
-                temperature: "{{ l_setpoint }}"
+            - if:
+                - condition: template
+                  value_template: "{{ not kids_bedtime }}"
+              then:
+                - action: climate.set_temperature
+                  target: { entity_id: climate.lincoln_air }
+                  data:
+                    hvac_mode: >-
+                      {% if lincoln_temp > l_on_at %}cool
+                      {% elif lincoln_temp <= l_off_at %}off
+                      {% elif l_current == 'cool' %}cool
+                      {% else %}off{% endif %}
+                    temperature: "{{ l_setpoint }}"
 
             # ---------------------------------------------------------
             # LILLY'S ROOM
-            # Heatwave Sleep Guard ON + 19:00-07:00: 61°F shove / off ≤66 / on >70
-            # Normal behavior:                         61°F shove / off ≤68 / on >72
-            # Away:                                    away thresholds / off ≤74 / on >76
+            # Daytime (07:00-18:00): 61°F set / off ≤68 / on >72
+            # Away:                  61°F set / off ≤74 / on >76
+            # Bedtime (18:00-07:00): OWNED by the "KIDS BEDTIME COOLING"
+            #                        block above (66/70 deadband). Same
+            #                        `not kids_bedtime` guard as Lincoln.
+            # The lilly_heatwave_sleep_guard (#155) branch is preserved
+            # for now but becomes dead within the 19:00-07:00 window
+            # (its is_lilly_sleep is a subset of kids_bedtime and the
+            # bedtime block owns Lilly there); flagged for follow-up.
             # ---------------------------------------------------------
             - variables:
                 ly_setpoint: "{{ 61 }}"
@@ -633,15 +721,19 @@
                 ly_off_at: "{{ 74 if away else (66 if lilly_heatwave_sleep_guard and is_lilly_sleep else 68) }}"
                 ly_on_at: "{{ 76 if away else (70 if lilly_heatwave_sleep_guard and is_lilly_sleep else 72) }}"
                 ly_current: "{{ states('climate.lilly_air') }}"
-            - action: climate.set_temperature
-              target: { entity_id: climate.lilly_air }
-              data:
-                hvac_mode: >-
-                  {% if lilly_temp > ly_on_at %}cool
-                  {% elif lilly_temp <= ly_off_at %}off
-                  {% elif ly_current == 'cool' %}cool
-                  {% else %}off{% endif %}
-                temperature: "{{ ly_setpoint }}"
+            - if:
+                - condition: template
+                  value_template: "{{ not kids_bedtime }}"
+              then:
+                - action: climate.set_temperature
+                  target: { entity_id: climate.lilly_air }
+                  data:
+                    hvac_mode: >-
+                      {% if lilly_temp > ly_on_at %}cool
+                      {% elif lilly_temp <= ly_off_at %}off
+                      {% elif ly_current == 'cool' %}cool
+                      {% else %}off{% endif %}
+                    temperature: "{{ ly_setpoint }}"
 
             # ---------------------------------------------------------
             # LIVING ROOM (V8.2 + LR night conservation)
@@ -711,8 +803,12 @@
                           {% elif m_current == 'cool' %}cool
                           {% else %}off{% endif %}
                         temperature: "{{ m_sleep_setpoint }}"
+                    # is_night (22:00-06:00) is a strict subset of kids_bedtime
+                    # (18:00-07:00), so the bedtime block above ALWAYS owns
+                    # Lincoln and Lilly at this point. The shoulder-night bulk-off
+                    # keeps Dining only.
                     - action: climate.set_hvac_mode
-                      target: { entity_id: [climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                      target: { entity_id: climate.dining_room }
                       data: { hvac_mode: "off" }
               default:
                 - choose:
@@ -723,12 +819,19 @@
                         - action: climate.set_temperature
                           target: { entity_id: climate.master_bedroom_air }
                           data: { hvac_mode: "{{ 'cool' if master_temp > 70 else 'off' }}", temperature: 61 }
-                        - action: climate.set_temperature
-                          target: { entity_id: climate.lincoln_air }
-                          data: { hvac_mode: "{{ 'cool' if lincoln_temp > 70 else 'off' }}", temperature: 61 }
-                        - action: climate.set_temperature
-                          target: { entity_id: climate.lilly_air }
-                          data: { hvac_mode: "{{ 'cool' if lilly_temp > 70 else 'off' }}", temperature: 61 }
+                        # Bedtime block owns Lincoln + Lilly during 18:00-07:00;
+                        # daytime shoulder-warm (07:00-18:00) keeps the legacy
+                        # >70 warm-escape.
+                        - if:
+                            - condition: template
+                              value_template: "{{ not kids_bedtime }}"
+                          then:
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lincoln_air }
+                              data: { hvac_mode: "{{ 'cool' if lincoln_temp > 70 else 'off' }}", temperature: 61 }
+                            - action: climate.set_temperature
+                              target: { entity_id: climate.lilly_air }
+                              data: { hvac_mode: "{{ 'cool' if lilly_temp > 70 else 'off' }}", temperature: 61 }
                         - action: climate.set_hvac_mode
                           target: { entity_id: [climate.living_room_air, climate.dining_room] }
                           data: { hvac_mode: "off" }
@@ -754,13 +857,32 @@
                               {% elif lr_current == 'heat' %}heat
                               {% else %}off{% endif %}
                             temperature: "{{ lr_heat_command_setpoint }}"
+                        # Master + Dining always off in cold shoulder-day.
+                        # Lincoln + Lilly: bedtime block owns them; daytime
+                        # keeps the legacy bulk-off.
                         - action: climate.set_hvac_mode
-                          target: { entity_id: [climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                          target: { entity_id: [climate.master_bedroom_air, climate.dining_room] }
                           data: { hvac_mode: "off" }
+                        - if:
+                            - condition: template
+                              value_template: "{{ not kids_bedtime }}"
+                          then:
+                            - action: climate.set_hvac_mode
+                              target: { entity_id: [climate.lincoln_air, climate.lilly_air] }
+                              data: { hvac_mode: "off" }
                   default:
+                    # Mild shoulder-day default: everything off, except Lincoln
+                    # + Lilly during bedtime (owned by the bedtime block above).
                     - action: climate.set_hvac_mode
-                      target: { entity_id: [climate.living_room_air, climate.master_bedroom_air, climate.lincoln_air, climate.lilly_air, climate.dining_room] }
+                      target: { entity_id: [climate.living_room_air, climate.master_bedroom_air, climate.dining_room] }
                       data: { hvac_mode: "off" }
+                    - if:
+                        - condition: template
+                          value_template: "{{ not kids_bedtime }}"
+                      then:
+                        - action: climate.set_hvac_mode
+                          target: { entity_id: [climate.lincoln_air, climate.lilly_air] }
+                          data: { hvac_mode: "off" }
 
         # =============================================
         # BRANCH 3: HEATING SEASON (Winter Continuity)

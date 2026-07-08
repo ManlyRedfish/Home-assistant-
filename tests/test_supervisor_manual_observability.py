@@ -154,7 +154,13 @@ EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        "c296b50335b302ae4067082d0af2e094a8a687d0e8e1febd2e2da0b84424eb38",
+        # Re-pinned for the 2026-06-07 operator decision (Lincoln/Lilly bedtime
+        # cooling 66-70 deadband). Scope of the change: add kids_bedtime
+        # variable + a new "KIDS BEDTIME COOLING" if/then block + gate the
+        # legacy Lincoln/Lilly cooling commands and the shoulder-day/night
+        # bulk-offs on `not kids_bedtime`. Safety floors, manual override
+        # gate, Master/LR/Dining/Nest, and heating are untouched.
+        "39b94ec2e6dd14ecf97c3c9726751a7cc26a44c29f07d4954591711586344ab6",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
