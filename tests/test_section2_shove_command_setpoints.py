@@ -156,8 +156,8 @@ def test_section2_cooling_actuator_commands_use_61_separate_from_thresholds():
     assert "m_on_at: \"{{ 76 if away else (66 if is_master_sleep else 72) }}\"" in text
     assert "l_off_at: \"{{ 74 if away else 68 }}\"" in text
     assert "l_on_at: \"{{ 76 if away else 72 }}\"" in text
-    assert "ly_off_at: \"{{ 74 if away else (66 if lilly_heatwave_sleep_guard and is_lilly_sleep else 68) }}\"" in text
-    assert "ly_on_at: \"{{ 76 if away else (70 if lilly_heatwave_sleep_guard and is_lilly_sleep else 72) }}\"" in text
+    assert "ly_off_at: \"{{ 74 if away else 68 }}\"" in text
+    assert "ly_on_at: \"{{ 76 if away else 72 }}\"" in text
     assert "lr_conservation: \"{{ away or lr_night_primary }}\"" in text
     assert "lr_off_at: \"{{ 74 if lr_conservation else 68 }}\"" in text
     assert "lr_on_at: \"{{ 76 if lr_conservation else 72 }}\"" in text

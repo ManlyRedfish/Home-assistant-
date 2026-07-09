@@ -169,13 +169,15 @@ EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        # Re-pinned for the 2026-06-07 operator decision (Lincoln/Lilly bedtime
-        # cooling 66-70 deadband). Scope of the change: add kids_bedtime
-        # variable + a new "KIDS BEDTIME COOLING" if/then block + gate the
-        # legacy Lincoln/Lilly cooling commands and the shoulder-day/night
-        # bulk-offs on `not kids_bedtime`. Safety floors, manual override
-        # gate, Master/LR/Dining/Nest, and heating are untouched.
-        "39b94ec2e6dd14ecf97c3c9726751a7cc26a44c29f07d4954591711586344ab6",
+        # Re-pinned for Packet B Stage 0 (per-zone truth_ok guards, remove
+        # V9-E, Lilly 68/72 bedtime refinement, turbo on cool calls). Scope:
+        # V9-E pre-cool variables/state-writes removed; per-zone truth_ok
+        # guards added; Lilly bedtime block changed from 70/66 conditional
+        # to 72/68 permanent; Lilly cooling-branch lilly_heatwave_sleep_guard
+        # removed; set_fan_mode/turbo added to all cooling branches; shoulder-
+        # night Master V9-E references removed. Section 3, Section 14, and
+        # configuration.yaml are byte-for-byte unchanged.
+        "e61bdd068f76a9e884c81a23fc31eecd7c7889cff38d6f4e6cb3bff1add4b073",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
