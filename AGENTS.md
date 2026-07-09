@@ -34,9 +34,26 @@ rule as a reason to ignore or "correct" the decision.
   deadband from a complaint" caution remain valid outside this scope. Section 2
   stays the sole comfort-policy writer; no new controller/helpers; manual override
   and Section 3 safety unchanged.
-- **Status: approved, pending implementation** (planning/docs only; live YAML
-  still runs the legacy 68–72). See `docs/kids-bedroom-overnight-cooling-plan.md`,
-  Doc 1 §5.1, and Doc 5 §7.10.
+- **Status: implemented in Packet B Stage 0 for Lincoln (66/70).** Lilly refined
+  to permanent 68/72 per 2026-07-09 operator decision below. See
+  `docs/kids-bedroom-overnight-cooling-plan.md`, Doc 1 §5.1, and Doc 5 §7.10.
+
+### 2026-07-09 — Lilly permanent 68/72 bedtime band
+
+- **Scope:** `climate.lilly_air`, bedtime window **19:00–07:00**, in **cooling
+  and shoulder** seasons. Daytime (07:00–19:00) and heating-season behavior
+  are unchanged.
+- **Room-truth deadband:** engage cooling at room truth **≥ 72 °F**, release at
+  **≤ 68 °F**, hold off between 68–72 °F. Permanent — not conditional on heat
+  wave or any guard input_boolean.
+- **Reasoning:** Lilly's room sits above the kitchen. Cold air falls from her
+  room into the kitchen below. Overcooling her room wastes energy by spilling
+  cold into an occupied zone that doesn't need it. A wider band (68/72 vs.
+  Lincoln's 66/70) prevents overcooling while keeping her comfortable for sleep.
+- **Actuator doctrine:** same as Lincoln — `cool` / `61 °F` / `turbo` during an
+  active pull-down. Part of the kids-bedtime block in Section 2.
+- **2026-06-07 entry above remains valid for Lincoln** (66/70). This entry
+  supersedes it for Lilly only.
 
 ---
 
