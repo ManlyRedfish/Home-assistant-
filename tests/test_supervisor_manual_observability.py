@@ -150,6 +150,21 @@ NEW_FIELDS = {
 #     bad accessor raised 1,029+ UndefinedError entries in the log). One
 #     accessor path corrected; no threshold, gate, or safety behavior
 #     changed. Section 3 remains OFF-only safety.
+#   - configuration re-pinned for the Section 10 control-wrapper
+#     graceful-degradation fix (deadband-supervisor-sensor-chain-layih9):
+#     each of the seven `*_temperature_control` template wrappers now
+#     falls back to its underlying `*_temperature_truth` sensor when the
+#     Section 12 `*_temperature_smoothed` lowpass filter is
+#     unknown/unavailable, and its `availability` follows the OR of the
+#     two. Preserves the smoothed value in every normal condition;
+#     prevents the sensor chain from stranding `_control` unavailable
+#     after a recorder DB migration leaves the `filter` platform unable
+#     to initialize (2026-07-09 PostgreSQL/TrueNAS incident — LR + Office
+#     reproduced live). Only Section 10 changed; Section 12 filters,
+#     truth definitions, Section 16 helpers, and all Section 2/3/14
+#     surfaces are byte-for-byte unchanged. Section 2/3/14 hashes were
+#     deliberately NOT re-pinned — proving this is a sensor-chain-only
+#     fix with no comfort-doctrine or safety-gate change.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
@@ -173,7 +188,7 @@ EXPECTED_SECTION_HASHES = {
         "fcb18b5953a9bfb9f1d1e9f10ba8217cc46c7db63cb268bfab5daa6ffd2b71c3",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "ea7fd177eaeb1d998e611ba2851cdcc49303099c56d3a2db7d248512713cc70e"
+EXPECTED_CONFIGURATION_HASH = "62b4d8f94dd3d0291b69d12438fbf60135c7e1f278b32c91c872aadf55026ac1"
 
 
 @pytest.fixture(scope="module")

@@ -950,8 +950,25 @@ template:
       #     these wrappers, downstream consumers lose their temperature
       #     input and control stops working.
       #
-      # Each wrapper reads from the corresponding smoothed sensor
-      # in Section 12 and exposes it with a stable unique_id.
+      # Each wrapper prefers the corresponding smoothed sensor in
+      # Section 12 (lowpass, jitter-suppressed) and, per the Truth
+      # Sensor Architecture "graceful degradation" doctrine, FALLS
+      # BACK to the underlying truth sensor when smoothed is
+      # unknown/unavailable. Availability follows the OR of the two.
+      #
+      # Why the fallback exists (2026-07-09 incident):
+      #   On a recorder DB migration (PostgreSQL/TrueNAS) HA restarts
+      #   with no state history. The Section 12 `filter` platform
+      #   cannot rebuild its smoothing state from an empty DB and
+      #   strands the affected `_smoothed` entities in `unknown`
+      #   indefinitely. Under the previous availability rule the
+      #   `_control` wrapper then held `unavailable` even though the
+      #   upstream `_truth` sensor was fine — starving the supervisor
+      #   / UI / any downstream consumer that eventually reads the
+      #   control layer. LR and Office reproduced this behavior; the
+      #   other rooms happened to recover on their own inputs. The
+      #   fallback removes the single-point failure while preserving
+      #   the smoothed value in every normal condition.
       # =========================================================
       - name: "Living Room Temperature Control"
         unique_id: living_room_temperature_control_v3
@@ -959,9 +976,12 @@ template:
         device_class: temperature
         state_class: measurement
         availability: >
-          {{ states('sensor.living_room_temperature_smoothed') | float(none) is not none }}
+          {{ (states('sensor.living_room_temperature_smoothed') | float(none) is not none)
+             or (states('sensor.living_room_temperature_truth') | float(none) is not none) }}
         state: >
-          {{ states('sensor.living_room_temperature_smoothed') | float(none) | round(2) }}
+          {% set s = states('sensor.living_room_temperature_smoothed') | float(none) %}
+          {% if s is not none %}{{ s | round(2) }}
+          {% else %}{{ states('sensor.living_room_temperature_truth') | float(none) | round(2) }}{% endif %}
 
       - name: "Master Bedroom Temperature Control"
         unique_id: master_bedroom_temperature_control_v3
@@ -969,9 +989,12 @@ template:
         device_class: temperature
         state_class: measurement
         availability: >
-          {{ states('sensor.master_bedroom_temperature_smoothed') | float(none) is not none }}
+          {{ (states('sensor.master_bedroom_temperature_smoothed') | float(none) is not none)
+             or (states('sensor.master_bedroom_temperature_truth') | float(none) is not none) }}
         state: >
-          {{ states('sensor.master_bedroom_temperature_smoothed') | float(none) | round(2) }}
+          {% set s = states('sensor.master_bedroom_temperature_smoothed') | float(none) %}
+          {% if s is not none %}{{ s | round(2) }}
+          {% else %}{{ states('sensor.master_bedroom_temperature_truth') | float(none) | round(2) }}{% endif %}
 
       - name: "Lincoln's Room Temperature Control"
         unique_id: lincoln_s_room_temperature_control_v3
@@ -979,9 +1002,12 @@ template:
         device_class: temperature
         state_class: measurement
         availability: >
-          {{ states('sensor.lincoln_s_room_temperature_smoothed') | float(none) is not none }}
+          {{ (states('sensor.lincoln_s_room_temperature_smoothed') | float(none) is not none)
+             or (states('sensor.lincoln_s_room_temperature_truth') | float(none) is not none) }}
         state: >
-          {{ states('sensor.lincoln_s_room_temperature_smoothed') | float(none) | round(2) }}
+          {% set s = states('sensor.lincoln_s_room_temperature_smoothed') | float(none) %}
+          {% if s is not none %}{{ s | round(2) }}
+          {% else %}{{ states('sensor.lincoln_s_room_temperature_truth') | float(none) | round(2) }}{% endif %}
 
       - name: "Lilly's Room Temperature Control"
         unique_id: lilly_s_room_temperature_control_v3
@@ -989,9 +1015,12 @@ template:
         device_class: temperature
         state_class: measurement
         availability: >
-          {{ states('sensor.lilly_s_room_temperature_smoothed') | float(none) is not none }}
+          {{ (states('sensor.lilly_s_room_temperature_smoothed') | float(none) is not none)
+             or (states('sensor.lilly_s_room_temperature_truth') | float(none) is not none) }}
         state: >
-          {{ states('sensor.lilly_s_room_temperature_smoothed') | float(none) | round(2) }}
+          {% set s = states('sensor.lilly_s_room_temperature_smoothed') | float(none) %}
+          {% if s is not none %}{{ s | round(2) }}
+          {% else %}{{ states('sensor.lilly_s_room_temperature_truth') | float(none) | round(2) }}{% endif %}
 
       - name: "Office Temperature Control"
         unique_id: office_temperature_control_v3
@@ -999,9 +1028,12 @@ template:
         device_class: temperature
         state_class: measurement
         availability: >
-          {{ states('sensor.office_temperature_smoothed') | float(none) is not none }}
+          {{ (states('sensor.office_temperature_smoothed') | float(none) is not none)
+             or (states('sensor.office_temperature_truth') | float(none) is not none) }}
         state: >
-          {{ states('sensor.office_temperature_smoothed') | float(none) | round(2) }}
+          {% set s = states('sensor.office_temperature_smoothed') | float(none) %}
+          {% if s is not none %}{{ s | round(2) }}
+          {% else %}{{ states('sensor.office_temperature_truth') | float(none) | round(2) }}{% endif %}
 
       - name: "Laundry Temperature Control"
         unique_id: laundry_temperature_control_v3
@@ -1009,9 +1041,12 @@ template:
         device_class: temperature
         state_class: measurement
         availability: >
-          {{ states('sensor.laundry_temperature_smoothed') | float(none) is not none }}
+          {{ (states('sensor.laundry_temperature_smoothed') | float(none) is not none)
+             or (states('sensor.laundry_temperature_truth') | float(none) is not none) }}
         state: >
-          {{ states('sensor.laundry_temperature_smoothed') | float(none) | round(2) }}
+          {% set s = states('sensor.laundry_temperature_smoothed') | float(none) %}
+          {% if s is not none %}{{ s | round(2) }}
+          {% else %}{{ states('sensor.laundry_temperature_truth') | float(none) | round(2) }}{% endif %}
 
       - name: "Deck Temperature Control"
         unique_id: deck_temperature_control_v3
@@ -1019,9 +1054,12 @@ template:
         device_class: temperature
         state_class: measurement
         availability: >
-          {{ states('sensor.deck_temperature_smoothed') | float(none) is not none }}
+          {{ (states('sensor.deck_temperature_smoothed') | float(none) is not none)
+             or (states('sensor.deck_temperature_truth') | float(none) is not none) }}
         state: >
-          {{ states('sensor.deck_temperature_smoothed') | float(none) | round(2) }}
+          {% set s = states('sensor.deck_temperature_smoothed') | float(none) %}
+          {% if s is not none %}{{ s | round(2) }}
+          {% else %}{{ states('sensor.deck_temperature_truth') | float(none) | round(2) }}{% endif %}
 
   # =============================================================================
   # SECTION 16 FORECAST CACHE: V9-E MASTER PRE-COOL (Evidence-Gated Experiment)
