@@ -53,8 +53,6 @@ SUPERVISOR_ENTITY = "automation.v7_5_main_supervisor"
 MANUAL_TIMER = "timer.manual_hvac_override"
 NEW_FIELDS = {
     "Supervisor_Enabled",
-    "Manual_Override_State",
-    "Manual_Override_Remaining_Sec",
 }
 
 # These hashes intentionally lock the control surfaces. If this test fails,
@@ -165,29 +163,33 @@ NEW_FIELDS = {
 #     surfaces are byte-for-byte unchanged. Section 2/3/14 hashes were
 #     deliberately NOT re-pinned — proving this is a sensor-chain-only
 #     fix with no comfort-doctrine or safety-gate change.
+#   - section2, section3, section14 re-pinned for timer removal + smoothed truth:
+#     timer.manual_hvac_override removed (11 locations), all supervisor/Section 6/
+#     Section 14 _temperature_truth → _temperature_control, > → >= on cooling
+#     engage thresholds, transition logger defensive attrs.get() fix.
+#     configuration.yaml is byte-for-byte unchanged.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        # Re-pinned for Packet B Stage 0 (per-zone truth_ok guards, remove
-        # V9-E, Lilly 68/72 bedtime refinement, turbo on cool calls). Scope:
-        # V9-E pre-cool variables/state-writes removed; per-zone truth_ok
-        # guards added; Lilly bedtime block changed from 70/66 conditional
-        # to 72/68 permanent; Lilly cooling-branch lilly_heatwave_sleep_guard
-        # removed; set_fan_mode/turbo added to all cooling branches; shoulder-
-        # night Master V9-E references removed. Section 3, Section 14, and
-        # configuration.yaml are byte-for-byte unchanged.
-        "e61bdd068f76a9e884c81a23fc31eecd7c7889cff38d6f4e6cb3bff1add4b073",
+        # Re-pinned for timer removal + smoothed truth: timer gate removed,
+        # _temperature_truth → _temperature_control, > → >= on cooling engage.
+        "2adef484f783c2625a235137849b8afdaf9acce35ada7eebf1ecc1dfb1ece5ce",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
         "# SECTION 4:",
-        "6e77d4a81a5deb686533f3e54e7814fdbe8ec817f6a110258f2af0ae527e6c2a",
+        # Re-pinned: manually_hvac_override references removed from Section 3
+        # comment. Section 3 safety floors and thresholds are unchanged.
+        "b4081f516033ceea1c888b91a89e0f83f7b96d5f8556317672707350310269f2",
     ),
     "section14_lr_boost": (
         "# SECTION 14: V8.4 LR HEATING RECOVERY BOOST PILOT",
         "# SECTION 15:",
-        "fcb18b5953a9bfb9f1d1e9f10ba8217cc46c7db63cb268bfab5daa6ffd2b71c3",
+        # Re-pinned: WAF_Active hardcoded false, Engage_Eligible override var
+        # removed, timer.gating removed from boost_release, observability
+        # fields removed.
+        "184ea751ed94859366df953f09b85a0d32f66d1369adfd74fa2e3d76231db081",
     ),
 }
 EXPECTED_CONFIGURATION_HASH = "62b4d8f94dd3d0291b69d12438fbf60135c7e1f278b32c91c872aadf55026ac1"
@@ -252,44 +254,12 @@ def _section(text: str, start_marker: str, end_marker: str) -> str:
     return text[start:end]
 
 
-def test_v55_wide_row_contains_supervisor_and_manual_override_fields(automations_data):
+def test_v55_wide_row_contains_supervisor_field(automations_data):
     tracker = _find_automation(automations_data, TELEMETRY_ID)
     payload = _append_sheet_payload(tracker, "VTherm_Launch_Data_v5_5")
 
     assert NEW_FIELDS <= set(payload), "V5.5 wide-row telemetry fields are missing"
     assert SUPERVISOR_ENTITY in payload["Supervisor_Enabled"]
-    assert MANUAL_TIMER in payload["Manual_Override_State"]
-    assert MANUAL_TIMER in payload["Manual_Override_Remaining_Sec"]
-
-
-def test_manual_override_state_exports_full_timer_state_not_boolean(automations_data):
-    tracker = _find_automation(automations_data, TELEMETRY_ID)
-    template = _append_sheet_payload(tracker, "VTherm_Launch_Data_v5_5")[
-        "Manual_Override_State"
-    ]
-
-    assert "states('timer.manual_hvac_override')" in template
-    assert "unknown" in template and "unavailable" in template
-    assert "active" not in template, "state export must not collapse timer to active/inactive"
-    assert "true" not in template.lower() and "false" not in template.lower()
-
-
-def test_manual_override_remaining_seconds_template_is_active_only_and_non_negative(automations_data):
-    tracker = _find_automation(automations_data, TELEMETRY_ID)
-    template = _append_sheet_payload(tracker, "VTherm_Launch_Data_v5_5")[
-        "Manual_Override_Remaining_Sec"
-    ]
-
-    assert "states('timer.manual_hvac_override')" in template
-    assert "state_attr('timer.manual_hvac_override', 'finishes_at')" in template
-    assert "t == 'active'" in template
-    assert "as_datetime(finishes) - now()" in template
-    assert "| max" in template and ", 0]" in template, (
-        "remaining seconds must be clamped at zero and never go negative"
-    )
-    assert "{% else %}{% endif %}" in template, (
-        "remaining seconds must stay blank when inactive/unknown/unavailable"
-    )
 
 
 def test_provenance_logger_observes_supervisor_enabled_disabled_transitions(automations_data):

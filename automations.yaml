@@ -28,7 +28,6 @@
 # DEPENDENCIES (helpers that must exist):
 #   - input_select.hvac_season_mode (heating / shoulder / cooling)
 #   - input_boolean.night_mode_lr_primary (on = Claude night mode)
-#   - timer.manual_hvac_override (1 hour default)
 #   - timer.shade_manual_override (2 hour default)
 #   - input_boolean.away_mode (away/vacation — relaxes all targets)
 #   - input_boolean.precool_aborted_tonight (V9-E abort latch)
@@ -289,44 +288,30 @@
         Section14_Last_Release_At: "{% set v = states('input_datetime.lr_heating_recovery_boost_last_release_at') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Section14_Engage_Eligible: >-
           {% set season = states('input_select.hvac_season_mode') %}
-          {% set override = states('timer.manual_hvac_override') %}
           {% set away = states('input_boolean.away_mode') %}
           {% set boost = states('input_boolean.lr_heating_recovery_boost_active') %}
-          {% set lr = states('sensor.living_room_temperature_truth') %}
+          {% set lr = states('sensor.living_room_temperature_control') %}
           {% set lrc = states('climate.living_room_air') %}
           {% set lr_num = lr | float(none) %}
           {% if season in ['heating', 'shoulder']
-                and override == 'idle'
                 and away == 'off'
                 and boost == 'off'
                 and lrc not in ['unknown', 'unavailable']
                 and lr_num is not none
-                and lr_num < 64 %}true{% elif season in ['unknown', 'unavailable'] or override in ['unknown', 'unavailable'] or away in ['unknown', 'unavailable'] or boost in ['unknown', 'unavailable'] %}{% else %}false{% endif %}
-        Section14_WAF_Active: >-
-          {% set v = states('timer.manual_hvac_override') %}
-          {% if v in ['unknown', 'unavailable'] %}{% elif v == 'active' %}true{% else %}false{% endif %}
+                and lr_num < 64 %}true{% elif season in ['unknown', 'unavailable'] or away in ['unknown', 'unavailable'] or boost in ['unknown', 'unavailable'] %}{% else %}false{% endif %}
+        Section14_WAF_Active: "false"
         Section14_Truth_Available: >-
           {% set v = states('sensor.living_room_temperature_truth') %}
           {% if v in ['unknown', 'unavailable'] %}false{% elif v | float(none) is none %}false{% else %}true{% endif %}
 
-        # 15. SUPERVISOR / MANUAL OVERRIDE OBSERVABILITY (v5.5)
-        # Observability-only. These fields exist to classify operator-suppressed
-        # experiments and manual comfort-intent windows after the fact. They are
-        # not read by control automations and do not affect truth, thresholds,
-        # setpoints, Section 2, Section 3, or Section 14 behavior.
+        # 15. SUPERVISOR OBSERVABILITY (v5.5)
+        # Observability-only. These fields are not read by control automations
+        # and do not affect truth, thresholds, setpoints, Section 2, Section 3,
+        # or Section 14 behavior.
         # Verified live main-supervisor entity_id: automation.v7_5_main_supervisor.
         Supervisor_Enabled: >-
           {% set v = states('automation.v7_5_main_supervisor') %}
           {% if v in ['unknown', 'unavailable'] %}{% elif v == 'on' %}true{% else %}false{% endif %}
-        Manual_Override_State: >-
-          {% set v = states('timer.manual_hvac_override') %}
-          {{ '' if v in ['unknown', 'unavailable'] else v }}
-        Manual_Override_Remaining_Sec: >-
-          {% set t = states('timer.manual_hvac_override') %}
-          {% set finishes = state_attr('timer.manual_hvac_override', 'finishes_at') %}
-          {% if t == 'active' and finishes not in [none, 'unknown', 'unavailable'] %}
-          {{ [((as_datetime(finishes) - now()).total_seconds()) | int, 0] | max }}
-          {% else %}{% endif %}
 
         # 16. V9-E MASTER PRE-COOL OBSERVABILITY (evidence-gated experiment)
         # Observability of the Section 2 V9-E pre-cool envelope. GLOBAL state
@@ -334,9 +319,9 @@
         # and must never be referenced. Keeps the V5 blank-on-unknown
         # convention.
         # ⚠️  DEPLOYMENT: append these six columns to the live
-        # VTherm_Launch_Data_v5_5 worksheet header row (in this order, after
-        # Manual_Override_Remaining_Sec) BEFORE the first export tick after
-        # this change ships, otherwise rows will be misaligned.
+        # VTherm_Launch_Data_v5_5 worksheet header row (after Supervisor_Enabled)
+        # BEFORE the first export tick after this change ships, otherwise rows
+        # will be misaligned.
         Precool_Tomorrow_High: "{% set v = states('sensor.precool_tomorrow_high') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Precool_Aborted: "{% set v = states('input_boolean.precool_aborted_tonight') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Precool_Abort_Reason: "{% set v = states('input_text.precool_abort_reason') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
@@ -407,9 +392,6 @@
     - platform: state
       entity_id: input_select.hvac_season_mode
   condition:
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
     # Heat Wave Override (Section 19): while the operator override is engaged,
     # Section 19 owns the actuators (all heads forced cool/61/turbo). The
     # comfort supervisor must stand down so it does not fight the override. This
@@ -419,11 +401,11 @@
       state: "off"
   action:
     - variables:
-        outdoor: "{{ states('sensor.deck_temperature_truth') | float(50) }}"
-        lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
-        master_temp: "{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}"
-        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
-        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}"
+        outdoor: "{{ states('sensor.deck_temperature_control') | float(50) }}"
+        lr_temp: "{{ states('sensor.living_room_temperature_control') | float(70) }}"
+        master_temp: "{{ states('sensor.master_bedroom_temperature_control') | float(70) }}"
+        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_control') | float(70) }}"
+        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_control') | float(70) }}"
         is_night: "{{ now().hour >= 22 or now().hour < 6 }}"
         # Kids' bedtime window per 2026-06-07 operator decision (AGENTS.md).
         # Applies to Lincoln + Lilly in cooling and shoulder seasons only.
@@ -567,7 +549,7 @@
                   target: { entity_id: climate.master_bedroom_air }
                   data:
                     hvac_mode: >-
-                      {% if master_temp > m_on_at %}cool
+                      {% if master_temp >= m_on_at %}cool
                       {% elif master_temp <= m_off_at %}off
                       {% elif m_current == 'cool' %}cool
                       {% else %}off{% endif %}
@@ -607,7 +589,7 @@
                       target: { entity_id: climate.lincoln_air }
                       data:
                         hvac_mode: >-
-                          {% if lincoln_temp > l_on_at %}cool
+                          {% if lincoln_temp >= l_on_at %}cool
                           {% elif lincoln_temp <= l_off_at %}off
                           {% elif l_current == 'cool' %}cool
                           {% else %}off{% endif %}
@@ -649,7 +631,7 @@
                       target: { entity_id: climate.lilly_air }
                       data:
                         hvac_mode: >-
-                          {% if lilly_temp > ly_on_at %}cool
+                          {% if lilly_temp >= ly_on_at %}cool
                           {% elif lilly_temp <= ly_off_at %}off
                           {% elif ly_current == 'cool' %}cool
                           {% else %}off{% endif %}
@@ -1180,10 +1162,6 @@
       entity_id: sensor.lilly_s_room_temperature_truth
       above: 76
       id: climate.lilly_air
-  condition:
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
   action:
     - variables:
         season: "{{ states('input_select.hvac_season_mode') }}"
@@ -1207,30 +1185,6 @@
         - action: climate.set_hvac_mode
           target: { entity_id: "{{ trigger.id }}" }
           data: { hvac_mode: "off" }
-
-- id: v7_5_waf_manual_override
-  alias: "V7.5: Manual Override Watcher (WAF)"
-  mode: restart
-  trigger:
-    - platform: state
-      entity_id:
-        - climate.living_room_air
-        - climate.master_bedroom_air
-        - climate.lincoln_air
-        - climate.lilly_air
-      attribute: temperature
-    - platform: state
-      entity_id:
-        - climate.living_room_air
-        - climate.master_bedroom_air
-        - climate.lincoln_air
-        - climate.lilly_air
-  condition:
-    - condition: template
-      value_template: "{{ trigger.to_state.context.parent_id is none }}"
-  action:
-    - action: timer.start
-      target: { entity_id: timer.manual_hvac_override }
 
 # =============================================================================
 # SECTION 4: GHOST ASSASSIN
@@ -1331,9 +1285,6 @@
     - platform: time_pattern
       minutes: "52"
   condition:
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
     - condition: template
       value_template: "{{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}"
     # Heat Wave Override (Section 19): suppress shoulder/heating destratification
@@ -1345,10 +1296,10 @@
       state: "off"
   action:
     - variables:
-        lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
-        master_temp: "{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}"
-        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
-        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}"
+        lr_temp: "{{ states('sensor.living_room_temperature_control') | float(70) }}"
+        master_temp: "{{ states('sensor.master_bedroom_temperature_control') | float(70) }}"
+        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_control') | float(70) }}"
+        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_control') | float(70) }}"
         lincoln_fan_allowed: "{{ is_state('binary_sensor.lincoln_presence_debounced_v3', 'off') }}"
         is_daytime: "{{ now().hour >= 8 and now().hour < 20 }}"
         master_fan_allowed: "{{ is_daytime }}"
@@ -1664,10 +1615,6 @@
       to: "auto"
     - platform: time_pattern
       minutes: "/10"
-  condition:
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
   action:
     - repeat:
         for_each:
@@ -1925,9 +1872,6 @@
       value_template: >-
         {{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}
     - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
-    - condition: state
       entity_id: input_boolean.away_mode
       state: "off"
     - condition: numeric_state
@@ -1990,10 +1934,6 @@
       event_data:
         entity_id: timer.lr_heating_recovery_boost_max_runtime
       id: timeout
-    - platform: state
-      entity_id: timer.manual_hvac_override
-      to: "active"
-      id: waf
     - platform: template
       value_template: >-
         {{ states('input_select.hvac_season_mode') not in ['heating', 'shoulder'] }}
@@ -2019,24 +1959,16 @@
             - action: timer.cancel
               target:
                 entity_id: timer.lr_heating_recovery_boost_max_runtime
-    - choose:
-        - conditions:
-            - condition: not
-              conditions:
-                - condition: state
-                  entity_id: timer.manual_hvac_override
-                  state: "active"
-          sequence:
-            - action: climate.set_hvac_mode
-              target:
-                entity_id: climate.living_room_air
-              data:
-                hvac_mode: "off"
+    - action: climate.set_hvac_mode
+      target:
+        entity_id: climate.living_room_air
+      data:
+        hvac_mode: "off"
     # -------------------------------------------------------------------------
     # OBSERVABILITY ONLY (v5.5 / issue #62) — runs AFTER control actions.
     # Maps the release trigger.id to a stable classifier string and persists
     # it (plus the release timestamp) so the v5.5 telemetry export can
-    # distinguish all five doctrinal terminations: truth_cap, timeout, waf,
+    # distinguish all four doctrinal terminations: truth_cap, timeout,
     # season_change, truth_unavailable. The default branch writes
     # `unknown_release_reason` so this block can never raise on an
     # unrecognized trigger.id and cannot interrupt the latch flip, timer
@@ -2062,15 +1994,6 @@
                 entity_id: input_text.lr_heating_recovery_boost_last_release_reason
               data:
                 value: "timeout"
-        - conditions:
-            - condition: trigger
-              id: waf
-          sequence:
-            - action: input_text.set_value
-              target:
-                entity_id: input_text.lr_heating_recovery_boost_last_release_reason
-              data:
-                value: "waf"
         - conditions:
             - condition: trigger
               id: season_change
@@ -2152,9 +2075,6 @@
       entity_id: climate.lilly_air
       attribute: temperature
       id: lilly_temp_attr
-    - platform: state
-      entity_id: timer.manual_hvac_override
-      id: override_state
     # Observes operator/admin enable-disable transitions of the live Section 2
     # supervisor. Verified runtime entity_id: automation.v7_5_main_supervisor.
     # Forensic-only; does not turn the supervisor on/off or influence control.
@@ -2197,15 +2117,15 @@
         {% set temp_attr_ids = ['lr_temp_attr', 'master_temp_attr', 'lincoln_temp_attr', 'lilly_temp_attr', 'fan_percentage'] %}
         {% if trigger.id in temp_attr_ids %}
         {% if trigger.id == 'fan_percentage' %}
-        {% set ov = trigger.from_state.attributes.percentage if trigger.from_state is not none else none %}
-        {% set nv = trigger.to_state.attributes.percentage if trigger.to_state is not none else none %}
+        {% set ov = trigger.from_state.attributes.get('percentage') if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.attributes.get('percentage') if trigger.to_state is not none else none %}
         {% else %}
-        {% set ov = trigger.from_state.attributes.temperature if trigger.from_state is not none else none %}
-        {% set nv = trigger.to_state.attributes.temperature if trigger.to_state is not none else none %}
+        {% set ov = trigger.from_state.attributes.get('temperature') if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.attributes.get('temperature') if trigger.to_state is not none else none %}
         {% endif %}
         {% elif trigger.id == 'spi_last_triggered' %}
-        {% set ov = trigger.from_state.attributes.last_triggered if trigger.from_state is not none else none %}
-        {% set nv = trigger.to_state.attributes.last_triggered if trigger.to_state is not none else none %}
+        {% set ov = trigger.from_state.attributes.get('last_triggered') if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.attributes.get('last_triggered') if trigger.to_state is not none else none %}
         {% else %}
         {% set ov = trigger.from_state.state if trigger.from_state is not none else none %}
         {% set nv = trigger.to_state.state if trigger.to_state is not none else none %}
@@ -2217,17 +2137,17 @@
         attribute_name: "{% if trigger.id in temperature_attr_trigger_ids %}{% if trigger.id == 'fan_percentage' %}percentage{% else %}temperature{% endif %}{% elif trigger.id == 'spi_last_triggered' %}last_triggered{% else %}state{% endif %}"
         old_raw: >-
           {% if trigger.id in temperature_attr_trigger_ids %}
-          {% if trigger.id == 'fan_percentage' %}{{ trigger.from_state.attributes.percentage if trigger.from_state is not none else '' }}{% else %}{{ trigger.from_state.attributes.temperature if trigger.from_state is not none else '' }}{% endif %}
+          {% if trigger.id == 'fan_percentage' %}{{ trigger.from_state.attributes.get('percentage') if trigger.from_state is not none else '' }}{% else %}{{ trigger.from_state.attributes.get('temperature') if trigger.from_state is not none else '' }}{% endif %}
           {% elif trigger.id == 'spi_last_triggered' %}
-          {{ trigger.from_state.attributes.last_triggered if trigger.from_state is not none else '' }}
+          {{ trigger.from_state.attributes.get('last_triggered') if trigger.from_state is not none else '' }}
           {% else %}
           {{ trigger.from_state.state if trigger.from_state is not none else '' }}
           {% endif %}
         new_raw: >-
           {% if trigger.id in temperature_attr_trigger_ids %}
-          {% if trigger.id == 'fan_percentage' %}{{ trigger.to_state.attributes.percentage if trigger.to_state is not none else '' }}{% else %}{{ trigger.to_state.attributes.temperature if trigger.to_state is not none else '' }}{% endif %}
+          {% if trigger.id == 'fan_percentage' %}{{ trigger.to_state.attributes.get('percentage') if trigger.to_state is not none else '' }}{% else %}{{ trigger.to_state.attributes.get('temperature') if trigger.to_state is not none else '' }}{% endif %}
           {% elif trigger.id == 'spi_last_triggered' %}
-          {{ trigger.to_state.attributes.last_triggered if trigger.to_state is not none else '' }}
+          {{ trigger.to_state.attributes.get('last_triggered') if trigger.to_state is not none else '' }}
           {% else %}
           {{ trigger.to_state.state if trigger.to_state is not none else '' }}
           {% endif %}
@@ -2274,7 +2194,6 @@
           {% if trigger.id == 'spi_last_triggered' %}v9_sleep_priority_interlock
           {% elif trigger.entity_id == 'automation.v7_5_main_supervisor' %}v7_5_main_supervisor
           {% elif ok != 'automation_or_script' %}
-          {% elif trigger.entity_id == 'timer.manual_hvac_override' and ts == 'active' %}v7_5_waf_manual_override
           {% elif trigger.entity_id == 'input_boolean.lr_heating_recovery_boost_active' and ts == 'on' %}v8_4_lr_heating_recovery_boost_engage
           {% elif trigger.entity_id == 'input_boolean.lr_heating_recovery_boost_active' and ts == 'off' %}v8_4_lr_heating_recovery_boost_release
           {% elif trigger.entity_id == 'climate.living_room_air' and trigger.id == 'lr_temp_attr' and (new_value_clean | string) == '77' %}v8_4_lr_heating_recovery_boost_engage
