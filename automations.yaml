@@ -2622,3 +2622,45 @@
           ({{ states('input_select.hvac_season_mode') }}), and the comfort gates
           released — normal supervision resumes automatically. Section 3 safety
           gates were active throughout.
+
+# =============================================================================
+# SECTION 20: LR NIGHT MODE SCHEDULE
+# =============================================================================
+# Daily time-based toggle of input_boolean.night_mode_lr_primary.
+# ON at 19:00 → Section 2 selects P4 LR conservation deadband (74 °F off /
+# 76 °F on).  OFF at 07:00 → falls through to P5 daytime (68 °F off / 72 °F on).
+# No conditions — this runs year-round regardless of season or away mode;
+# those guards live inside Section 2 and are not this automation's concern.
+# =============================================================================
+
+- id: lr_night_mode_schedule
+  alias: "Section 20: LR Night Mode Schedule (19:00 ON / 07:00 OFF)"
+  description: >
+    Toggle night_mode_lr_primary on a daily schedule.
+    ON at 19:00 → P4 LR conservation (74/76 deadband).
+    OFF at 07:00 → P5 daytime fallthrough (68/72 deadband).
+  trigger:
+    - platform: time
+      at: "19:00:00"
+      id: "night_mode_on"
+    - platform: time
+      at: "07:00:00"
+      id: "night_mode_off"
+  condition: []
+  action:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: "night_mode_on"
+          sequence:
+            - action: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.night_mode_lr_primary
+        - conditions:
+            - condition: trigger
+              id: "night_mode_off"
+          sequence:
+            - action: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.night_mode_lr_primary
+  mode: single
