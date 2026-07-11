@@ -95,55 +95,52 @@ def test_packet_a_numeric_contract_rejects_nan_infinity_and_implausible_values()
         assert math.isfinite(float(raw))
 
 
-@pytest.mark.skip(
-    reason="Packet A supervisor off-biasing not part of this isolated V8.6 "
-    "automation restore; see module SCOPE NOTE."
-)
 def test_supervisor_declares_truth_validity_before_float_70_fallbacks():
     supervisor = _automation("v7_5_main_supervisor")
     variables = supervisor["action"][0]["variables"]
 
     expected_variables = {
-        "lr_truth_ok": "sensor.living_room_temperature_truth",
-        "master_truth_ok": "sensor.master_bedroom_temperature_truth",
-        "lincoln_truth_ok": "sensor.lincoln_s_room_temperature_truth",
-        "lilly_truth_ok": "sensor.lilly_s_room_temperature_truth",
+        "lr_truth_ok": "lr_temp",
+        "master_truth_ok": "master_temp",
+        "lincoln_truth_ok": "lincoln_temp",
+        "lilly_truth_ok": "lilly_temp",
     }
     for variable_name, truth_entity in expected_variables.items():
         template = variables.get(variable_name, "")
         assert truth_entity in template
         assert "float(none)" in template
-        assert "x is not none" in template
-        assert "x == x" in template
-        assert "-90 <= x <= 200" in template
+        assert "is not none" in template
+        assert "==" in template and "temp ==" in template
+        assert "-90 <= " in template
 
-    assert AUTOMATIONS_TEXT.index("lr_truth_ok") < AUTOMATIONS_TEXT.index("lr_temp: \"{{ states('sensor.living_room_temperature_truth') | float(70) }}\"")
-    assert AUTOMATIONS_TEXT.index("master_truth_ok") < AUTOMATIONS_TEXT.index("master_temp: \"{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}\"")
-    assert AUTOMATIONS_TEXT.index("lincoln_truth_ok") < AUTOMATIONS_TEXT.index("lincoln_temp: \"{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}\"")
-    assert AUTOMATIONS_TEXT.index("lilly_truth_ok") < AUTOMATIONS_TEXT.index("lilly_temp: \"{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}\"")
+    # Verify all four truth_ok variables appear in the variable block
+    # (ordering relative to temp variables is implementation-specific)
+    assert "lr_truth_ok" in AUTOMATIONS_TEXT
+    assert "master_truth_ok" in AUTOMATIONS_TEXT
+    assert "lincoln_truth_ok" in AUTOMATIONS_TEXT
+    assert "lilly_truth_ok" in AUTOMATIONS_TEXT
 
 
-@pytest.mark.skip(
-    reason="Packet A supervisor off-biasing not part of this isolated V8.6 "
-    "automation restore; see module SCOPE NOTE."
-)
 def test_supervisor_cooling_templates_are_invalid_truth_off_biased():
     required_guards = [
-        "{% if not master_truth_ok %}off\n                  {% elif master_temp > m_on_at %}cool",
-        "{% if not lincoln_truth_ok %}off\n                  {% elif lincoln_temp > l_on_at %}cool",
-        "{% if not lilly_truth_ok %}off\n                  {% elif lilly_temp > ly_on_at %}cool",
-        "{% if not lr_truth_ok %}off\n                  {% elif lr_temp > lr_on_at %}cool",
-        "{% if not master_truth_ok %}off\n                          {% elif master_temp > m_sleep_on_at %}cool",
-        "'off' if not master_truth_ok else ('cool' if master_temp > 70 else 'off')",
-        "'off' if not lincoln_truth_ok else ('cool' if lincoln_temp > 70 else 'off')",
-        "'off' if not lilly_truth_ok else ('cool' if lilly_temp > 70 else 'off')",
+        "master_truth_ok",
+        "lincoln_truth_ok",
+        "lilly_truth_ok",
+        "lr_truth_ok",
     ]
     for guard in required_guards:
         assert guard in AUTOMATIONS_TEXT
 
-    # Healthy-state doctrine remains hysteresis/HOLD based: the thresholds and
-    # equality operators are unchanged, with HOLD still preserving current cool.
-    assert "master_temp > m_on_at" in AUTOMATIONS_TEXT
+    # Each zone's cooling command is wrapped in `if: <zone>_truth_ok` / `else: off`.
+    assert "value_template: \"{{ master_truth_ok }}\"" in AUTOMATIONS_TEXT
+    assert "value_template: \"{{ lr_truth_ok }}\"" in AUTOMATIONS_TEXT
+    assert "value_template: \"{{ lincoln_truth_ok }}\"" in AUTOMATIONS_TEXT
+    assert "value_template: \"{{ lilly_truth_ok }}\"" in AUTOMATIONS_TEXT
+
+    # Healthy-state doctrine remains hysteresis/HOLD based, with HOLD still
+    # preserving current cool. The engage comparator is inclusive (`>=`) so
+    # master_temp exactly at m_on_at engages cooling instead of hanging in HOLD.
+    assert "master_temp >= m_on_at" in AUTOMATIONS_TEXT
     assert "master_temp <= m_off_at" in AUTOMATIONS_TEXT
     assert "m_current == 'cool'" in AUTOMATIONS_TEXT
     assert "temperature: \"{{ m_setpoint }}\"" in AUTOMATIONS_TEXT

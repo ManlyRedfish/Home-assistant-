@@ -28,7 +28,6 @@
 # DEPENDENCIES (helpers that must exist):
 #   - input_select.hvac_season_mode (heating / shoulder / cooling)
 #   - input_boolean.night_mode_lr_primary (on = Claude night mode)
-#   - timer.manual_hvac_override (1 hour default)
 #   - timer.shade_manual_override (2 hour default)
 #   - input_boolean.away_mode (away/vacation — relaxes all targets)
 #   - input_boolean.precool_aborted_tonight (V9-E abort latch)
@@ -289,44 +288,30 @@
         Section14_Last_Release_At: "{% set v = states('input_datetime.lr_heating_recovery_boost_last_release_at') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Section14_Engage_Eligible: >-
           {% set season = states('input_select.hvac_season_mode') %}
-          {% set override = states('timer.manual_hvac_override') %}
           {% set away = states('input_boolean.away_mode') %}
           {% set boost = states('input_boolean.lr_heating_recovery_boost_active') %}
-          {% set lr = states('sensor.living_room_temperature_truth') %}
+          {% set lr = states('sensor.living_room_temperature_control') %}
           {% set lrc = states('climate.living_room_air') %}
           {% set lr_num = lr | float(none) %}
           {% if season in ['heating', 'shoulder']
-                and override == 'idle'
                 and away == 'off'
                 and boost == 'off'
                 and lrc not in ['unknown', 'unavailable']
                 and lr_num is not none
-                and lr_num < 64 %}true{% elif season in ['unknown', 'unavailable'] or override in ['unknown', 'unavailable'] or away in ['unknown', 'unavailable'] or boost in ['unknown', 'unavailable'] %}{% else %}false{% endif %}
-        Section14_WAF_Active: >-
-          {% set v = states('timer.manual_hvac_override') %}
-          {% if v in ['unknown', 'unavailable'] %}{% elif v == 'active' %}true{% else %}false{% endif %}
+                and lr_num < 64 %}true{% elif season in ['unknown', 'unavailable'] or away in ['unknown', 'unavailable'] or boost in ['unknown', 'unavailable'] %}{% else %}false{% endif %}
+        Section14_WAF_Active: "false"
         Section14_Truth_Available: >-
           {% set v = states('sensor.living_room_temperature_truth') %}
           {% if v in ['unknown', 'unavailable'] %}false{% elif v | float(none) is none %}false{% else %}true{% endif %}
 
-        # 15. SUPERVISOR / MANUAL OVERRIDE OBSERVABILITY (v5.5)
-        # Observability-only. These fields exist to classify operator-suppressed
-        # experiments and manual comfort-intent windows after the fact. They are
-        # not read by control automations and do not affect truth, thresholds,
-        # setpoints, Section 2, Section 3, or Section 14 behavior.
+        # 15. SUPERVISOR OBSERVABILITY (v5.5)
+        # Observability-only. These fields are not read by control automations
+        # and do not affect truth, thresholds, setpoints, Section 2, Section 3,
+        # or Section 14 behavior.
         # Verified live main-supervisor entity_id: automation.v7_5_main_supervisor.
         Supervisor_Enabled: >-
           {% set v = states('automation.v7_5_main_supervisor') %}
           {% if v in ['unknown', 'unavailable'] %}{% elif v == 'on' %}true{% else %}false{% endif %}
-        Manual_Override_State: >-
-          {% set v = states('timer.manual_hvac_override') %}
-          {{ '' if v in ['unknown', 'unavailable'] else v }}
-        Manual_Override_Remaining_Sec: >-
-          {% set t = states('timer.manual_hvac_override') %}
-          {% set finishes = state_attr('timer.manual_hvac_override', 'finishes_at') %}
-          {% if t == 'active' and finishes not in [none, 'unknown', 'unavailable'] %}
-          {{ [((as_datetime(finishes) - now()).total_seconds()) | int, 0] | max }}
-          {% else %}{% endif %}
 
         # 16. V9-E MASTER PRE-COOL OBSERVABILITY (evidence-gated experiment)
         # Observability of the Section 2 V9-E pre-cool envelope. GLOBAL state
@@ -334,9 +319,9 @@
         # and must never be referenced. Keeps the V5 blank-on-unknown
         # convention.
         # ⚠️  DEPLOYMENT: append these six columns to the live
-        # VTherm_Launch_Data_v5_5 worksheet header row (in this order, after
-        # Manual_Override_Remaining_Sec) BEFORE the first export tick after
-        # this change ships, otherwise rows will be misaligned.
+        # VTherm_Launch_Data_v5_5 worksheet header row (after Supervisor_Enabled)
+        # BEFORE the first export tick after this change ships, otherwise rows
+        # will be misaligned.
         Precool_Tomorrow_High: "{% set v = states('sensor.precool_tomorrow_high') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Precool_Aborted: "{% set v = states('input_boolean.precool_aborted_tonight') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
         Precool_Abort_Reason: "{% set v = states('input_text.precool_abort_reason') %}{{ '' if v in ['unknown', 'unavailable'] else v }}"
@@ -407,9 +392,6 @@
     - platform: state
       entity_id: input_select.hvac_season_mode
   condition:
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
     # Heat Wave Override (Section 19): while the operator override is engaged,
     # Section 19 owns the actuators (all heads forced cool/61/turbo). The
     # comfort supervisor must stand down so it does not fight the override. This
@@ -419,11 +401,11 @@
       state: "off"
   action:
     - variables:
-        outdoor: "{{ states('sensor.deck_temperature_truth') | float(50) }}"
-        lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
-        master_temp: "{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}"
-        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
-        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}"
+        outdoor: "{{ states('sensor.deck_temperature_control') | float(50) }}"
+        lr_temp: "{{ states('sensor.living_room_temperature_control') | float(70) }}"
+        master_temp: "{{ states('sensor.master_bedroom_temperature_control') | float(70) }}"
+        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_control') | float(70) }}"
+        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_control') | float(70) }}"
         is_night: "{{ now().hour >= 22 or now().hour < 6 }}"
         # Kids' bedtime window per 2026-06-07 operator decision (AGENTS.md).
         # Applies to Lincoln + Lilly in cooling and shoulder seasons only.
@@ -432,142 +414,42 @@
         lr_night_primary: "{{ is_state('input_boolean.night_mode_lr_primary', 'on') }}"
         away: "{{ is_state('input_boolean.away_mode', 'on') }}"
 
-        # =============================================================
-        # V9-E MASTER PRE-COOL (Evidence-Gated Exception Experiment)
-        # docs/v9_v10_goals.md §2.6 — Master Bedroom ONLY.
-        # All guard evaluation is pure-template and happens HERE, before
-        # any climate command is issued on this tick. The if/then steps
-        # below write the latch/reason/counters; the Master command
-        # templates in the cooling branch and the shoulder-night escape
-        # consume precool_session_live / precool_engage. No other room,
-        # safety gate, or section reads these variables.
-        # =============================================================
-        # Forecast-conditioned window end per docs/analysis/v9e_precool_release_trigger.md.
-        # Hotter days hold longer; cooler days release earlier. Hard backstop 14:00.
-        # - ≥90°F forecast → hold until 13:00
-        # - 85-89°F forecast → hold until 11:00
-        # - <85°F (no heatwave) → original 06:00 window (is_heatwave_predicted gates this)
-        is_precool_window: >-
-          {% set h = now().hour %}
-          {% set f = states('sensor.precool_tomorrow_high') | float(0) %}
-          {{ 2 <= h < 14 and (
-            (f >= 90 and h < 13) or
-            (f >= 85 and h < 11) or
-            (h < 6)
-          ) }}
-        is_heatwave_predicted: "{{ states('sensor.precool_tomorrow_high') | float(0) >= 85 }}"
-        is_latch_tripped: "{{ is_state('input_boolean.precool_aborted_tonight', 'on') }}"
-        precool_target_temp: "{{ states('input_number.precool_target_temp') | float(64) }}"
-        precool_floor: "{{ states('input_number.precool_thermal_floor') | float(63.5) }}"
-        precool_runtime: "{{ states('input_number.precool_runtime_counter') | int(0) }}"
-        is_precool_permitted_base: >
-          {{ is_precool_window and is_heatwave_predicted and not is_latch_tripped }}
-        # --- derived guard inputs ---
-        precool_master_truth_valid: "{{ states('sensor.master_bedroom_temperature_truth') | float(none) is not none }}"
-        # Config invariant: the room-truth cutoff must sit above the thermal
-        # floor. The helper ranges overlap (target 62-68, floor 60-65), so an
-        # operator CAN invert them in the UI; an inverted pair would make the
-        # floor guard unreachable before the cutoff. Treated as a guard trip
-        # (latch + reason) rather than a silent disarm so the telemetry shows
-        # WHY the experiment refused to run.
-        is_config_valid: "{{ precool_target_temp > precool_floor }}"
-        # Envelope constraints beyond the base gate: Master truth must be
-        # valid, the house must not be away (away relaxation wins), and the
-        # season branch must be one whose Master sleep path can act on the
-        # decision (cooling branch or shoulder-night escape). The top-level
-        # manual-override idle condition already gates this whole automation.
-        precool_envelope_live_pre_guard: >
-          {{ is_precool_permitted_base
-             and season in ['cooling', 'shoulder']
-             and not away
-             and precool_master_truth_valid }}
-        # --- guards (evaluated before any command; first reason wins) ---
-        # Guards: config-invalid (operator error — target must exceed floor),
-        # thermal floor (physics — hardware asymptote is ~63.4°F under the 61°F
-        # shove, so a breach is genuinely terminal). Slope guard removed per
-        # docs/analysis/v9e_precool_revision_spec.md §2 (sensor quantization
-        # caused false trips on physically-fine runs; the floor is the real net).
-        # Runtime guard removed per §3 (window-end is the wall-clock ceiling;
-        # runtime counter kept as telemetry only).
-        precool_config_tripped: "{{ precool_envelope_live_pre_guard and not is_config_valid }}"
-        precool_floor_tripped: "{{ precool_envelope_live_pre_guard and master_temp < precool_floor }}"
-        precool_guard_tripped: "{{ precool_config_tripped or precool_floor_tripped }}"
-        precool_abort_reason_now: >-
-          {% if precool_config_tripped %}Invalid config: target must exceed floor
-          {% else %}Thermal floor breached{% endif %}
-        # --- decision surface consumed by the Master command templates ---
-        # session_live false (not permitted / guard tripped) => the Master
-        # templates fall back to the standard V8.3 sleep deadband for the
-        # tick. engage true => command cool (61°F shove). session_live with
-        # engage false => Master truth is at/below the pre-cool cutoff
-        # (precool_target_temp) => command off.
-        precool_session_live: "{{ precool_envelope_live_pre_guard and not precool_guard_tripped }}"
-        precool_engage: "{{ precool_session_live and master_temp > precool_target_temp }}"
+        # Per-zone truth validity guards.
+        # A zone with invalid truth (None, NaN, or out of [-90, 200]) is
+        # commanded OFF regardless of deadband — the safety default.
+        lr_truth_ok:
+          "{{ lr_temp | float(none) is not none and lr_temp == lr_temp
+          and -90 <= lr_temp | float <= 200 }}"
+        master_truth_ok:
+          "{{ master_temp | float(none) is not none and master_temp == master_temp
+          and -90 <= master_temp | float <= 200 }}"
+        lincoln_truth_ok:
+          "{{ lincoln_temp | float(none) is not none and lincoln_temp == lincoln_temp
+          and -90 <= lincoln_temp | float <= 200 }}"
+        lilly_truth_ok:
+          "{{ lilly_temp | float(none) is not none and lilly_temp == lilly_temp
+          and -90 <= lilly_temp | float <= 200 }}"
 
     # =================================================================
-    # V9-E PRE-COOL STATE WRITES (latch / reason / budget / slope seed)
-    # These run BEFORE the season choose, so a tripped guard is latched
-    # before any pre-cool command could be issued on this same tick.
-    # if/then (not choose) is intentional: the season choose below must
-    # remain the first `choose` step of this action list.
-    # =================================================================
-    - if:
-        - condition: template
-          value_template: "{{ precool_guard_tripped }}"
-      then:
-        - action: input_boolean.turn_on
-          target: { entity_id: input_boolean.precool_aborted_tonight }
-        - action: input_text.set_value
-          target: { entity_id: input_text.precool_abort_reason }
-          data:
-            value: "{{ precool_abort_reason_now | trim }}"
-    - if:
-        - condition: template
-          value_template: "{{ precool_engage }}"
-      then:
-        # Budget accounting: increment ONLY on ticks where the supervisor
-        # will actually command/hold Master pre-cool cooling (engage true).
-        - action: input_number.set_value
-          target: { entity_id: input_number.precool_runtime_counter }
-          data:
-            value: "{{ [precool_runtime + 15, 720] | min }}"
-    - if:
-        - condition: template
-          value_template: "{{ precool_envelope_live_pre_guard }}"
-      then:
-        # Telemetry write: refresh Master truth on every live-envelope tick.
-        # Formerly consumed by the slope guard (removed per revision spec §2);
-        # kept as a telemetry column (Precool_Previous_Master_Temp) for
-        # diagnostics and energy analysis. Clamped to the helper's 50-90 range
-        # so an outlier truth reading cannot fail the service call.
-        - action: input_number.set_value
-          target: { entity_id: input_number.precool_previous_master_temp }
-          data:
-            value: "{{ [[master_temp, 50] | max, 90] | min }}"
-
-    # =================================================================
-    # KIDS BEDTIME COOLING (2026-06-07 operator decision)
+    # KIDS BEDTIME COOLING (2026-06-07 operator decision + 2026-07-09 Lilly refinement)
     # =================================================================
     # Lincoln & Lilly, independent per room, during 18:00-07:00 in
-    # cooling and shoulder seasons: engage cool@61/turbo at room truth
-    # >= 70, release to off at <= 66, hold state between 66-70 (continue
-    # cool while pulling down, stay off while resting). Season-agnostic
+    # cooling and shoulder seasons. Lincoln: 66/70 deadband (engage
+    # cool@61/turbo at >=70, release at <=66). Lilly: 68/72 deadband
+    # (engage cool@61/turbo at >=72, release at <=68). Season-agnostic
     # across cooling/shoulder — a cooling->shoulder flip mid-pull-down
-    # keeps commanding cool until <= 66. Outside this window the legacy
-    # cooling / shoulder Lincoln+Lilly branches run unchanged, gated on
-    # `not kids_bedtime` further below so we do not double-command.
+    # keeps commanding cool until the release threshold. Outside this
+    # window the legacy cooling / shoulder Lincoln+Lilly branches run
+    # unchanged, gated on `not kids_bedtime` further below so we do
+    # not double-command.
     #
     # Master / LR / Dining / Nest / heating are untouched here.
     # Section 3 safety floors and the manual_hvac_override / heat_wave
     # override gates on the supervisor above are all preserved as-is.
     #
     # See docs/kids-bedroom-overnight-cooling-plan.md v6 and AGENTS.md
-    # "Current Operator Decisions". Fan turbo is explicit and required
-    # (moderate setpoints stall ~18h). #155 lilly_heatwave_sleep_guard
-    # remains present but is a no-op during bedtime — the two overlap
-    # only inside 19:00-07:00, and this block owns that window; the
-    # guard's daytime slice (never — its is_lilly_sleep is 19:00-07:00)
-    # is empty. Flag #155 for follow-up cleanup outside this PR.
+    # \"Current Operator Decisions\". Fan turbo is explicit and required
+    # (moderate setpoints stall ~18h).
     # =================================================================
     - if:
         - condition: template
@@ -576,15 +458,17 @@
         - variables:
             kb_lincoln_current: "{{ states('climate.lincoln_air') }}"
             kb_lilly_current: "{{ states('climate.lilly_air') }}"
-            # cool = engage at >=70, or continue while pulling down (66<truth<70 & currently cool).
-            # Anything else (truth<=66, or 66<truth<70 & not currently cool) => off.
+            # Lincoln: 66/70 deadband. cool = engage at >=70, or continue
+            # while pulling down (66<truth<70 & currently cool).
             kb_lincoln_cool: >-
               {{ lincoln_temp >= 70
                  or (lincoln_temp > 66 and kb_lincoln_current == 'cool') }}
+            # Lilly: 68/72 deadband. cool = engage at >=72, or continue
+            # while pulling down (68<truth<72 & currently cool).
             kb_lilly_cool: >-
-              {{ lilly_temp >= 70
-                 or (lilly_temp > 66 and kb_lilly_current == 'cool') }}
-        # Lincoln (independent)
+              {{ lilly_temp >= 72
+                 or (lilly_temp > 68 and kb_lilly_current == 'cool') }}
+        # Lincoln (independent) — 66/70 deadband
         - if:
             - condition: template
               value_template: "{{ kb_lincoln_cool }}"
@@ -599,7 +483,7 @@
             - action: climate.set_hvac_mode
               target: { entity_id: climate.lincoln_air }
               data: { hvac_mode: "off" }
-        # Lilly (independent)
+        # Lilly (independent) — 68/72 deadband
         - if:
             - condition: template
               value_template: "{{ kb_lilly_cool }}"
@@ -614,6 +498,7 @@
             - action: climate.set_hvac_mode
               target: { entity_id: climate.lilly_air }
               data: { hvac_mode: "off" }
+
 
     - choose:
         # =============================================
@@ -649,11 +534,6 @@
             # 6am-6pm: Normal    (66°F set / off ≤68 / on >72)
             # Away:    Relaxed   (74°F set / off ≤74 / on >76)
             # Runaway floor at 58°F lives in Section 3 (independent).
-            # V9-E pre-cool (02:00-06:00, forecast ≥85°F, guards green):
-            #   cutoff is precool_target_temp on Master TRUTH; the 61°F
-            #   command setpoint is unchanged shove doctrine. When the
-            #   session is not live this template is byte-equivalent to
-            #   the standard V8.3 deadband below.
             # ---------------------------------------------------------
             - variables:
                 is_master_sleep: "{{ now().hour >= 18 or now().hour < 6 }}"
@@ -661,17 +541,26 @@
                 m_off_at: "{{ 74 if away else (62 if is_master_sleep else 68) }}"
                 m_on_at: "{{ 76 if away else (66 if is_master_sleep else 72) }}"
                 m_current: "{{ states('climate.master_bedroom_air') }}"
-            - action: climate.set_temperature
-              target: { entity_id: climate.master_bedroom_air }
-              data:
-                hvac_mode: >-
-                  {% if precool_session_live and precool_engage %}cool
-                  {% elif precool_session_live %}off
-                  {% elif master_temp > m_on_at %}cool
-                  {% elif master_temp <= m_off_at %}off
-                  {% elif m_current == 'cool' %}cool
-                  {% else %}off{% endif %}
-                temperature: "{{ m_setpoint }}"
+            - if:
+                - condition: template
+                  value_template: "{{ master_truth_ok }}"
+              then:
+                - action: climate.set_temperature
+                  target: { entity_id: climate.master_bedroom_air }
+                  data:
+                    hvac_mode: >-
+                      {% if master_temp >= m_on_at %}cool
+                      {% elif master_temp <= m_off_at %}off
+                      {% elif m_current == 'cool' %}cool
+                      {% else %}off{% endif %}
+                    temperature: "{{ m_setpoint }}"
+                - action: climate.set_fan_mode
+                  target: { entity_id: climate.master_bedroom_air }
+                  data: { fan_mode: "turbo" }
+              else:
+                - action: climate.set_hvac_mode
+                  target: { entity_id: climate.master_bedroom_air }
+                  data: { hvac_mode: "off" }
 
             # ---------------------------------------------------------
             # LINCOLN'S ROOM
@@ -690,50 +579,74 @@
                 l_current: "{{ states('climate.lincoln_air') }}"
             - if:
                 - condition: template
-                  value_template: "{{ not kids_bedtime }}"
+                  value_template: "{{ lincoln_truth_ok }}"
               then:
-                - action: climate.set_temperature
-                  target: { entity_id: climate.lincoln_air }
-                  data:
-                    hvac_mode: >-
-                      {% if lincoln_temp > l_on_at %}cool
-                      {% elif lincoln_temp <= l_off_at %}off
-                      {% elif l_current == 'cool' %}cool
-                      {% else %}off{% endif %}
-                    temperature: "{{ l_setpoint }}"
+                - if:
+                    - condition: template
+                      value_template: "{{ not kids_bedtime }}"
+                  then:
+                    - action: climate.set_temperature
+                      target: { entity_id: climate.lincoln_air }
+                      data:
+                        hvac_mode: >-
+                          {% if lincoln_temp >= l_on_at %}cool
+                          {% elif lincoln_temp <= l_off_at %}off
+                          {% elif l_current == 'cool' %}cool
+                          {% else %}off{% endif %}
+                        temperature: "{{ l_setpoint }}"
+                    - action: climate.set_fan_mode
+                      target: { entity_id: climate.lincoln_air }
+                      data: { fan_mode: "turbo" }
+              else:
+                - if:
+                    - condition: template
+                      value_template: "{{ not kids_bedtime }}"
+                  then:
+                    - action: climate.set_hvac_mode
+                      target: { entity_id: climate.lincoln_air }
+                      data: { hvac_mode: "off" }
 
             # ---------------------------------------------------------
             # LILLY'S ROOM
             # Daytime (07:00-18:00): 61°F set / off ≤68 / on >72
             # Away:                  61°F set / off ≤74 / on >76
             # Bedtime (18:00-07:00): OWNED by the "KIDS BEDTIME COOLING"
-            #                        block above (66/70 deadband). Same
+            #                        block above (68/72 deadband). Same
             #                        `not kids_bedtime` guard as Lincoln.
-            # The lilly_heatwave_sleep_guard (#155) branch is preserved
-            # for now but becomes dead within the 19:00-07:00 window
-            # (its is_lilly_sleep is a subset of kids_bedtime and the
-            # bedtime block owns Lilly there); flagged for follow-up.
             # ---------------------------------------------------------
             - variables:
                 ly_setpoint: "{{ 61 }}"
-                is_lilly_sleep: "{{ now().hour >= 19 or now().hour < 7 }}"
-                lilly_heatwave_sleep_guard: "{{ is_state('input_boolean.lilly_heatwave_sleep_guard', 'on') }}"
-                ly_off_at: "{{ 74 if away else (66 if lilly_heatwave_sleep_guard and is_lilly_sleep else 68) }}"
-                ly_on_at: "{{ 76 if away else (70 if lilly_heatwave_sleep_guard and is_lilly_sleep else 72) }}"
+                ly_off_at: "{{ 74 if away else 68 }}"
+                ly_on_at: "{{ 76 if away else 72 }}"
                 ly_current: "{{ states('climate.lilly_air') }}"
             - if:
                 - condition: template
-                  value_template: "{{ not kids_bedtime }}"
+                  value_template: "{{ lilly_truth_ok }}"
               then:
-                - action: climate.set_temperature
-                  target: { entity_id: climate.lilly_air }
-                  data:
-                    hvac_mode: >-
-                      {% if lilly_temp > ly_on_at %}cool
-                      {% elif lilly_temp <= ly_off_at %}off
-                      {% elif ly_current == 'cool' %}cool
-                      {% else %}off{% endif %}
-                    temperature: "{{ ly_setpoint }}"
+                - if:
+                    - condition: template
+                      value_template: "{{ not kids_bedtime }}"
+                  then:
+                    - action: climate.set_temperature
+                      target: { entity_id: climate.lilly_air }
+                      data:
+                        hvac_mode: >-
+                          {% if lilly_temp >= ly_on_at %}cool
+                          {% elif lilly_temp <= ly_off_at %}off
+                          {% elif ly_current == 'cool' %}cool
+                          {% else %}off{% endif %}
+                        temperature: "{{ ly_setpoint }}"
+                    - action: climate.set_fan_mode
+                      target: { entity_id: climate.lilly_air }
+                      data: { fan_mode: "turbo" }
+              else:
+                - if:
+                    - condition: template
+                      value_template: "{{ not kids_bedtime }}"
+                  then:
+                    - action: climate.set_hvac_mode
+                      target: { entity_id: climate.lilly_air }
+                      data: { hvac_mode: "off" }
 
             # ---------------------------------------------------------
             # LIVING ROOM (V8.2 + LR night conservation)
@@ -747,15 +660,26 @@
                 lr_off_at: "{{ 74 if lr_conservation else 68 }}"
                 lr_on_at: "{{ 76 if lr_conservation else 72 }}"
                 lr_current: "{{ states('climate.living_room_air') }}"
-            - action: climate.set_temperature
-              target: { entity_id: climate.living_room_air }
-              data:
-                hvac_mode: >-
-                  {% if lr_temp > lr_on_at %}cool
-                  {% elif lr_temp <= lr_off_at %}off
-                  {% elif lr_current == 'cool' %}cool
-                  {% else %}off{% endif %}
-                temperature: "{{ lr_setpoint }}"
+            - if:
+                - condition: template
+                  value_template: "{{ lr_truth_ok }}"
+              then:
+                - action: climate.set_temperature
+                  target: { entity_id: climate.living_room_air }
+                  data:
+                    hvac_mode: >-
+                      {% if lr_temp > lr_on_at %}cool
+                      {% elif lr_temp <= lr_off_at %}off
+                      {% elif lr_current == 'cool' %}cool
+                      {% else %}off{% endif %}
+                    temperature: "{{ lr_setpoint }}"
+                - action: climate.set_fan_mode
+                  target: { entity_id: climate.living_room_air }
+                  data: { fan_mode: "turbo" }
+              else:
+                - action: climate.set_hvac_mode
+                  target: { entity_id: climate.living_room_air }
+                  data: { hvac_mode: "off" }
 
         # =============================================
         # BRANCH 2: SHOULDER SEASON (Mixed Logic)
@@ -781,11 +705,6 @@
                     # still be allowed to cool. Thresholds mirror the
                     # cooling-season Master sleep band so behavior is
                     # consistent. Safety floor (58°F) lives in Section 3.
-                    # V9-E pre-cool consult mirrors the cooling-branch Master
-                    # block: telemetry shows auto-season flips to shoulder
-                    # mid-night during heatwaves (e.g. 2026-05-18 02:00), so
-                    # the 02:00-06:00 pre-cool window usually lands in THIS
-                    # branch, not the cooling branch.
                     # ---------------------------------------------------------
                     - variables:
                         m_sleep_on_at: "{{ 76 if away else 66 }}"
@@ -796,9 +715,7 @@
                       target: { entity_id: climate.master_bedroom_air }
                       data:
                         hvac_mode: >-
-                          {% if precool_session_live and precool_engage %}cool
-                          {% elif precool_session_live %}off
-                          {% elif master_temp > m_sleep_on_at %}cool
+                          {% if master_temp > m_sleep_on_at %}cool
                           {% elif master_temp <= m_sleep_off_at %}off
                           {% elif m_current == 'cool' %}cool
                           {% else %}off{% endif %}
@@ -1245,10 +1162,6 @@
       entity_id: sensor.lilly_s_room_temperature_truth
       above: 76
       id: climate.lilly_air
-  condition:
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
   action:
     - variables:
         season: "{{ states('input_select.hvac_season_mode') }}"
@@ -1272,30 +1185,6 @@
         - action: climate.set_hvac_mode
           target: { entity_id: "{{ trigger.id }}" }
           data: { hvac_mode: "off" }
-
-- id: v7_5_waf_manual_override
-  alias: "V7.5: Manual Override Watcher (WAF)"
-  mode: restart
-  trigger:
-    - platform: state
-      entity_id:
-        - climate.living_room_air
-        - climate.master_bedroom_air
-        - climate.lincoln_air
-        - climate.lilly_air
-      attribute: temperature
-    - platform: state
-      entity_id:
-        - climate.living_room_air
-        - climate.master_bedroom_air
-        - climate.lincoln_air
-        - climate.lilly_air
-  condition:
-    - condition: template
-      value_template: "{{ trigger.to_state.context.parent_id is none }}"
-  action:
-    - action: timer.start
-      target: { entity_id: timer.manual_hvac_override }
 
 # =============================================================================
 # SECTION 4: GHOST ASSASSIN
@@ -1396,9 +1285,6 @@
     - platform: time_pattern
       minutes: "52"
   condition:
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
     - condition: template
       value_template: "{{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}"
     # Heat Wave Override (Section 19): suppress shoulder/heating destratification
@@ -1410,10 +1296,10 @@
       state: "off"
   action:
     - variables:
-        lr_temp: "{{ states('sensor.living_room_temperature_truth') | float(70) }}"
-        master_temp: "{{ states('sensor.master_bedroom_temperature_truth') | float(70) }}"
-        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(70) }}"
-        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_truth') | float(70) }}"
+        lr_temp: "{{ states('sensor.living_room_temperature_control') | float(70) }}"
+        master_temp: "{{ states('sensor.master_bedroom_temperature_control') | float(70) }}"
+        lincoln_temp: "{{ states('sensor.lincoln_s_room_temperature_control') | float(70) }}"
+        lilly_temp: "{{ states('sensor.lilly_s_room_temperature_control') | float(70) }}"
         lincoln_fan_allowed: "{{ is_state('binary_sensor.lincoln_presence_debounced_v3', 'off') }}"
         is_daytime: "{{ now().hour >= 8 and now().hour < 20 }}"
         master_fan_allowed: "{{ is_daytime }}"
@@ -1729,10 +1615,6 @@
       to: "auto"
     - platform: time_pattern
       minutes: "/10"
-  condition:
-    - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
   action:
     - repeat:
         for_each:
@@ -1990,9 +1872,6 @@
       value_template: >-
         {{ states('input_select.hvac_season_mode') in ['heating', 'shoulder'] }}
     - condition: state
-      entity_id: timer.manual_hvac_override
-      state: "idle"
-    - condition: state
       entity_id: input_boolean.away_mode
       state: "off"
     - condition: numeric_state
@@ -2055,10 +1934,6 @@
       event_data:
         entity_id: timer.lr_heating_recovery_boost_max_runtime
       id: timeout
-    - platform: state
-      entity_id: timer.manual_hvac_override
-      to: "active"
-      id: waf
     - platform: template
       value_template: >-
         {{ states('input_select.hvac_season_mode') not in ['heating', 'shoulder'] }}
@@ -2084,24 +1959,16 @@
             - action: timer.cancel
               target:
                 entity_id: timer.lr_heating_recovery_boost_max_runtime
-    - choose:
-        - conditions:
-            - condition: not
-              conditions:
-                - condition: state
-                  entity_id: timer.manual_hvac_override
-                  state: "active"
-          sequence:
-            - action: climate.set_hvac_mode
-              target:
-                entity_id: climate.living_room_air
-              data:
-                hvac_mode: "off"
+    - action: climate.set_hvac_mode
+      target:
+        entity_id: climate.living_room_air
+      data:
+        hvac_mode: "off"
     # -------------------------------------------------------------------------
     # OBSERVABILITY ONLY (v5.5 / issue #62) — runs AFTER control actions.
     # Maps the release trigger.id to a stable classifier string and persists
     # it (plus the release timestamp) so the v5.5 telemetry export can
-    # distinguish all five doctrinal terminations: truth_cap, timeout, waf,
+    # distinguish all four doctrinal terminations: truth_cap, timeout,
     # season_change, truth_unavailable. The default branch writes
     # `unknown_release_reason` so this block can never raise on an
     # unrecognized trigger.id and cannot interrupt the latch flip, timer
@@ -2127,15 +1994,6 @@
                 entity_id: input_text.lr_heating_recovery_boost_last_release_reason
               data:
                 value: "timeout"
-        - conditions:
-            - condition: trigger
-              id: waf
-          sequence:
-            - action: input_text.set_value
-              target:
-                entity_id: input_text.lr_heating_recovery_boost_last_release_reason
-              data:
-                value: "waf"
         - conditions:
             - condition: trigger
               id: season_change
@@ -2217,9 +2075,6 @@
       entity_id: climate.lilly_air
       attribute: temperature
       id: lilly_temp_attr
-    - platform: state
-      entity_id: timer.manual_hvac_override
-      id: override_state
     # Observes operator/admin enable-disable transitions of the live Section 2
     # supervisor. Verified runtime entity_id: automation.v7_5_main_supervisor.
     # Forensic-only; does not turn the supervisor on/off or influence control.
@@ -2262,15 +2117,15 @@
         {% set temp_attr_ids = ['lr_temp_attr', 'master_temp_attr', 'lincoln_temp_attr', 'lilly_temp_attr', 'fan_percentage'] %}
         {% if trigger.id in temp_attr_ids %}
         {% if trigger.id == 'fan_percentage' %}
-        {% set ov = trigger.from_state.attributes.percentage if trigger.from_state is not none else none %}
-        {% set nv = trigger.to_state.attributes.percentage if trigger.to_state is not none else none %}
+        {% set ov = trigger.from_state.attributes.get('percentage') if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.attributes.get('percentage') if trigger.to_state is not none else none %}
         {% else %}
-        {% set ov = trigger.from_state.attributes.temperature if trigger.from_state is not none else none %}
-        {% set nv = trigger.to_state.attributes.temperature if trigger.to_state is not none else none %}
+        {% set ov = trigger.from_state.attributes.get('temperature') if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.attributes.get('temperature') if trigger.to_state is not none else none %}
         {% endif %}
         {% elif trigger.id == 'spi_last_triggered' %}
-        {% set ov = trigger.from_state.attributes.last_triggered if trigger.from_state is not none else none %}
-        {% set nv = trigger.to_state.attributes.last_triggered if trigger.to_state is not none else none %}
+        {% set ov = trigger.from_state.attributes.get('last_triggered') if trigger.from_state is not none else none %}
+        {% set nv = trigger.to_state.attributes.get('last_triggered') if trigger.to_state is not none else none %}
         {% else %}
         {% set ov = trigger.from_state.state if trigger.from_state is not none else none %}
         {% set nv = trigger.to_state.state if trigger.to_state is not none else none %}
@@ -2282,17 +2137,17 @@
         attribute_name: "{% if trigger.id in temperature_attr_trigger_ids %}{% if trigger.id == 'fan_percentage' %}percentage{% else %}temperature{% endif %}{% elif trigger.id == 'spi_last_triggered' %}last_triggered{% else %}state{% endif %}"
         old_raw: >-
           {% if trigger.id in temperature_attr_trigger_ids %}
-          {% if trigger.id == 'fan_percentage' %}{{ trigger.from_state.attributes.percentage if trigger.from_state is not none else '' }}{% else %}{{ trigger.from_state.attributes.temperature if trigger.from_state is not none else '' }}{% endif %}
+          {% if trigger.id == 'fan_percentage' %}{{ trigger.from_state.attributes.get('percentage') if trigger.from_state is not none else '' }}{% else %}{{ trigger.from_state.attributes.get('temperature') if trigger.from_state is not none else '' }}{% endif %}
           {% elif trigger.id == 'spi_last_triggered' %}
-          {{ trigger.from_state.attributes.last_triggered if trigger.from_state is not none else '' }}
+          {{ trigger.from_state.attributes.get('last_triggered') if trigger.from_state is not none else '' }}
           {% else %}
           {{ trigger.from_state.state if trigger.from_state is not none else '' }}
           {% endif %}
         new_raw: >-
           {% if trigger.id in temperature_attr_trigger_ids %}
-          {% if trigger.id == 'fan_percentage' %}{{ trigger.to_state.attributes.percentage if trigger.to_state is not none else '' }}{% else %}{{ trigger.to_state.attributes.temperature if trigger.to_state is not none else '' }}{% endif %}
+          {% if trigger.id == 'fan_percentage' %}{{ trigger.to_state.attributes.get('percentage') if trigger.to_state is not none else '' }}{% else %}{{ trigger.to_state.attributes.get('temperature') if trigger.to_state is not none else '' }}{% endif %}
           {% elif trigger.id == 'spi_last_triggered' %}
-          {{ trigger.to_state.attributes.last_triggered if trigger.to_state is not none else '' }}
+          {{ trigger.to_state.attributes.get('last_triggered') if trigger.to_state is not none else '' }}
           {% else %}
           {{ trigger.to_state.state if trigger.to_state is not none else '' }}
           {% endif %}
@@ -2339,7 +2194,6 @@
           {% if trigger.id == 'spi_last_triggered' %}v9_sleep_priority_interlock
           {% elif trigger.entity_id == 'automation.v7_5_main_supervisor' %}v7_5_main_supervisor
           {% elif ok != 'automation_or_script' %}
-          {% elif trigger.entity_id == 'timer.manual_hvac_override' and ts == 'active' %}v7_5_waf_manual_override
           {% elif trigger.entity_id == 'input_boolean.lr_heating_recovery_boost_active' and ts == 'on' %}v8_4_lr_heating_recovery_boost_engage
           {% elif trigger.entity_id == 'input_boolean.lr_heating_recovery_boost_active' and ts == 'off' %}v8_4_lr_heating_recovery_boost_release
           {% elif trigger.entity_id == 'climate.living_room_air' and trigger.id == 'lr_temp_attr' and (new_value_clean | string) == '77' %}v8_4_lr_heating_recovery_boost_engage

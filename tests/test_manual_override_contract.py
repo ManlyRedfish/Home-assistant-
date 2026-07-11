@@ -140,33 +140,10 @@ def _assert_respects_manual_override_idle(automations_data, automation_id):
     )
 
 
-def test_supervisor_respects_manual_override(automations_data):
-    _assert_respects_manual_override_idle(automations_data, "v7_5_main_supervisor")
-
-
-def test_ceiling_gates_respect_manual_override(automations_data):
-    _assert_respects_manual_override_idle(automations_data, "v7_5_safety_ceiling_gates")
-
-
-def test_destratification_respects_manual_override(automations_data):
-    _assert_respects_manual_override_idle(
-        automations_data, "v8_comfort_fan_destratification"
-    )
-
-
-def test_samsung_guardrail_respects_manual_override(automations_data):
-    _assert_respects_manual_override_idle(automations_data, "v8_samsung_auto_guardrail")
-
-
-def test_boost_engage_respects_manual_override(automations_data):
-    _assert_respects_manual_override_idle(
-        automations_data, "v8_4_lr_heating_recovery_boost_engage"
-    )
-
-
-def test_boost_release_yields_to_manual_override(automations_data):
+def test_boost_release_no_longer_gates_on_waf(automations_data):
     auto = _get_automation(automations_data, "v8_4_lr_heating_recovery_boost_release")
 
+    # WAF (manual_hvac_override) trigger must NOT exist — timer was removed
     waf_trigger_found = any(
         trigger.get("platform") == "state"
         and trigger.get("entity_id") == "timer.manual_hvac_override"
@@ -174,13 +151,13 @@ def test_boost_release_yields_to_manual_override(automations_data):
         and trigger.get("id") == "waf"
         for trigger in auto.get("trigger", [])
     )
-    assert waf_trigger_found, (
-        "Manual Override Contract violation: v8_4_lr_heating_recovery_boost_release "
-        "must include WAF trigger (platform: state, entity_id: "
-        "timer.manual_hvac_override, to: active, id: waf). "
-        "See docs/5_runtime_layer.md §7.8 and docs/3_regression_appendix.md §4.16."
+    assert not waf_trigger_found, (
+        "WAF trigger (timer.manual_hvac_override) must not be present — "
+        "timer was removed. See docs/5_runtime_layer.md §7.8."
     )
 
+    # The choose-guarded LR-off path must no longer exist.
+    # Boost release now unconditionally turns LR off (no WAF guard).
     choose_guard_with_lr_off = False
     for action_item in auto.get("action", []):
         if not isinstance(action_item, dict) or "choose" not in action_item:
@@ -224,11 +201,9 @@ def test_boost_release_yields_to_manual_override(automations_data):
         if choose_guard_with_lr_off:
             break
 
-    assert choose_guard_with_lr_off, (
-        "Manual Override Contract violation: boost release climate-off path must be in "
-        "a choose branch guarded by `not(state(timer.manual_hvac_override == active))`, "
-        "so manual override (WAF) does not force LR HVAC off. "
-        "See docs/5_runtime_layer.md §7.8 and docs/3_regression_appendix.md §4.15/§4.16."
+    assert not choose_guard_with_lr_off, (
+        "Boost release must NOT have a WAF-guarded LR-off path — "
+        "timer was removed, boost_release now unconditionally turns LR off."
     )
 
 

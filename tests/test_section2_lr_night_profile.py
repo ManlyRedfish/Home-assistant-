@@ -122,26 +122,26 @@ def _cooling_branch_sequence(actions):
 
 def _lr_command_step(cooling_sequence):
     """Return the climate.set_temperature action targeting the LR head."""
-    for step in cooling_sequence:
-        if not isinstance(step, dict):
+    for node in _iter_nodes(cooling_sequence):
+        if not isinstance(node, dict):
             continue
-        service = step.get("action") or step.get("service")
+        service = node.get("action") or node.get("service")
         if service != "climate.set_temperature":
             continue
-        target = step.get("target") or {}
+        target = node.get("target") or {}
         entity = target.get("entity_id")
         entities = entity if isinstance(entity, list) else [entity]
         if LR_CLIMATE in entities:
-            return step
+            return node
     pytest.fail(f"climate.set_temperature step for {LR_CLIMATE} not found in cooling branch")
 
 
 def _lr_threshold_variables(cooling_sequence):
     """Return the variables dict that defines lr_off_at / lr_on_at / lr_conservation."""
-    for step in cooling_sequence:
-        if not isinstance(step, dict):
+    for node in _iter_nodes(cooling_sequence):
+        if not isinstance(node, dict):
             continue
-        variables = step.get("variables")
+        variables = node.get("variables")
         if isinstance(variables, dict) and {"lr_off_at", "lr_on_at"} <= variables.keys():
             return variables
     pytest.fail("LR threshold variables block (lr_off_at / lr_on_at) not found in cooling branch")

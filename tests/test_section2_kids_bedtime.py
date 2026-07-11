@@ -203,8 +203,9 @@ def test_bedtime_room_has_cool_and_off_branches(supervisor, entity, temp_var):
 
 
 def test_bedtime_hysteresis_variables_encode_66_70_deadband(supervisor):
-    """The cool decision must engage at truth >= 70 and continue only while
-    truth > 66 and the head is currently cool (release strictly at <= 66)."""
+    """Lincoln: engage at truth >= 70, continue while > 66 (66/70 deadband).
+    Lilly: engage at truth >= 72, continue while > 68 (68/72 deadband per
+    2026-07-09 operator decision)."""
     outer = _bedtime_if_step(supervisor)
     variables_step = next(
         (s for s in outer.get("then") or [] if isinstance(s, dict) and "variables" in s),
@@ -213,20 +214,29 @@ def test_bedtime_hysteresis_variables_encode_66_70_deadband(supervisor):
     assert variables_step, "Bedtime block must define kb_lincoln_cool / kb_lilly_cool variables"
     variables = variables_step["variables"]
 
-    for room, temp_prefix in (
-        ("kb_lincoln_cool", "lincoln_temp"),
-        ("kb_lilly_cool", "lilly_temp"),
-    ):
-        template = variables[room]
-        assert f"{temp_prefix} >= 70" in template, (
-            f"{room} must engage at {temp_prefix} >= 70"
-        )
-        assert f"{temp_prefix} > 66" in template, (
-            f"{room} must continue only while {temp_prefix} > 66"
-        )
-        assert "== 'cool'" in template, (
-            f"{room} continue-branch must consult current head state"
-        )
+    # Lincoln — 66/70 deadband (unchanged)
+    ln_template = variables["kb_lincoln_cool"]
+    assert "lincoln_temp >= 70" in ln_template, (
+        "Lincoln must engage at lincoln_temp >= 70"
+    )
+    assert "lincoln_temp > 66" in ln_template, (
+        "Lincoln must continue only while lincoln_temp > 66"
+    )
+    assert "== 'cool'" in ln_template, (
+        "Lincoln continue-branch must consult current head state"
+    )
+
+    # Lilly — 68/72 deadband (permanent, per 2026-07-09 operator decision)
+    ly_template = variables["kb_lilly_cool"]
+    assert "lilly_temp >= 72" in ly_template, (
+        "Lilly must engage at lilly_temp >= 72"
+    )
+    assert "lilly_temp > 68" in ly_template, (
+        "Lilly must continue only while lilly_temp > 68"
+    )
+    assert "== 'cool'" in ly_template, (
+        "Lilly continue-branch must consult current head state"
+    )
 
 
 def test_bedtime_lincoln_and_lilly_are_independent(supervisor):
