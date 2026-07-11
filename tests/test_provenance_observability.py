@@ -262,11 +262,11 @@ def test_temperature_attribute_triggers_use_temperature_provenance(
     assert "trigger.id in temperature_attr_trigger_ids" in templates["attribute_name"], (
         "attribute_name must branch on temperature_attr_trigger_ids."
     )
-    assert "attributes.temperature" in templates["old_raw"], (
+    assert "attributes.get('temperature')" in templates["old_raw"], (
         "old_raw must use trigger.from_state.attributes.temperature for "
         "temperature-attribute triggers."
     )
-    assert "attributes.temperature" in templates["new_raw"], (
+    assert "attributes.get('temperature')" in templates["new_raw"], (
         "new_raw must use trigger.to_state.attributes.temperature for "
         "temperature-attribute triggers."
     )
@@ -300,7 +300,7 @@ def test_skip_identical_uses_temperature_attribute_for_all_climate_setpoint_trig
             f"Dedupe template must include {trigger_id} in temperature-attr branch."
         )
 
-    assert "attributes.temperature" in dedupe, (
+    assert "attributes.get('temperature')" in dedupe, (
         "Dedupe template must compare trigger.*.attributes.temperature for "
         "climate setpoint attr triggers."
     )

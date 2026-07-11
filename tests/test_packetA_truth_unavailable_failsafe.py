@@ -137,9 +137,10 @@ def test_supervisor_cooling_templates_are_invalid_truth_off_biased():
     assert "value_template: \"{{ lincoln_truth_ok }}\"" in AUTOMATIONS_TEXT
     assert "value_template: \"{{ lilly_truth_ok }}\"" in AUTOMATIONS_TEXT
 
-    # Healthy-state doctrine remains hysteresis/HOLD based: the thresholds and
-    # equality operators are unchanged, with HOLD still preserving current cool.
-    assert "master_temp > m_on_at" in AUTOMATIONS_TEXT
+    # Healthy-state doctrine remains hysteresis/HOLD based, with HOLD still
+    # preserving current cool. The engage comparator is inclusive (`>=`) so
+    # master_temp exactly at m_on_at engages cooling instead of hanging in HOLD.
+    assert "master_temp >= m_on_at" in AUTOMATIONS_TEXT
     assert "master_temp <= m_off_at" in AUTOMATIONS_TEXT
     assert "m_current == 'cool'" in AUTOMATIONS_TEXT
     assert "temperature: \"{{ m_setpoint }}\"" in AUTOMATIONS_TEXT
