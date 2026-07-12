@@ -438,10 +438,10 @@ kids-only turbo to all cooling calls — operator-directed 2026-06-10.
 **CHANGE-3 — LR night conservation profile (new behavior).** In the cooling
 branch, when `night_mode_lr_primary` is on and not away: LR uses 76 engage /
 74 release / hold-through / `cool@61/turbo` instead of the daytime 72/68.
-Does not read or write `input_boolean.away_mode`. Heating/shoulder LR
-behavior tied to this helper is unchanged. Shoulder LR cooling remains
-ineligible (§1.4) — the profile takes effect where LR cooling is evaluated,
-i.e. the cooling season branch.
+Does not read or write `input_boolean.away_mode`. **Superseded 2026-07-12:**
+shoulder LR cooling is eligible and uses the same active 68/72 daytime or
+74/76 away/conservation profile. Season selects strategy but cannot bypass the
+room deadband.
 
 **CHANGE-4 — Away parity in shoulder (live gap fix).** The shoulder-day warm
 path currently cools bedrooms with no away handling, and the shoulder paths
@@ -449,18 +449,16 @@ generally ignore `away_mode` for cooling. Stage 0 applies P1 (76/74, hold,
 61/turbo) wherever a zone is cooling-eligible in shoulder, consistent with
 "away overrides every occupied/night profile."
 
-**CHANGE-5 (operator-visible; recommended default) — Shoulder-day bedroom
-deadband alignment.** The live shoulder-day warm path cools Master/Lincoln/
-Lilly at `> 70 → cool, else off` — a zero-width band with no hold, which
-contradicts both the operator's stated daytime doctrine (72/68) and the
-hysteresis contract. Recommended: within the existing warm-eligibility gate
-(`outdoor > 70 or lr_temp > 71`, unchanged), evaluate those zones with the
-P5 daytime profile (72/68, hold-through, 61/turbo). This touches the path PR
-#134's plan listed as "daytime unchanged," so it is called out here for
-explicit operator approval at design review; the fallback (keep legacy 70/70
-no-hold, mirrored as-is by the shadow) is inferior but acceptable. **The
-shadow evaluator mirrors whichever variant Stage 0 lands** — the policy and
-its mirror cannot diverge.
+**CHANGE-5 (approved and expanded 2026-07-12) — Shoulder deadband authority.**
+The former shoulder warm path used `> 70 → cool, else off` for bedrooms and
+bulk-forced Living Room OFF. Both structures are retired. Shoulder evaluates
+each cooling-eligible room with its active profile's engage, release, and
+hold-current-mode semantics: occupied daytime 68/72, away 74/76, Master sleep,
+kids bedtime, and LR conservation profiles remain scoped as documented.
+Living Room receives a dedicated profile decision and is never bundled with
+Dining's OFF command. Invalid truth remains zone-local OFF. The former
+`outdoor > 70 or lr_temp > 71` shortcut is not an authority over room bounds.
+Section 3 safety and heating-season behavior remain outside this change.
 
 **CHANGE-6 — Bedroom Cooling Priority in shoulder (new cross-zone rule,
 §1.5).** Hoist the kids' bedtime call resolutions into the supervisor's
