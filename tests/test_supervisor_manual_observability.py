@@ -172,9 +172,9 @@ EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        # Re-pinned for timer removal + smoothed truth: timer gate removed,
-        # _temperature_truth → _temperature_control, > → >= on cooling engage.
-        "2adef484f783c2625a235137849b8afdaf9acce35ada7eebf1ecc1dfb1ece5ce",
+        # Re-pinned for the 2026-07-12 shoulder deadband authority change:
+        # zero-width/bulk-off shoulder shortcuts replaced by per-zone profiles.
+        "2678b6513892b227fd555535d78fd362633fcf84a80ea0ca3dc8c4817183da73",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",

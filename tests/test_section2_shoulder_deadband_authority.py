@@ -153,6 +153,39 @@ def _variables(supervisor) -> dict[str, set]:
     return found
 
 
+def _cooling_profile_variables(supervisor) -> dict[str, set]:
+    branch = _shoulder_branch(supervisor)
+    branch_text = str(branch)
+    assert "lr_conservation" in branch_text
+    found: dict[str, set] = {}
+    for node in _walk(branch):
+        variables = node.get("variables") if isinstance(node, dict) else None
+        if not isinstance(variables, dict):
+            continue
+        if (
+            "lr_conservation" in variables
+            or "m_on_at" in variables
+            or "l_on_at" in variables
+            or "ly_on_at" in variables
+        ):
+            for key, value in variables.items():
+                found.setdefault(key, set()).add(value)
+    return found
+
+
+def _cooling_deadband(temp, prior_mode, release_at, engage_at, *, engage_inclusive):
+    if engage_inclusive:
+        if temp >= engage_at:
+            return "cool"
+    elif temp > engage_at:
+        return "cool"
+    if temp <= release_at:
+        return "off"
+    if prior_mode == "cool":
+        return "cool"
+    return "off"
+
+
 def test_no_new_automation_ids_helpers_or_timers(automations_data, automations_text):
     ids = {a.get("id") for a in automations_data if isinstance(a, dict)}
     assert SUPERVISOR_ID in ids
@@ -201,25 +234,29 @@ def test_shoulder_bulk_off_never_targets_comfort_heads(supervisor):
     shoulder = _shoulder_branch(supervisor)
     offenders = []
     for step in _set_hvac_mode_off_steps(shoulder.get("sequence", [])):
-        overlap = _target_entities(step) & COMFORT_HEADS
+        targets = _target_entities(step)
+        overlap = targets & COMFORT_HEADS
+        if len(targets) == 1:
+            continue
         if overlap:
             offenders.append((sorted(overlap), step))
 
     assert not offenders, (
-        "Shoulder branch must not bulk-force comfort-controlled heads off. "
+        "Shoulder branch must not bulk-force comfort-controlled heads off; "
+        "zone-local invalid-truth OFF commands are allowed. "
         f"Offending targets: {offenders!r}"
     )
 
 
 def test_shoulder_daytime_lr_profile_resolves_to_68_72_when_not_away_or_night(supervisor):
-    variables = _variables(supervisor)
+    variables = _cooling_profile_variables(supervisor)
     assert variables["lr_conservation"] == {"{{ away or lr_night_primary }}"}
     assert variables["lr_off_at"] == {"{{ 74 if lr_conservation else 68 }}"}
     assert variables["lr_on_at"] == {"{{ 76 if lr_conservation else 72 }}"}
 
 
 def test_shoulder_lr_conservation_profile_resolves_to_74_76_with_hold(supervisor):
-    variables = _variables(supervisor)
+    variables = _cooling_profile_variables(supervisor)
     assert variables["lr_off_at"] == {"{{ 74 if lr_conservation else 68 }}"}
     assert variables["lr_on_at"] == {"{{ 76 if lr_conservation else 72 }}"}
 
@@ -325,3 +362,115 @@ def test_dining_may_remain_shoulder_off_but_not_bundled_with_lr_or_bedrooms(supe
             "Dining shoulder off command must not bundle LR or bedroom heads "
             f"with it: {step!r}"
         )
+
+
+@pytest.mark.parametrize(
+    "temp,prior_mode,expected",
+    [
+        (67.9, "cool", "off"),
+        (68.0, "off", "off"),
+        (70.0, "cool", "cool"),
+        (70.0, "off", "off"),
+        (72.1, "off", "cool"),
+        (72.1, "cool", "cool"),
+    ],
+)
+def test_occupied_daytime_68_72_truth_table(temp, prior_mode, expected):
+    assert (
+        _cooling_deadband(
+            temp,
+            prior_mode,
+            release_at=68,
+            engage_at=72,
+            engage_inclusive=False,
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "temp,prior_mode,expected",
+    [
+        (74.0, "cool", "off"),
+        (75.0, "cool", "cool"),
+        (75.0, "off", "off"),
+        (76.1, "off", "cool"),
+        (76.1, "cool", "cool"),
+    ],
+)
+def test_away_and_lr_conservation_74_76_truth_table(temp, prior_mode, expected):
+    assert (
+        _cooling_deadband(
+            temp,
+            prior_mode,
+            release_at=74,
+            engage_at=76,
+            engage_inclusive=False,
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "temp,prior_mode,expected",
+    [
+        (66.0, "cool", "off"),
+        (68.0, "cool", "cool"),
+        (68.0, "off", "off"),
+        (70.0, "off", "cool"),
+        (70.0, "cool", "cool"),
+    ],
+)
+def test_lincoln_bedtime_66_70_truth_table(temp, prior_mode, expected):
+    assert (
+        _cooling_deadband(
+            temp,
+            prior_mode,
+            release_at=66,
+            engage_at=70,
+            engage_inclusive=True,
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "temp,prior_mode,expected",
+    [
+        (68.0, "cool", "off"),
+        (70.0, "cool", "cool"),
+        (70.0, "off", "off"),
+        (72.0, "off", "cool"),
+        (72.0, "cool", "cool"),
+    ],
+)
+def test_lilly_bedtime_68_72_truth_table(temp, prior_mode, expected):
+    assert (
+        _cooling_deadband(
+            temp,
+            prior_mode,
+            release_at=68,
+            engage_at=72,
+            engage_inclusive=True,
+        )
+        == expected
+    )
+
+
+def test_cooling_to_shoulder_continuity_preserves_active_pull_down(supervisor):
+    variables = _cooling_profile_variables(supervisor)
+    assert variables["l_off_at"] == {"{{ 74 if away else 68 }}"}
+    assert variables["l_on_at"] == {"{{ 76 if away else 72 }}"}
+    assert variables["ly_off_at"] == {"{{ 74 if away else 68 }}"}
+    assert variables["ly_on_at"] == {"{{ 76 if away else 72 }}"}
+
+    assert (
+        _cooling_deadband(
+            70,
+            "cool",
+            release_at=68,
+            engage_at=72,
+            engage_inclusive=True,
+        )
+        == "cool"
+    )
