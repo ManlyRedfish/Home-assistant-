@@ -6,6 +6,33 @@ This is an evidence-driven environmental control research system built around te
 
 ---
 
+## Program-Wide Operator Doctrine
+
+### 2026-08-03 — Adopt before build
+
+Operator decision. Applies to **every ManlyRedfish project and every step**, not
+only to this repository. In Eric's words:
+
+> An open source or free to use software solution before you try and create your
+> own. And if we have to adapt it, do it that way.
+
+Search first, adapt second, build last — and build only with a recorded reason.
+Proposing to write a new tool, harness, parser, scheduler, or library is a
+decision that must be justified against what already exists; it is never the
+default. When a plan proposes building something, it must name what was
+evaluated and why it was rejected. "We did not look" is not an acceptable
+answer.
+
+Adapting an existing tool is preferred over recreating it. Where this
+repository's constraints require it, adopted tools are pinned and vendored
+rather than fetched at runtime.
+
+This doctrine is recorded identically as `docs/CONSTITUTION.md` item 23 in
+`ManlyRedfish/manlyredfish-ai-country`, which carries the program's candidate
+register in `docs/ADOPT_BEFORE_BUILD.md`.
+
+---
+
 ## Current Operator Decisions (HIGHEST PRIORITY — read first)
 
 Explicit, dated operator decisions override older general doctrine when they are
