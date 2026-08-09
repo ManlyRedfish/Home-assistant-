@@ -14,34 +14,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-
-
-class MooseLoader(yaml.SafeLoader):
-    pass
-
-
-def _secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _include_dir_merge_list(loader, node):
-    return []
-
-
-MooseLoader.add_constructor("!secret", _secret)
-MooseLoader.add_constructor("!include", _include)
-MooseLoader.add_constructor("!input", _input)
-MooseLoader.add_constructor("!include_dir_merge_list", _include_dir_merge_list)
-MooseLoader.add_constructor("!include_dir_named", _include_dir_merge_list)
-
+from tests.yaml_loader import MooseAutomationLoader
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTOMATIONS = ROOT / "automations.yaml"
@@ -192,7 +165,9 @@ EXPECTED_SECTION_HASHES = {
         "184ea751ed94859366df953f09b85a0d32f66d1369adfd74fa2e3d76231db081",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "62b4d8f94dd3d0291b69d12438fbf60135c7e1f278b32c91c872aadf55026ac1"
+EXPECTED_CONFIGURATION_HASH = (
+    "62b4d8f94dd3d0291b69d12438fbf60135c7e1f278b32c91c872aadf55026ac1"
+)
 
 
 @pytest.fixture(scope="module")
@@ -202,7 +177,7 @@ def automations_text() -> str:
 
 @pytest.fixture(scope="module")
 def automations_data():
-    return yaml.load(AUTOMATIONS.read_text(), Loader=MooseLoader)
+    return yaml.load(AUTOMATIONS.read_text(), Loader=MooseAutomationLoader)
 
 
 def _find_automation(automations_data, automation_id: str):
@@ -221,7 +196,16 @@ def _iter_action_items(action):
         if not isinstance(item, dict):
             continue
         yield item
-        for nested_key in ("choose", "if", "repeat", "parallel", "default", "then", "else", "sequence"):
+        for nested_key in (
+            "choose",
+            "if",
+            "repeat",
+            "parallel",
+            "default",
+            "then",
+            "else",
+            "sequence",
+        ):
             nested = item.get(nested_key)
             if nested is None:
                 continue
@@ -262,7 +246,9 @@ def test_v55_wide_row_contains_supervisor_field(automations_data):
     assert SUPERVISOR_ENTITY in payload["Supervisor_Enabled"]
 
 
-def test_provenance_logger_observes_supervisor_enabled_disabled_transitions(automations_data):
+def test_provenance_logger_observes_supervisor_enabled_disabled_transitions(
+    automations_data,
+):
     logger = _find_automation(automations_data, PROVENANCE_ID)
     triggers = logger.get("trigger") or []
 
@@ -288,7 +274,9 @@ def test_no_control_automation_consumes_new_telemetry_fields(automations_text):
     rest = automations_text.replace(section1, "")
 
     for field in NEW_FIELDS:
-        assert field not in rest, f"{field} leaked outside the write-only telemetry exporter"
+        assert (
+            field not in rest
+        ), f"{field} leaked outside the write-only telemetry exporter"
 
     for section_start, section_end in [
         ("# SECTION 2:", "# SECTION 3:"),
@@ -306,22 +294,29 @@ def test_no_automation_reads_google_sheets_tabs(automations_data):
         for item in _iter_action_items(automation.get("action")):
             service = item.get("action") or item.get("service")
             if service:
-                assert not service.startswith("google_sheets.get"), (
-                    "Google Sheets must remain a write-only forensic sink"
-                )
+                assert not service.startswith(
+                    "google_sheets.get"
+                ), "Google Sheets must remain a write-only forensic sink"
 
 
-def test_control_surfaces_and_truth_configuration_are_byte_for_byte_unchanged(automations_text):
+def test_control_surfaces_and_truth_configuration_are_byte_for_byte_unchanged(
+    automations_text,
+):
     for name, (start, end, expected_hash) in EXPECTED_SECTION_HASHES.items():
-        digest = hashlib.sha256(_section(automations_text, start, end).encode()).hexdigest()
+        digest = hashlib.sha256(
+            _section(automations_text, start, end).encode()
+        ).hexdigest()
         assert digest == expected_hash, f"{name} changed in an observability-only PR"
 
     configuration_digest = hashlib.sha256(CONFIGURATION.read_bytes()).hexdigest()
-    assert configuration_digest == EXPECTED_CONFIGURATION_HASH, (
-        "configuration.yaml changed; truth weights/helpers are outside this PR's scope"
-    )
+    assert (
+        configuration_digest == EXPECTED_CONFIGURATION_HASH
+    ), "configuration.yaml changed; truth weights/helpers are outside this PR's scope"
 
 
 def test_verified_supervisor_entity_id_is_documented(automations_text):
-    assert "Verified live main-supervisor entity_id: automation.v7_5_main_supervisor" in automations_text
+    assert (
+        "Verified live main-supervisor entity_id: automation.v7_5_main_supervisor"
+        in automations_text
+    )
     assert "Do not derive this from the YAML id alone" in automations_text

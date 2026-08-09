@@ -32,38 +32,17 @@ import os
 
 import pytest
 import yaml
-
+from tests.yaml_loader import MooseAutomationLoader
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
-PROFILE_NAMES = ["eric_cold", "family_normal", "sleep_cold", "away_relaxed", "safety_only"]
-
-
-class MooseSeparationLoader(yaml.SafeLoader):
-    pass
-
-
-def _secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _include_dir_merge_list(loader, node):
-    return []
-
-
-MooseSeparationLoader.add_constructor("!secret", _secret)
-MooseSeparationLoader.add_constructor("!include", _include)
-MooseSeparationLoader.add_constructor("!input", _input)
-MooseSeparationLoader.add_constructor("!include_dir_merge_list", _include_dir_merge_list)
-MooseSeparationLoader.add_constructor("!include_dir_named", _include_dir_merge_list)
+PROFILE_NAMES = [
+    "eric_cold",
+    "family_normal",
+    "sleep_cold",
+    "away_relaxed",
+    "safety_only",
+]
 
 
 @pytest.fixture(scope="module")
@@ -72,7 +51,7 @@ def automations_data():
     if not os.path.exists(path):
         pytest.skip("automations.yaml not found.")
     with open(path, "r", encoding="utf-8") as fh:
-        return yaml.load(fh, Loader=MooseSeparationLoader)
+        return yaml.load(fh, Loader=MooseAutomationLoader)
 
 
 def _find(automations, auto_id):
@@ -109,10 +88,15 @@ def _read_doc(rel_path):
 # 1. Section 3 true-safety floors are unchanged.
 # --------------------------------------------------------------------------- #
 
+
 def test_lr_runaway_floor_remains_60(automations_data):
     auto = _find(automations_data, "v8_2_lr_runaway_cooling_cutoff")
-    assert auto is not None, "LR runaway cooling cutoff (v8_2_lr_runaway_cooling_cutoff) missing"
-    threshold = _trigger_threshold(auto, "sensor.living_room_temperature_truth", "below")
+    assert (
+        auto is not None
+    ), "LR runaway cooling cutoff (v8_2_lr_runaway_cooling_cutoff) missing"
+    threshold = _trigger_threshold(
+        auto, "sensor.living_room_temperature_truth", "below"
+    )
     assert threshold == 60, (
         "LR runaway cooling cutoff must remain a 60°F equipment-protection floor; "
         f"found below={threshold!r}. Comfort-band work must not retune safety floors."
@@ -121,8 +105,12 @@ def test_lr_runaway_floor_remains_60(automations_data):
 
 def test_master_emergency_floor_remains_58(automations_data):
     auto = _find(automations_data, "v8_2_master_emergency_floor")
-    assert auto is not None, "Master emergency floor (v8_2_master_emergency_floor) missing"
-    threshold = _trigger_threshold(auto, "sensor.master_bedroom_temperature_truth", "below")
+    assert (
+        auto is not None
+    ), "Master emergency floor (v8_2_master_emergency_floor) missing"
+    threshold = _trigger_threshold(
+        auto, "sensor.master_bedroom_temperature_truth", "below"
+    )
     assert threshold == 58, (
         "Master emergency cooling floor must remain a 58°F equipment-protection floor; "
         f"found below={threshold!r}. Comfort-band work must not retune safety floors."
@@ -132,6 +120,7 @@ def test_master_emergency_floor_remains_58(automations_data):
 # --------------------------------------------------------------------------- #
 # 2. True-safety gates must not gate on manual override (they override intent).
 # --------------------------------------------------------------------------- #
+
 
 def test_true_safety_floors_do_not_gate_on_manual_override(automations_data):
     for auto_id in ("v8_2_lr_runaway_cooling_cutoff", "v8_2_master_emergency_floor"):
@@ -148,6 +137,7 @@ def test_true_safety_floors_do_not_gate_on_manual_override(automations_data):
 # 3. Docs document comfort bands as preferences, separate from safety gates.
 # --------------------------------------------------------------------------- #
 
+
 def test_canon_documents_comfort_bands_not_thermostat_targets():
     canon = _read_doc("1_startup_canon.md")
     assert "comfort bands" in canon.lower()
@@ -160,13 +150,13 @@ def test_canon_documents_comfort_bands_not_thermostat_targets():
 def test_canon_documents_comfort_vs_safety_separation():
     canon = _read_doc("1_startup_canon.md")
     lower = canon.lower()
-    assert "comfort bands are preferences" in lower, (
-        "Canon must state comfort bands are preferences (distinct from safety)."
-    )
+    assert (
+        "comfort bands are preferences" in lower
+    ), "Canon must state comfort bands are preferences (distinct from safety)."
     # Comfort thresholds must never be a safety gate / alias a safety floor.
-    assert "alias a safety floor" in lower or "never alias" in lower, (
-        "Canon must state a comfort threshold may never alias a safety floor."
-    )
+    assert (
+        "alias a safety floor" in lower or "never alias" in lower
+    ), "Canon must state a comfort threshold may never alias a safety floor."
 
 
 def test_canon_documents_planned_profiles():
@@ -178,17 +168,20 @@ def test_canon_documents_planned_profiles():
 def test_runtime_layer_documents_profiles_and_separation():
     runtime = _read_doc("5_runtime_layer.md")
     lower = runtime.lower()
-    assert "not yet live" in lower or "not yet runtime" in lower, (
-        "Runtime layer must mark the comfort-profile/truth model as not yet live."
-    )
+    assert (
+        "not yet live" in lower or "not yet runtime" in lower
+    ), "Runtime layer must mark the comfort-profile/truth model as not yet live."
     assert "comfort bands are preferences" in lower
     missing = [p for p in PROFILE_NAMES if p not in runtime]
-    assert not missing, f"Runtime layer is missing planned comfort profile names: {missing}"
+    assert (
+        not missing
+    ), f"Runtime layer is missing planned comfort profile names: {missing}"
 
 
 # --------------------------------------------------------------------------- #
 # 4. Comfort thresholds are documented as preferences, not safety invariants.
 # --------------------------------------------------------------------------- #
+
 
 def test_safety_floors_documented_as_equipment_protection_not_comfort():
     """
@@ -199,6 +192,6 @@ def test_safety_floors_documented_as_equipment_protection_not_comfort():
     runtime = _read_doc("5_runtime_layer.md")
     lower = runtime.lower()
     assert "60" in runtime and "58" in runtime
-    assert "equipment protection" in lower or "physical protection" in lower, (
-        "Safety floors must be documented as equipment/physical protection."
-    )
+    assert (
+        "equipment protection" in lower or "physical protection" in lower
+    ), "Safety floors must be documented as equipment/physical protection."

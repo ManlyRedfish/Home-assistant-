@@ -34,7 +34,6 @@ import os
 
 import pytest
 
-
 # --------------------------------------------------------------------------- #
 # Reference model (the proposed contract). Pure functions, no HA, no YAML.
 # These mirror the doctrine in docs/comfort_band_and_truth_confidence_plan.md
@@ -92,10 +91,11 @@ def is_value_change_fresh(last_changed_age_s, max_age_s=7200):
 # Status ladder contract
 # --------------------------------------------------------------------------- #
 
+
 def test_two_primary_sources_is_healthy():
     sources = [
-        {"class": PRIMARY, "valid": True},   # e.g. Matter
-        {"class": PRIMARY, "valid": True},   # e.g. Bluetooth
+        {"class": PRIMARY, "valid": True},  # e.g. Matter
+        {"class": PRIMARY, "valid": True},  # e.g. Bluetooth
         {"class": FALLBACK, "valid": True},  # Samsung internal present too
     ]
     assert classify_truth_status(sources) == "healthy"
@@ -119,8 +119,8 @@ def test_primary_plus_fallback_only_is_degraded():
 
 def test_samsung_only_is_fallback_never_healthy():
     sources = [
-        {"class": FALLBACK, "valid": True},   # Samsung / mini-split internal only
-        {"class": PRIMARY, "valid": False},   # all primaries unavailable
+        {"class": FALLBACK, "valid": True},  # Samsung / mini-split internal only
+        {"class": PRIMARY, "valid": False},  # all primaries unavailable
     ]
     status = classify_truth_status(sources)
     assert status == "fallback"
@@ -144,13 +144,14 @@ def test_empty_source_set_is_failed():
 # Partial degradation must not collapse into total failure
 # --------------------------------------------------------------------------- #
 
+
 def test_unavailable_esp_with_other_primaries_is_not_failed():
     """An unavailable ESP/Apollo source must not equal total truth failure when
     Matter / Bluetooth / SmartThings remain available."""
     sources = [
         {"class": EXPERIMENTAL, "valid": False},  # ESP/Apollo down
-        {"class": PRIMARY, "valid": True},        # Matter up
-        {"class": PRIMARY, "valid": True},        # SmartThings up
+        {"class": PRIMARY, "valid": True},  # Matter up
+        {"class": PRIMARY, "valid": True},  # SmartThings up
     ]
     status = classify_truth_status(sources)
     assert status != "failed"
@@ -171,6 +172,7 @@ def test_experimental_sources_never_make_healthy():
 # Freshness contract: stable value != stale
 # --------------------------------------------------------------------------- #
 
+
 def test_stable_sensor_with_recent_report_is_report_fresh():
     """Old last_changed (value unchanged for ~3h) but recent last_reported
     (reported 60s ago) must be considered fresh under the proposed model."""
@@ -181,7 +183,7 @@ def test_proposed_model_diverges_from_current_last_changed_rule():
     """Documents the bug: the SAME stable-but-reporting sensor is wrongly
     treated as stale by the current last_changed-only rule."""
     last_changed_age_s = 10800  # value hasn't changed in 3h
-    last_reported_age_s = 60     # but it's still reporting
+    last_reported_age_s = 60  # but it's still reporting
     assert is_report_fresh(last_changed_age_s, last_reported_age_s) is True
     assert is_value_change_fresh(last_changed_age_s) is False
 
@@ -189,6 +191,7 @@ def test_proposed_model_diverges_from_current_last_changed_rule():
 # --------------------------------------------------------------------------- #
 # Doc consistency: the contract states above match the doctrine docs
 # --------------------------------------------------------------------------- #
+
 
 def _read_doc(rel_path):
     path = os.path.join(os.path.dirname(__file__), "..", "docs", rel_path)
@@ -200,7 +203,9 @@ def _read_doc(rel_path):
 def test_status_ladder_is_documented_in_runtime_layer():
     runtime = _read_doc("5_runtime_layer.md")
     for status in VALID_STATUSES:
-        assert status in runtime, f"Runtime layer §7.9 must document the '{status}' status."
+        assert (
+            status in runtime
+        ), f"Runtime layer §7.9 must document the '{status}' status."
 
 
 def test_plan_doc_documents_status_ladder():
@@ -214,6 +219,7 @@ def test_plan_doc_documents_status_ladder():
 # claude/truth-freshness-last-reported). These were xfail in PR #123 and are
 # now hard assertions: truth freshness is measured by report time.
 # --------------------------------------------------------------------------- #
+
 
 def _read_config_text():
     path = os.path.join(os.path.dirname(__file__), "..", "configuration.yaml")
@@ -249,6 +255,6 @@ def test_live_truth_freshness_clock_is_not_last_changed():
     )
     # And the report-time clock must actually be the one wired into the
     # freshness comparison.
-    assert ".last_reported).total_seconds()" in config_text, (
-        "configuration.yaml truth freshness must compare against last_reported."
-    )
+    assert (
+        ".last_reported).total_seconds()" in config_text
+    ), "configuration.yaml truth freshness must compare against last_reported."

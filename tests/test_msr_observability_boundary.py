@@ -46,37 +46,11 @@ import re
 
 import pytest
 import yaml
-
+from tests.yaml_loader import MooseAutomationLoader
 
 # ---------------------------------------------------------------------------
 # YAML loader (mirrors the other test files; preserves !secret/!include shape).
 # ---------------------------------------------------------------------------
-class MooseMSRLoader(yaml.SafeLoader):
-    pass
-
-
-def _secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _include_dir_merge_list(loader, node):
-    return []
-
-
-MooseMSRLoader.add_constructor("!secret", _secret)
-MooseMSRLoader.add_constructor("!include", _include)
-MooseMSRLoader.add_constructor("!input", _input)
-MooseMSRLoader.add_constructor("!include_dir_merge_list", _include_dir_merge_list)
-MooseMSRLoader.add_constructor("!include_dir_named", _include_dir_merge_list)
-
 
 # ---------------------------------------------------------------------------
 # Allow-list and entity inventory.
@@ -98,32 +72,34 @@ LINCOLN_FAN_EXCEPTION_ALLOWED_HVAC_MODES = {"fan_only", "off"}
 
 # Safety automations and the main supervisor must remain MSR-free.
 SAFETY_AUTOMATION_IDS = {
-    "v8_2_lr_runaway_cooling_cutoff",   # 60°F LR runaway cooling cutoff
-    "v8_2_master_emergency_floor",      # 58°F Master emergency cooling floor
-    "v7_5_safety_ceiling_gates",        # 76°F all-season ceiling
+    "v8_2_lr_runaway_cooling_cutoff",  # 60°F LR runaway cooling cutoff
+    "v8_2_master_emergency_floor",  # 58°F Master emergency cooling floor
+    "v7_5_safety_ceiling_gates",  # 76°F all-season ceiling
 }
 MAIN_SUPERVISOR_ID = "v7_5_main_supervisor"
 
 # Apollo / MSR raw sensors and their documented wrappers (configuration.yaml).
 # If a new MSR-derived entity is introduced, add it here AND update the
 # Apollo MSR observability checklist in the same PR.
-MSR_DERIVED_ENTITIES = frozenset({
-    # Raw Apollo MSR sensors
-    "binary_sensor.living_room_msr_radar_zone_3_occupancy",
-    "binary_sensor.lincoln_msr_radar_zone_3_occupancy",
-    "sensor.living_room_msr_co2",
-    "sensor.lincoln_msr_dps310_temperature",
-    "sensor.lincoln_msr_dps310_pressure",
-    "sensor.lincoln_msr_esp_temperature",
-    # Documented wrappers that derive from Apollo MSR data
-    # (configuration.yaml Section 2 debounced presence + Section 3 CO2 truth +
-    # Section 11 history_stats counters).
-    "binary_sensor.living_room_presence_debounced_v3",
-    "binary_sensor.lincoln_presence_debounced_v3",
-    "sensor.living_room_co2_truth",
-    "sensor.lr_presence_today",
-    "sensor.lincoln_presence_today",
-})
+MSR_DERIVED_ENTITIES = frozenset(
+    {
+        # Raw Apollo MSR sensors
+        "binary_sensor.living_room_msr_radar_zone_3_occupancy",
+        "binary_sensor.lincoln_msr_radar_zone_3_occupancy",
+        "sensor.living_room_msr_co2",
+        "sensor.lincoln_msr_dps310_temperature",
+        "sensor.lincoln_msr_dps310_pressure",
+        "sensor.lincoln_msr_esp_temperature",
+        # Documented wrappers that derive from Apollo MSR data
+        # (configuration.yaml Section 2 debounced presence + Section 3 CO2 truth +
+        # Section 11 history_stats counters).
+        "binary_sensor.living_room_presence_debounced_v3",
+        "binary_sensor.lincoln_presence_debounced_v3",
+        "sensor.living_room_co2_truth",
+        "sensor.lr_presence_today",
+        "sensor.lincoln_presence_today",
+    }
+)
 
 # Forward-looking sweep: catches future MSR-shaped tokens that are not yet
 # enumerated in MSR_DERIVED_ENTITIES. Keep this conservative — it is meant to
@@ -140,18 +116,14 @@ MSR_PATTERN = re.compile(
 # ---------------------------------------------------------------------------
 @pytest.fixture(scope="module")
 def automations_data():
-    file_path = os.path.join(
-        os.path.dirname(__file__), "..", "automations.yaml"
-    )
+    file_path = os.path.join(os.path.dirname(__file__), "..", "automations.yaml")
     with open(file_path, "r") as f:
-        return yaml.load(f, Loader=MooseMSRLoader)
+        return yaml.load(f, Loader=MooseAutomationLoader)
 
 
 @pytest.fixture(scope="module")
 def configuration_text():
-    file_path = os.path.join(
-        os.path.dirname(__file__), "..", "configuration.yaml"
-    )
+    file_path = os.path.join(os.path.dirname(__file__), "..", "configuration.yaml")
     with open(file_path, "r") as f:
         return f.read()
 
@@ -212,6 +184,7 @@ def _render(auto):
 # Tests.
 # ---------------------------------------------------------------------------
 
+
 def test_msr_inventory_is_non_empty():
     """Sanity guard — the inventory must not silently empty itself out."""
     assert MSR_DERIVED_ENTITIES, (
@@ -270,9 +243,7 @@ def test_no_msr_in_control_automations_except_lincoln_fan(automations_data):
         if auto_id in ALLOWED_MSR_TELEMETRY_AUTOMATIONS:
             continue
         rendered = _render(auto)
-        offenders = sorted(
-            {ent for ent in MSR_DERIVED_ENTITIES if ent in rendered}
-        )
+        offenders = sorted({ent for ent in MSR_DERIVED_ENTITIES if ent in rendered})
         if not offenders:
             continue
         if auto_id == LINCOLN_FAN_EXCEPTION_AUTOMATION:
@@ -290,7 +261,7 @@ def test_no_msr_in_control_automations_except_lincoln_fan(automations_data):
         "reference Apollo/MSR-derived entities outside the allow-list:\n  - "
         + "\n  - ".join(failures)
         + "\nSee docs/apollo_msr_observability_checklist.md "
-        "§\"Explicit Exception: Lincoln Fan-Only Destratification\". The only "
+        '§"Explicit Exception: Lincoln Fan-Only Destratification". The only '
         f"narrow exception today is automation {LINCOLN_FAN_EXCEPTION_AUTOMATION!r} "
         f"using {LINCOLN_FAN_EXCEPTION_ENTITY!r} to gate "
         f"{LINCOLN_FAN_EXCEPTION_CLIMATE!r} between fan_only and off."
@@ -303,7 +274,11 @@ def test_lincoln_fan_exception_is_present(automations_data):
     this test (plus its allow-list constants) must be deleted in the same PR.
     """
     auto = next(
-        (a for a in automations_data if a.get("id") == LINCOLN_FAN_EXCEPTION_AUTOMATION),
+        (
+            a
+            for a in automations_data
+            if a.get("id") == LINCOLN_FAN_EXCEPTION_AUTOMATION
+        ),
         None,
     )
     assert auto is not None, (
@@ -327,12 +302,14 @@ def test_lincoln_fan_exception_does_not_use_set_temperature(automations_data):
     must never depend on MSR data, so ``climate.set_temperature`` for
     ``climate.lincoln_air`` is forbidden inside the exception automation."""
     auto = next(
-        (a for a in automations_data if a.get("id") == LINCOLN_FAN_EXCEPTION_AUTOMATION),
+        (
+            a
+            for a in automations_data
+            if a.get("id") == LINCOLN_FAN_EXCEPTION_AUTOMATION
+        ),
         None,
     )
-    assert auto is not None, (
-        f"{LINCOLN_FAN_EXCEPTION_AUTOMATION!r} not found"
-    )
+    assert auto is not None, f"{LINCOLN_FAN_EXCEPTION_AUTOMATION!r} not found"
     offenders = []
     for item in _iter_action_items(auto.get("action")):
         if _service_of(item) != "climate.set_temperature":
@@ -359,12 +336,14 @@ def test_lincoln_fan_exception_only_sets_fan_only_or_off(automations_data):
     Heating, cooling, auto, heat_cool, and dry are not part of the narrow
     exception."""
     auto = next(
-        (a for a in automations_data if a.get("id") == LINCOLN_FAN_EXCEPTION_AUTOMATION),
+        (
+            a
+            for a in automations_data
+            if a.get("id") == LINCOLN_FAN_EXCEPTION_AUTOMATION
+        ),
         None,
     )
-    assert auto is not None, (
-        f"{LINCOLN_FAN_EXCEPTION_AUTOMATION!r} not found"
-    )
+    assert auto is not None, f"{LINCOLN_FAN_EXCEPTION_AUTOMATION!r} not found"
     offenders = []
     for item in _iter_action_items(auto.get("action")):
         if _service_of(item) != "climate.set_hvac_mode":
@@ -401,9 +380,7 @@ def test_msr_not_used_in_safety_automations(automations_data):
         if auto.get("id") not in SAFETY_AUTOMATION_IDS:
             continue
         rendered = _render(auto)
-        offenders = sorted(
-            {ent for ent in MSR_DERIVED_ENTITIES if ent in rendered}
-        )
+        offenders = sorted({ent for ent in MSR_DERIVED_ENTITIES if ent in rendered})
         if offenders:
             failures.append(f"{auto.get('id')}: {offenders}")
 
@@ -424,9 +401,7 @@ def test_msr_not_used_in_main_supervisor(automations_data):
     )
     assert auto is not None, f"Could not find supervisor {MAIN_SUPERVISOR_ID!r}"
     rendered = _render(auto)
-    offenders = sorted(
-        {ent for ent in MSR_DERIVED_ENTITIES if ent in rendered}
-    )
+    offenders = sorted({ent for ent in MSR_DERIVED_ENTITIES if ent in rendered})
     assert not offenders, (
         f"Main supervisor {MAIN_SUPERVISOR_ID!r} references MSR-derived "
         f"entities: {offenders}. The supervisor is Apollo/MSR-free by "
@@ -462,7 +437,8 @@ def test_msr_pattern_sweep_finds_no_unknown_tokens(automations_data):
 
     assert not failures, (
         "Unexpected Apollo/MSR-shaped tokens in non-telemetry automations:\n"
-        "  - " + "\n  - ".join(failures)
+        "  - "
+        + "\n  - ".join(failures)
         + "\nIf this is a deliberate addition, update both "
         "MSR_DERIVED_ENTITIES (and the relevant allow-list constants) in "
         "this test and docs/apollo_msr_observability_checklist.md before "

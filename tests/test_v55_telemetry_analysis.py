@@ -29,7 +29,6 @@ from pathlib import Path
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Module loader. Avoids requiring ``tools/`` to be a package.
 # ---------------------------------------------------------------------------
@@ -241,8 +240,10 @@ def test_columns_detected_when_present(analyzer, tmp_path):
 
 def test_lr_truth_synonym_is_accepted(analyzer, tmp_path):
     """The LR truth column should accept the documented synonym header."""
-    headers = [h if h != "LR_Temp_Truth" else "Living_Room_Temp_Truth"
-               for h in ALL_REQUIRED_HEADERS]
+    headers = [
+        h if h != "LR_Temp_Truth" else "Living_Room_Temp_Truth"
+        for h in ALL_REQUIRED_HEADERS
+    ]
     csv_path = tmp_path / "synonym.csv"
     row = _row("2026-04-01 00:00:00")
     row["Living_Room_Temp_Truth"] = "68.00"
@@ -259,8 +260,12 @@ def test_missing_section14_columns_gate_verdict(analyzer, tmp_path):
         csv_path,
         minimal_headers,
         rows=[
-            {"Timestamp": "2026-04-01 00:00:00", "Season_Mode": "heating",
-             "Away_Mode": "off", "LR_Temp_Truth": "65.00"}
+            {
+                "Timestamp": "2026-04-01 00:00:00",
+                "Season_Mode": "heating",
+                "Away_Mode": "off",
+                "LR_Temp_Truth": "65.00",
+            }
         ],
     )
     result = analyzer.analyze(csv_path)
@@ -271,20 +276,31 @@ def test_missing_section14_columns_gate_verdict(analyzer, tmp_path):
 def test_boost_cycle_detected_from_active_transitions(analyzer, tmp_path):
     rows = [
         _row("2026-04-01 10:00:00", LR_Temp_Truth="63.50"),
-        _row("2026-04-01 10:15:00", LR_Temp_Truth="63.20",
-             Section14_Boost_Active="on", Section14_Timer_State="active",
-             Section14_Last_Engage_Reason="truth_below_64",
-             Section14_Last_Engage_At="2026-04-01 10:14:00"),
-        _row("2026-04-01 10:30:00", LR_Temp_Truth="65.40",
-             Section14_Boost_Active="on", Section14_Timer_State="active",
-             Section14_Last_Engage_Reason="truth_below_64",
-             Section14_Last_Engage_At="2026-04-01 10:14:00"),
-        _row("2026-04-01 10:45:00", LR_Temp_Truth="67.10",
-             Section14_Boost_Active="off",
-             Section14_Last_Engage_Reason="truth_below_64",
-             Section14_Last_Release_Reason="truth_cap",
-             Section14_Last_Engage_At="2026-04-01 10:14:00",
-             Section14_Last_Release_At="2026-04-01 10:44:00"),
+        _row(
+            "2026-04-01 10:15:00",
+            LR_Temp_Truth="63.20",
+            Section14_Boost_Active="on",
+            Section14_Timer_State="active",
+            Section14_Last_Engage_Reason="truth_below_64",
+            Section14_Last_Engage_At="2026-04-01 10:14:00",
+        ),
+        _row(
+            "2026-04-01 10:30:00",
+            LR_Temp_Truth="65.40",
+            Section14_Boost_Active="on",
+            Section14_Timer_State="active",
+            Section14_Last_Engage_Reason="truth_below_64",
+            Section14_Last_Engage_At="2026-04-01 10:14:00",
+        ),
+        _row(
+            "2026-04-01 10:45:00",
+            LR_Temp_Truth="67.10",
+            Section14_Boost_Active="off",
+            Section14_Last_Engage_Reason="truth_below_64",
+            Section14_Last_Release_Reason="truth_cap",
+            Section14_Last_Engage_At="2026-04-01 10:14:00",
+            Section14_Last_Release_At="2026-04-01 10:44:00",
+        ),
     ]
     csv_path = tmp_path / "cycle.csv"
     _write_csv(csv_path, ALL_REQUIRED_HEADERS, rows)
@@ -303,13 +319,19 @@ def test_boost_cycle_detected_from_active_transitions(analyzer, tmp_path):
 def test_waf_release_cycle_is_contaminated(analyzer, tmp_path):
     rows = [
         _row("2026-04-01 10:00:00", LR_Temp_Truth="63.50"),
-        _row("2026-04-01 10:15:00", LR_Temp_Truth="63.20",
-             Section14_Boost_Active="on",
-             Section14_Last_Engage_Reason="truth_below_64"),
-        _row("2026-04-01 10:30:00", LR_Temp_Truth="63.80",
-             Section14_Boost_Active="off",
-             Section14_Last_Release_Reason="waf",
-             Section14_WAF_Active="true"),
+        _row(
+            "2026-04-01 10:15:00",
+            LR_Temp_Truth="63.20",
+            Section14_Boost_Active="on",
+            Section14_Last_Engage_Reason="truth_below_64",
+        ),
+        _row(
+            "2026-04-01 10:30:00",
+            LR_Temp_Truth="63.80",
+            Section14_Boost_Active="off",
+            Section14_Last_Release_Reason="waf",
+            Section14_WAF_Active="true",
+        ),
     ]
     csv_path = tmp_path / "waf.csv"
     _write_csv(csv_path, ALL_REQUIRED_HEADERS, rows)
@@ -324,17 +346,26 @@ def test_short_clean_dataset_cannot_validate(analyzer, tmp_path):
     not VALIDATED_CANDIDATE — the 14-day floor is non-negotiable."""
     rows = [
         _row("2026-04-01 10:00:00", LR_Temp_Truth="63.50"),
-        _row("2026-04-01 10:15:00", LR_Temp_Truth="63.20",
-             Section14_Boost_Active="on",
-             Section14_Timer_State="active",
-             Section14_Last_Engage_Reason="truth_below_64"),
-        _row("2026-04-01 10:30:00", LR_Temp_Truth="65.40",
-             Section14_Boost_Active="on",
-             Section14_Timer_State="active",
-             Section14_Last_Engage_Reason="truth_below_64"),
-        _row("2026-04-01 10:45:00", LR_Temp_Truth="67.10",
-             Section14_Boost_Active="off",
-             Section14_Last_Release_Reason="truth_cap"),
+        _row(
+            "2026-04-01 10:15:00",
+            LR_Temp_Truth="63.20",
+            Section14_Boost_Active="on",
+            Section14_Timer_State="active",
+            Section14_Last_Engage_Reason="truth_below_64",
+        ),
+        _row(
+            "2026-04-01 10:30:00",
+            LR_Temp_Truth="65.40",
+            Section14_Boost_Active="on",
+            Section14_Timer_State="active",
+            Section14_Last_Engage_Reason="truth_below_64",
+        ),
+        _row(
+            "2026-04-01 10:45:00",
+            LR_Temp_Truth="67.10",
+            Section14_Boost_Active="off",
+            Section14_Last_Release_Reason="truth_cap",
+        ),
     ]
     csv_path = tmp_path / "short.csv"
     _write_csv(csv_path, ALL_REQUIRED_HEADERS, rows)
@@ -379,8 +410,9 @@ def test_sparse_dataset_over_14_days_fails_contiguity_gate(analyzer, tmp_path):
     assert result.loaded.span_days >= 14
     assert result.loaded.timestamp_gaps_count > 0
     assert result.verdict.label == analyzer.VERDICT_TOO_FEW_DAYS
-    assert any("gap" in r.lower() or "contigu" in r.lower()
-               for r in result.verdict.reasons)
+    assert any(
+        "gap" in r.lower() or "contigu" in r.lower() for r in result.verdict.reasons
+    )
 
 
 def test_assess_verdict_gap_gate_direct(analyzer):
@@ -405,12 +437,18 @@ def test_truncated_cycle_at_end_is_indeterminate(analyzer, tmp_path):
     must be classified indeterminate (not clean)."""
     rows = [
         _row("2026-04-01 10:00:00", LR_Temp_Truth="63.50"),
-        _row("2026-04-01 10:15:00", LR_Temp_Truth="63.20",
-             Section14_Boost_Active="on",
-             Section14_Last_Engage_Reason="truth_below_64"),
-        _row("2026-04-01 10:30:00", LR_Temp_Truth="64.10",
-             Section14_Boost_Active="on",
-             Section14_Last_Engage_Reason="truth_below_64"),
+        _row(
+            "2026-04-01 10:15:00",
+            LR_Temp_Truth="63.20",
+            Section14_Boost_Active="on",
+            Section14_Last_Engage_Reason="truth_below_64",
+        ),
+        _row(
+            "2026-04-01 10:30:00",
+            LR_Temp_Truth="64.10",
+            Section14_Boost_Active="on",
+            Section14_Last_Engage_Reason="truth_below_64",
+        ),
     ]
     csv_path = tmp_path / "trunc.csv"
     _write_csv(csv_path, ALL_REQUIRED_HEADERS, rows)
@@ -432,8 +470,9 @@ def test_lincoln_msr_summary_is_observation_only(analyzer, tmp_path):
     ]
     rows = []
     for i in range(5):
-        ts = (datetime(2026, 4, 1, 0, 0, 0) + timedelta(minutes=15 * i)
-              ).strftime("%Y-%m-%d %H:%M:%S")
+        ts = (datetime(2026, 4, 1, 0, 0, 0) + timedelta(minutes=15 * i)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         row = _row(ts, LR_Temp_Truth="68.00")
         row["Lincoln_Temp_Diag_MSR"] = f"{67.0 + i * 0.1:.2f}"
         row["Lincoln_Pressure_Diag_MSR"] = "1013.20"
@@ -469,7 +508,9 @@ def test_report_writes_file_and_creates_directory(analyzer, tmp_path):
     assert "## Section 14 Boost Cycles" in text
 
 
-def test_no_write_mode_does_not_create_default_report(analyzer, tmp_path, capsys, monkeypatch):
+def test_no_write_mode_does_not_create_default_report(
+    analyzer, tmp_path, capsys, monkeypatch
+):
     """``--no-write`` must not touch the filesystem outside reading the input."""
     monkeypatch.chdir(tmp_path)
     csv_path = tmp_path / "in.csv"
@@ -503,7 +544,8 @@ def test_module_imports_no_network_clients():
         "gspread",
     )
     leaked = sorted(
-        m for m in sys.modules
+        m
+        for m in sys.modules
         if any(m == p or m.startswith(p + ".") for p in forbidden_prefixes)
     )
     assert leaked == [], (

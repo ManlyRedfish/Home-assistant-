@@ -23,7 +23,6 @@ import re
 
 import pytest
 
-
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 CONFIG = os.path.join(REPO_ROOT, "configuration.yaml")
@@ -47,11 +46,12 @@ def _read(path):
 # configuration.yaml: freshness clock migrated to report time
 # --------------------------------------------------------------------------- #
 
+
 def test_config_truth_freshness_uses_report_time_clock():
     text = _read(CONFIG)
-    assert LAST_REPORTED_CLOCK in text, (
-        "Truth freshness checks must compare against last_reported."
-    )
+    assert (
+        LAST_REPORTED_CLOCK in text
+    ), "Truth freshness checks must compare against last_reported."
 
 
 def test_config_truth_freshness_does_not_use_last_changed_clock():
@@ -83,18 +83,22 @@ def test_config_every_freshness_call_uses_report_time():
 # CO2 cadence preserved (distinct 3h window, only the clock changed)
 # --------------------------------------------------------------------------- #
 
+
 def test_config_co2_three_hour_window_preserved():
     """CO2 truth keeps its distinct 10800s (3h) window — this PR changes the
     freshness CLOCK only, not any max_age / cadence value."""
     text = _read(CONFIG)
     assert "< 10800" in text, "CO2 truth 3-hour (10800s) window must be preserved."
     # The 2-hour temperature/humidity window is also untouched.
-    assert "max_age = 7200" in text, "2-hour (7200s) staleness window must be preserved."
+    assert (
+        "max_age = 7200" in text
+    ), "2-hour (7200s) staleness window must be preserved."
 
 
 # --------------------------------------------------------------------------- #
 # Migration did not bleed into automations.yaml
 # --------------------------------------------------------------------------- #
+
 
 def test_automations_freshness_clock_untouched():
     """automations.yaml must not be touched by this migration: it legitimately
@@ -102,9 +106,9 @@ def test_automations_freshness_clock_untouched():
     (state-duration / value-transition), which is NOT a reporting-freshness
     check and must stay last_changed."""
     text = _read(AUTOMATIONS)
-    assert ".last_reported)" not in text, (
-        "automations.yaml should not have been migrated to last_reported."
-    )
+    assert (
+        ".last_reported)" not in text
+    ), "automations.yaml should not have been migrated to last_reported."
     # Every last_changed in automations.yaml must be on a climate.* entity
     # (state-duration), never a sensor.* freshness check.
     domains = re.findall(r"states\.(\w+)\.\w+\.last_changed", text)
@@ -120,6 +124,7 @@ def test_automations_freshness_clock_untouched():
 # Safety + comfort invariants untouched by a freshness PR
 # --------------------------------------------------------------------------- #
 
+
 def test_section3_safety_floor_thresholds_unchanged():
     """A freshness PR must not alter Section 3 safety floors."""
     text = _read(AUTOMATIONS)
@@ -132,6 +137,8 @@ def test_truth_sensor_weights_unchanged_spot_check():
     changes only the freshness clock, never weights)."""
     text = _read(CONFIG)
     # Samsung internal stays low-weight; primaries keep their weights.
-    assert "(hp * 0.20)" in text, "Samsung internal temperature weight 0.20 must remain."
+    assert (
+        "(hp * 0.20)" in text
+    ), "Samsung internal temperature weight 0.20 must remain."
     assert "(hp * 0.25)" in text, "Samsung internal humidity weight 0.25 must remain."
     assert "outlier_limit = 3.0" in text, "Lincoln 3°F outlier limit must remain."

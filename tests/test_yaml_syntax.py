@@ -10,11 +10,14 @@ class MooseSyntaxLoader(yaml.SafeLoader):
 def yaml_include(loader, node):
     return node.value
 
+
 def yaml_secret(loader, node):
     return node.value
 
-MooseSyntaxLoader.add_constructor('!include', yaml_include)
-MooseSyntaxLoader.add_constructor('!secret', yaml_secret)
+
+MooseSyntaxLoader.add_constructor("!include", yaml_include)
+MooseSyntaxLoader.add_constructor("!secret", yaml_secret)
+
 
 def check_yaml_file(filepath):
     """Parses a YAML file and raises an exception if it's invalid."""
@@ -22,19 +25,21 @@ def check_yaml_file(filepath):
         pytest.skip(f"{filepath} not found.")
         return
 
-    with open(filepath, 'r') as file:
+    with open(filepath, "r") as file:
         try:
             yaml.load(file, Loader=MooseSyntaxLoader)
         except Exception as e:
             pytest.fail(f"Invalid YAML in {filepath}:\n{e}")
 
+
 def test_configuration_yaml_syntax():
     """Validates the syntax of configuration.yaml."""
-    check_yaml_file('configuration.yaml')
+    check_yaml_file("configuration.yaml")
+
 
 def test_automations_yaml_syntax():
     """Validates the syntax of automations.yaml."""
-    check_yaml_file('automations.yaml')
+    check_yaml_file("automations.yaml")
 
 
 # ---------------------------------------------------------------------------
@@ -59,16 +64,17 @@ def _no_duplicate_keys(loader, node, deep=False):
         key = loader.construct_object(key_node, deep=deep)
         if key in mapping:
             raise yaml.constructor.ConstructorError(
-                None, None,
-                f"duplicate key {key!r}", key_node.start_mark)
+                None, None, f"duplicate key {key!r}", key_node.start_mark
+            )
         mapping[key] = loader.construct_object(value_node, deep=deep)
     return mapping
 
 
-StrictNoDuplicateLoader.add_constructor('!include', yaml_include)
-StrictNoDuplicateLoader.add_constructor('!secret', yaml_secret)
+StrictNoDuplicateLoader.add_constructor("!include", yaml_include)
+StrictNoDuplicateLoader.add_constructor("!secret", yaml_secret)
 StrictNoDuplicateLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_duplicate_keys)
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_duplicate_keys
+)
 
 
 def check_no_duplicate_keys(filepath):
@@ -77,7 +83,7 @@ def check_no_duplicate_keys(filepath):
         pytest.skip(f"{filepath} not found.")
         return
 
-    with open(filepath, 'r') as file:
+    with open(filepath, "r") as file:
         try:
             yaml.load(file, Loader=StrictNoDuplicateLoader)
         except yaml.constructor.ConstructorError as e:
@@ -86,9 +92,9 @@ def check_no_duplicate_keys(filepath):
 
 def test_configuration_yaml_no_duplicate_keys():
     """configuration.yaml must have no duplicate mapping keys."""
-    check_no_duplicate_keys('configuration.yaml')
+    check_no_duplicate_keys("configuration.yaml")
 
 
 def test_automations_yaml_no_duplicate_keys():
     """automations.yaml must have no duplicate mapping keys."""
-    check_no_duplicate_keys('automations.yaml')
+    check_no_duplicate_keys("automations.yaml")

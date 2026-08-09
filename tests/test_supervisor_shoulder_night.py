@@ -2,34 +2,7 @@ import os
 
 import pytest
 import yaml
-
-
-class MooseSupervisorLoader(yaml.SafeLoader):
-    pass
-
-
-def _yaml_include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _yaml_secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _yaml_input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _yaml_include_list(loader, node):
-    return []
-
-
-MooseSupervisorLoader.add_constructor("!include", _yaml_include)
-MooseSupervisorLoader.add_constructor("!secret", _yaml_secret)
-MooseSupervisorLoader.add_constructor("!input", _yaml_input)
-MooseSupervisorLoader.add_constructor("!include_dir_merge_list", _yaml_include_list)
-MooseSupervisorLoader.add_constructor("!include_dir_named", _yaml_include_list)
-
+from tests.yaml_loader import MooseAutomationLoader
 
 SUPERVISOR_ID = "v7_5_main_supervisor"
 
@@ -38,7 +11,7 @@ SUPERVISOR_ID = "v7_5_main_supervisor"
 def supervisor():
     path = os.path.join(os.path.dirname(__file__), "..", "automations.yaml")
     with open(path, "r") as fh:
-        data = yaml.load(fh, Loader=MooseSupervisorLoader)
+        data = yaml.load(fh, Loader=MooseAutomationLoader)
     auto = next((a for a in data if a.get("id") == SUPERVISOR_ID), None)
     assert auto is not None, f"{SUPERVISOR_ID} automation must exist"
     return auto
@@ -130,9 +103,9 @@ def test_shoulder_night_bulk_off_covers_dining_only(supervisor):
     # (18:00-07:00), the shoulder-night bulk-off must exclude both kids' heads
     # and cover Dining only. Master is owned by the cooling escape step.
     targets = _bulk_off_targets(_shoulder_night_sequence(supervisor))
-    assert "climate.dining_room" in targets, (
-        "Shoulder-night bulk-off must still cover climate.dining_room."
-    )
+    assert (
+        "climate.dining_room" in targets
+    ), "Shoulder-night bulk-off must still cover climate.dining_room."
     for kid_entity in ("climate.lincoln_air", "climate.lilly_air"):
         assert kid_entity not in targets, (
             f"Shoulder-night bulk-off must not include {kid_entity}; the kids' "

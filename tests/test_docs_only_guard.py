@@ -15,9 +15,9 @@ def event_with_labels(*labels: str) -> dict:
 
 
 def test_markdown_only_pr_passes() -> None:
-    assert docs_only_guard.prohibited_paths(
-        ["README.md", "architecture/notes.md"]
-    ) == []
+    assert (
+        docs_only_guard.prohibited_paths(["README.md", "architecture/notes.md"]) == []
+    )
 
 
 def test_documentation_assets_under_docs_pass() -> None:
@@ -30,9 +30,9 @@ def test_documentation_assets_under_docs_pass() -> None:
 
 
 def test_automations_yaml_fails() -> None:
-    assert docs_only_guard.prohibited_paths(
-        ["automations.yaml"]
-    ) == ["automations.yaml"]
+    assert docs_only_guard.prohibited_paths(["automations.yaml"]) == [
+        "automations.yaml"
+    ]
 
 
 def test_nested_yaml_fails_even_under_docs() -> None:
