@@ -2,26 +2,7 @@ import pytest
 import yaml
 import os
 
-class MooseSafetyLoader(yaml.SafeLoader):
-    pass
-
-def yaml_include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-def yaml_secret(loader, node):
-    return f"SECRET_{node.value}"
-
-def yaml_input(loader, node):
-    return f"INPUT_{node.value}"
-
-def include_dir_merge_list_constructor(loader, node):
-    return []
-
-MooseSafetyLoader.add_constructor('!include', yaml_include)
-MooseSafetyLoader.add_constructor('!secret', yaml_secret)
-MooseSafetyLoader.add_constructor('!input', yaml_input)
-MooseSafetyLoader.add_constructor('!include_dir_merge_list', include_dir_merge_list_constructor)
-MooseSafetyLoader.add_constructor('!include_dir_named', include_dir_merge_list_constructor)
+from tests.yaml_loader import MooseAutomationLoader
 
 
 def _action_calls_climate_set_hvac_mode_off(auto, expected_entity_id):
@@ -49,7 +30,7 @@ def automations_data():
 
     with open(filepath, 'r') as file:
         try:
-            return yaml.load(file, Loader=MooseSafetyLoader)
+            return yaml.load(file, Loader=MooseAutomationLoader)
         except Exception as e:
             pytest.fail(f"Could not parse automations.yaml: {e}")
 

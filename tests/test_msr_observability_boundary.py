@@ -46,38 +46,12 @@ import re
 
 import pytest
 import yaml
+from tests.yaml_loader import MooseAutomationLoader
 
 
 # ---------------------------------------------------------------------------
 # YAML loader (mirrors the other test files; preserves !secret/!include shape).
 # ---------------------------------------------------------------------------
-class MooseMSRLoader(yaml.SafeLoader):
-    pass
-
-
-def _secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _include_dir_merge_list(loader, node):
-    return []
-
-
-MooseMSRLoader.add_constructor("!secret", _secret)
-MooseMSRLoader.add_constructor("!include", _include)
-MooseMSRLoader.add_constructor("!input", _input)
-MooseMSRLoader.add_constructor("!include_dir_merge_list", _include_dir_merge_list)
-MooseMSRLoader.add_constructor("!include_dir_named", _include_dir_merge_list)
-
-
 # ---------------------------------------------------------------------------
 # Allow-list and entity inventory.
 # ---------------------------------------------------------------------------
@@ -144,7 +118,7 @@ def automations_data():
         os.path.dirname(__file__), "..", "automations.yaml"
     )
     with open(file_path, "r") as f:
-        return yaml.load(f, Loader=MooseMSRLoader)
+        return yaml.load(f, Loader=MooseAutomationLoader)
 
 
 @pytest.fixture(scope="module")

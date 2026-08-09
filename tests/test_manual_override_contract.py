@@ -4,42 +4,14 @@ import pytest
 import yaml
 
 
-class MooseManualOverrideLoader(yaml.SafeLoader):
-    pass
-
-
-def _secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _include_dir_merge_list(loader, node):
-    return []
-
-
-MooseManualOverrideLoader.add_constructor("!secret", _secret)
-MooseManualOverrideLoader.add_constructor("!include", _include)
-MooseManualOverrideLoader.add_constructor("!input", _input)
-MooseManualOverrideLoader.add_constructor(
-    "!include_dir_merge_list", _include_dir_merge_list
-)
-MooseManualOverrideLoader.add_constructor(
-    "!include_dir_named", _include_dir_merge_list
-)
+from tests.yaml_loader import MooseAutomationLoader
 
 
 @pytest.fixture(scope="module")
 def automations_data():
     file_path = os.path.join(os.path.dirname(__file__), "..", "automations.yaml")
     with open(file_path, "r") as f:
-        return yaml.load(f, Loader=MooseManualOverrideLoader)
+        return yaml.load(f, Loader=MooseAutomationLoader)
 
 
 def _get_automation(automations_data, automation_id):

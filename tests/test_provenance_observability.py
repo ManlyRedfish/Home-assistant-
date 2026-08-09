@@ -28,33 +28,7 @@ import yaml
 import pytest
 
 
-class MooseProvenanceLoader(yaml.SafeLoader):
-    pass
-
-
-def _secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _include_dir_merge_list(loader, node):
-    return []
-
-
-MooseProvenanceLoader.add_constructor("!secret", _secret)
-MooseProvenanceLoader.add_constructor("!include", _include)
-MooseProvenanceLoader.add_constructor("!input", _input)
-MooseProvenanceLoader.add_constructor(
-    "!include_dir_merge_list", _include_dir_merge_list
-)
-MooseProvenanceLoader.add_constructor("!include_dir_named", _include_dir_merge_list)
+from tests.yaml_loader import MooseAutomationLoader
 
 
 PROVENANCE_ID = "v8_5_hvac_provenance_logger"
@@ -83,7 +57,7 @@ FORBIDDEN_DOMAINS = ("notify.", "shell_command.")
 def automations_data():
     file_path = os.path.join(os.path.dirname(__file__), "..", "automations.yaml")
     with open(file_path, "r") as f:
-        return yaml.load(f, Loader=MooseProvenanceLoader)
+        return yaml.load(f, Loader=MooseAutomationLoader)
 
 
 @pytest.fixture(scope="module")

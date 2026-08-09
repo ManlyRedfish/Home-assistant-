@@ -24,17 +24,8 @@ from typing import Any
 
 import pytest
 import yaml
-
-
-class MooseAutomationLoader(yaml.SafeLoader):
-    pass
-
-
-def _secret_constructor(loader: yaml.Loader, node: yaml.Node) -> str:
-    return f"SECRET_{node.value}"
-
-
-MooseAutomationLoader.add_constructor("!secret", _secret_constructor)
+import os
+from tests.yaml_loader import MooseAutomationLoader
 
 
 AUTOMATIONS_PATH = Path("automations.yaml")

@@ -14,33 +14,8 @@ from pathlib import Path
 
 import pytest
 import yaml
-
-
-class MooseLoader(yaml.SafeLoader):
-    pass
-
-
-def _secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _include_dir_merge_list(loader, node):
-    return []
-
-
-MooseLoader.add_constructor("!secret", _secret)
-MooseLoader.add_constructor("!include", _include)
-MooseLoader.add_constructor("!input", _input)
-MooseLoader.add_constructor("!include_dir_merge_list", _include_dir_merge_list)
-MooseLoader.add_constructor("!include_dir_named", _include_dir_merge_list)
+import os
+from tests.yaml_loader import MooseAutomationLoader
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -202,7 +177,7 @@ def automations_text() -> str:
 
 @pytest.fixture(scope="module")
 def automations_data():
-    return yaml.load(AUTOMATIONS.read_text(), Loader=MooseLoader)
+    return yaml.load(AUTOMATIONS.read_text(), Loader=MooseAutomationLoader)
 
 
 def _find_automation(automations_data, automation_id: str):

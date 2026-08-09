@@ -2,10 +2,7 @@ import yaml
 import pytest
 import os
 from pathlib import Path
-
-
-class MooseAutomationLoader(yaml.SafeLoader):
-    pass
+from tests.yaml_loader import MooseAutomationLoader
 
 
 # Home Assistant specific constructors

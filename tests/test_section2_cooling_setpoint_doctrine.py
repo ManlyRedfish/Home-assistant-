@@ -1,32 +1,6 @@
 import os
 import yaml
-
-
-class MooseAutomationLoader(yaml.SafeLoader):
-    pass
-
-
-def secret_constructor(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def include_constructor(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def input_constructor(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def include_dir_merge_list_constructor(loader, node):
-    return []
-
-
-MooseAutomationLoader.add_constructor('!secret', secret_constructor)
-MooseAutomationLoader.add_constructor('!include', include_constructor)
-MooseAutomationLoader.add_constructor('!input', input_constructor)
-MooseAutomationLoader.add_constructor('!include_dir_merge_list', include_dir_merge_list_constructor)
-MooseAutomationLoader.add_constructor('!include_dir_named', include_dir_merge_list_constructor)
+from tests.yaml_loader import MooseAutomationLoader
 
 
 def _load_main_supervisor_actions():

@@ -19,33 +19,7 @@ import os
 
 import pytest
 import yaml
-
-
-class MooseSupervisorLoader(yaml.SafeLoader):
-    pass
-
-
-def _yaml_include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _yaml_secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _yaml_input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _yaml_include_list(loader, node):
-    return []
-
-
-MooseSupervisorLoader.add_constructor("!include", _yaml_include)
-MooseSupervisorLoader.add_constructor("!secret", _yaml_secret)
-MooseSupervisorLoader.add_constructor("!input", _yaml_input)
-MooseSupervisorLoader.add_constructor("!include_dir_merge_list", _yaml_include_list)
-MooseSupervisorLoader.add_constructor("!include_dir_named", _yaml_include_list)
+from tests.yaml_loader import MooseAutomationLoader
 
 
 SUPERVISOR_ID = "v7_5_main_supervisor"
@@ -55,7 +29,7 @@ SUPERVISOR_ID = "v7_5_main_supervisor"
 def supervisor():
     path = os.path.join(os.path.dirname(__file__), "..", "automations.yaml")
     with open(path, "r") as fh:
-        data = yaml.load(fh, Loader=MooseSupervisorLoader)
+        data = yaml.load(fh, Loader=MooseAutomationLoader)
     auto = next((a for a in data if a.get("id") == SUPERVISOR_ID), None)
     assert auto is not None, f"{SUPERVISOR_ID} automation must exist"
     return auto

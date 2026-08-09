@@ -32,38 +32,12 @@ import os
 
 import pytest
 import yaml
+from tests.yaml_loader import MooseAutomationLoader
 
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 PROFILE_NAMES = ["eric_cold", "family_normal", "sleep_cold", "away_relaxed", "safety_only"]
-
-
-class MooseSeparationLoader(yaml.SafeLoader):
-    pass
-
-
-def _secret(loader, node):
-    return f"SECRET_{node.value}"
-
-
-def _include(loader, node):
-    return f"INCLUDE_{node.value}"
-
-
-def _input(loader, node):
-    return f"INPUT_{node.value}"
-
-
-def _include_dir_merge_list(loader, node):
-    return []
-
-
-MooseSeparationLoader.add_constructor("!secret", _secret)
-MooseSeparationLoader.add_constructor("!include", _include)
-MooseSeparationLoader.add_constructor("!input", _input)
-MooseSeparationLoader.add_constructor("!include_dir_merge_list", _include_dir_merge_list)
-MooseSeparationLoader.add_constructor("!include_dir_named", _include_dir_merge_list)
 
 
 @pytest.fixture(scope="module")
@@ -72,7 +46,7 @@ def automations_data():
     if not os.path.exists(path):
         pytest.skip("automations.yaml not found.")
     with open(path, "r", encoding="utf-8") as fh:
-        return yaml.load(fh, Loader=MooseSeparationLoader)
+        return yaml.load(fh, Loader=MooseAutomationLoader)
 
 
 def _find(automations, auto_id):
