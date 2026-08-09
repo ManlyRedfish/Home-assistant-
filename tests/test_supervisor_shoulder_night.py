@@ -4,6 +4,7 @@ import pytest
 import yaml
 from tests.yaml_loader import MooseAutomationLoader
 
+
 SUPERVISOR_ID = "v7_5_main_supervisor"
 
 
@@ -103,9 +104,9 @@ def test_shoulder_night_bulk_off_covers_dining_only(supervisor):
     # (18:00-07:00), the shoulder-night bulk-off must exclude both kids' heads
     # and cover Dining only. Master is owned by the cooling escape step.
     targets = _bulk_off_targets(_shoulder_night_sequence(supervisor))
-    assert (
-        "climate.dining_room" in targets
-    ), "Shoulder-night bulk-off must still cover climate.dining_room."
+    assert "climate.dining_room" in targets, (
+        "Shoulder-night bulk-off must still cover climate.dining_room."
+    )
     for kid_entity in ("climate.lincoln_air", "climate.lilly_air"):
         assert kid_entity not in targets, (
             f"Shoulder-night bulk-off must not include {kid_entity}; the kids' "

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import yaml
 
+
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT = ROOT / "deploy" / "packet_b_stage0_section2_replacement.yaml"
 

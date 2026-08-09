@@ -2,6 +2,8 @@ import os
 
 import pytest
 import yaml
+
+
 from tests.yaml_loader import MooseAutomationLoader
 
 
@@ -79,9 +81,7 @@ def _condition_tree_requires_manual_override_idle(node):
 
     if condition_type == "and":
         # An AND implies idle if at least one conjunct implies idle.
-        return any(
-            _condition_tree_requires_manual_override_idle(item) for item in children
-        )
+        return any(_condition_tree_requires_manual_override_idle(item) for item in children)
 
     if condition_type == "or":
         # An OR implies idle only if all branches imply idle.

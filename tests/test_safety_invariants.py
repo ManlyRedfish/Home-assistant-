@@ -1,6 +1,7 @@
 import pytest
 import yaml
 import os
+
 from tests.yaml_loader import MooseAutomationLoader
 
 
@@ -20,20 +21,18 @@ def _action_calls_climate_set_hvac_mode_off(auto, expected_entity_id):
         for action in actions
     )
 
-
 @pytest.fixture(scope="module")
 def automations_data():
-    filepath = os.path.join(os.path.dirname(__file__), "..", "automations.yaml")
+    filepath = os.path.join(os.path.dirname(__file__), '..', 'automations.yaml')
     if not os.path.exists(filepath):
         pytest.skip("automations.yaml not found.")
         return []
 
-    with open(filepath, "r") as file:
+    with open(filepath, 'r') as file:
         try:
             return yaml.load(file, Loader=MooseAutomationLoader)
         except Exception as e:
             pytest.fail(f"Could not parse automations.yaml: {e}")
-
 
 def test_lr_runaway_cooling_cutoff_exists(automations_data):
     """
@@ -42,35 +41,26 @@ def test_lr_runaway_cooling_cutoff_exists(automations_data):
     """
     found = False
     for auto in automations_data:
-        if auto.get("id") == "v8_2_lr_runaway_cooling_cutoff":
+        if auto.get('id') == 'v8_2_lr_runaway_cooling_cutoff':
             found = True
 
             # Very conservative assertion: verify the 60F threshold is defined in the trigger
-            triggers = auto.get("trigger", [])
+            triggers = auto.get('trigger', [])
             threshold_found = False
             for trigger in triggers:
-                if (
-                    trigger.get("platform") == "numeric_state"
-                    and trigger.get("entity_id")
-                    == "sensor.living_room_temperature_truth"
-                ):
-                    if trigger.get("below") == 60:
+                if trigger.get('platform') == 'numeric_state' and trigger.get('entity_id') == 'sensor.living_room_temperature_truth':
+                    if trigger.get('below') == 60:
                         threshold_found = True
                         break
 
-            assert (
-                threshold_found
-            ), "LR runaway cutoff automation exists, but 60F threshold trigger is missing or modified."
+            assert threshold_found, "LR runaway cutoff automation exists, but 60F threshold trigger is missing or modified."
 
-            assert _action_calls_climate_set_hvac_mode_off(
-                auto, "climate.living_room_air"
-            ), "LR runaway cutoff automation must force climate.living_room_air to hvac_mode off."
+            assert _action_calls_climate_set_hvac_mode_off(auto, 'climate.living_room_air'), (
+                "LR runaway cutoff automation must force climate.living_room_air to hvac_mode off."
+            )
             break
 
-    assert (
-        found
-    ), "Living Room runaway cooling cutoff automation (v8_2_lr_runaway_cooling_cutoff) not found in automations.yaml"
-
+    assert found, "Living Room runaway cooling cutoff automation (v8_2_lr_runaway_cooling_cutoff) not found in automations.yaml"
 
 def test_master_emergency_cooling_floor_exists(automations_data):
     """
@@ -79,36 +69,28 @@ def test_master_emergency_cooling_floor_exists(automations_data):
     """
     found = False
     for auto in automations_data:
-        if auto.get("id") == "v8_2_master_emergency_floor":
+        if auto.get('id') == 'v8_2_master_emergency_floor':
             found = True
 
             # Mirror the LR runaway test: pin the 58F threshold statically.
             # This static check does not require full HA runtime simulation —
             # the trigger shape is identical to the LR runaway cutoff.
-            triggers = auto.get("trigger", [])
+            triggers = auto.get('trigger', [])
             threshold_found = False
             for trigger in triggers:
-                if (
-                    trigger.get("platform") == "numeric_state"
-                    and trigger.get("entity_id")
-                    == "sensor.master_bedroom_temperature_truth"
-                ):
-                    if trigger.get("below") == 58:
+                if trigger.get('platform') == 'numeric_state' and trigger.get('entity_id') == 'sensor.master_bedroom_temperature_truth':
+                    if trigger.get('below') == 58:
                         threshold_found = True
                         break
 
-            assert (
-                threshold_found
-            ), "Master emergency floor automation exists, but 58F threshold trigger is missing or modified."
+            assert threshold_found, "Master emergency floor automation exists, but 58F threshold trigger is missing or modified."
 
-            assert _action_calls_climate_set_hvac_mode_off(
-                auto, "climate.master_bedroom_air"
-            ), "Master emergency floor automation must force climate.master_bedroom_air to hvac_mode off."
+            assert _action_calls_climate_set_hvac_mode_off(auto, 'climate.master_bedroom_air'), (
+                "Master emergency floor automation must force climate.master_bedroom_air to hvac_mode off."
+            )
             break
 
-    assert (
-        found
-    ), "Master emergency cooling floor automation (v8_2_master_emergency_floor) not found in automations.yaml"
+    assert found, "Master emergency cooling floor automation (v8_2_master_emergency_floor) not found in automations.yaml"
 
 
 def test_required_safety_automations_are_present_by_unique_id(automations_data):
@@ -129,5 +111,6 @@ def test_required_safety_automations_are_present_by_unique_id(automations_data):
 
     missing_automation_ids = required_automations - seen_automation_ids
     assert not missing_automation_ids, (
-        "Missing required safety automations: " f"{sorted(missing_automation_ids)}"
+        "Missing required safety automations: "
+        f"{sorted(missing_automation_ids)}"
     )

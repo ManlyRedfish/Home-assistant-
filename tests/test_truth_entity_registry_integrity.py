@@ -86,57 +86,36 @@ def _validate_truth_entity_integrity(states: list[dict]) -> list[str]:
     for smoothed_entity, expected_source in sorted(CANONICAL_SMOOTHED.items()):
         smoothed = by_entity.get(smoothed_entity)
         source = by_entity.get(expected_source)
-        source_id = ((smoothed or {}).get("attributes", {}) or {}).get(
-            "source_entity_id"
-        )
+        source_id = ((smoothed or {}).get("attributes", {}) or {}).get("source_entity_id")
 
         if source_id and source_id != expected_source:
             issues.append(
                 f"smoothed source mismatch: {smoothed_entity} points to {source_id}, expected {expected_source}"
             )
 
-        if _is_unavailable(smoothed) and (
-            _is_unavailable(source) or _is_restored(source)
-        ):
+        if _is_unavailable(smoothed) and (_is_unavailable(source) or _is_restored(source)):
             issues.append(
                 f"smoothed unavailable from unavailable/restored source: {smoothed_entity} <- {expected_source}"
             )
 
-    any_live_raw = any(
-        _is_live_numeric(by_entity.get(probe)) for probe in RAW_ROOM_PROBES
-    )
-    any_canonical_down = any(
-        _is_unavailable(by_entity.get(e)) for e in CANONICAL_REQUIRED
-    )
+    any_live_raw = any(_is_live_numeric(by_entity.get(probe)) for probe in RAW_ROOM_PROBES)
+    any_canonical_down = any(_is_unavailable(by_entity.get(e)) for e in CANONICAL_REQUIRED)
     if any_live_raw and any_canonical_down:
-        issues.append(
-            "raw room probe live while canonical truth/smoothed/control is unavailable"
-        )
+        issues.append("raw room probe live while canonical truth/smoothed/control is unavailable")
 
     return issues
 
 
 def test_broken_fixture_flags_truth_entity_registry_failure_modes() -> None:
-    issues = _validate_truth_entity_integrity(
-        _load_states("ha_states_truth_entity_broken.json")
-    )
+    issues = _validate_truth_entity_integrity(_load_states("ha_states_truth_entity_broken.json"))
 
     assert issues, "Expected broken fixture to produce integrity violations"
     assert any("canonical entity restored:true" in issue for issue in issues)
     assert any("unexpected suffixed truth entity exists" in issue for issue in issues)
-    assert any(
-        "smoothed unavailable from unavailable/restored source" in issue
-        for issue in issues
-    )
-    assert any(
-        "raw room probe live while canonical truth/smoothed/control is unavailable"
-        in issue
-        for issue in issues
-    )
+    assert any("smoothed unavailable from unavailable/restored source" in issue for issue in issues)
+    assert any("raw room probe live while canonical truth/smoothed/control is unavailable" in issue for issue in issues)
 
 
 def test_healthy_fixture_passes_truth_entity_registry_integrity_checks() -> None:
-    issues = _validate_truth_entity_integrity(
-        _load_states("ha_states_truth_entity_healthy.json")
-    )
+    issues = _validate_truth_entity_integrity(_load_states("ha_states_truth_entity_healthy.json"))
     assert issues == []

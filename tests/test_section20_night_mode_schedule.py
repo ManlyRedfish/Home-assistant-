@@ -14,6 +14,7 @@ import pytest
 import yaml
 from tests.yaml_loader import MooseAutomationLoader
 
+
 AUTOMATION_ID = "lr_night_mode_schedule"
 NIGHT_HELPER = "input_boolean.night_mode_lr_primary"
 
@@ -24,9 +25,7 @@ def schedule_automation():
     with open(file_path, "r") as f:
         data = yaml.load(f, Loader=MooseAutomationLoader)
     auto = next((a for a in data if a.get("id") == AUTOMATION_ID), None)
-    assert (
-        auto is not None
-    ), f"Automation '{AUTOMATION_ID}' not found in automations.yaml"
+    assert auto is not None, f"Automation '{AUTOMATION_ID}' not found in automations.yaml"
     return auto
 
 
@@ -37,12 +36,8 @@ def test_automation_exists_and_is_single(schedule_automation):
 def test_trigger_times(schedule_automation):
     triggers = schedule_automation["trigger"]
     by_id = {t["id"]: t["at"] for t in triggers}
-    assert (
-        by_id.get("night_mode_on") == "19:00:00"
-    ), "19:00 ON trigger missing or wrong time"
-    assert (
-        by_id.get("night_mode_off") == "07:00:00"
-    ), "07:00 OFF trigger missing or wrong time"
+    assert by_id.get("night_mode_on") == "19:00:00", "19:00 ON trigger missing or wrong time"
+    assert by_id.get("night_mode_off") == "07:00:00", "07:00 OFF trigger missing or wrong time"
 
 
 def test_choose_actions(schedule_automation):

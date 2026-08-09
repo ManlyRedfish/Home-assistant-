@@ -24,7 +24,9 @@ from typing import Any
 
 import pytest
 import yaml
+import os
 from tests.yaml_loader import MooseAutomationLoader
+
 
 AUTOMATIONS_PATH = Path("automations.yaml")
 AUTOMATIONS_TEXT = AUTOMATIONS_PATH.read_text(encoding="utf-8")
@@ -121,10 +123,10 @@ def test_supervisor_cooling_templates_are_invalid_truth_off_biased():
         assert guard in AUTOMATIONS_TEXT
 
     # Each zone's cooling command is wrapped in `if: <zone>_truth_ok` / `else: off`.
-    assert 'value_template: "{{ master_truth_ok }}"' in AUTOMATIONS_TEXT
-    assert 'value_template: "{{ lr_truth_ok }}"' in AUTOMATIONS_TEXT
-    assert 'value_template: "{{ lincoln_truth_ok }}"' in AUTOMATIONS_TEXT
-    assert 'value_template: "{{ lilly_truth_ok }}"' in AUTOMATIONS_TEXT
+    assert "value_template: \"{{ master_truth_ok }}\"" in AUTOMATIONS_TEXT
+    assert "value_template: \"{{ lr_truth_ok }}\"" in AUTOMATIONS_TEXT
+    assert "value_template: \"{{ lincoln_truth_ok }}\"" in AUTOMATIONS_TEXT
+    assert "value_template: \"{{ lilly_truth_ok }}\"" in AUTOMATIONS_TEXT
 
     # Healthy-state doctrine remains hysteresis/HOLD based, with HOLD still
     # preserving current cool. The engage comparator is inclusive (`>=`) so
@@ -132,8 +134,8 @@ def test_supervisor_cooling_templates_are_invalid_truth_off_biased():
     assert "master_temp >= m_on_at" in AUTOMATIONS_TEXT
     assert "master_temp <= m_off_at" in AUTOMATIONS_TEXT
     assert "m_current == 'cool'" in AUTOMATIONS_TEXT
-    assert 'temperature: "{{ m_setpoint }}"' in AUTOMATIONS_TEXT
-    assert 'temperature: "{{ lr_setpoint }}"' in AUTOMATIONS_TEXT
+    assert "temperature: \"{{ m_setpoint }}\"" in AUTOMATIONS_TEXT
+    assert "temperature: \"{{ lr_setpoint }}\"" in AUTOMATIONS_TEXT
 
 
 def test_truth_unavailable_failsafe_has_four_off_only_template_triggers():
@@ -157,10 +159,7 @@ def test_truth_unavailable_failsafe_has_four_off_only_template_triggers():
     off_sequence = actions[1]["choose"][0]["sequence"]
     assert off_sequence[0]["action"] == "climate.set_hvac_mode"
     assert off_sequence[0]["data"]["hvac_mode"] == "off"
-    assert (
-        "states(climate_entity) == 'cool'"
-        in actions[1]["choose"][0]["conditions"][0]["value_template"]
-    )
+    assert "states(climate_entity) == 'cool'" in actions[1]["choose"][0]["conditions"][0]["value_template"]
     assert off_sequence[1]["continue_on_error"] is True
 
     for node in _walk(failsafe):
@@ -172,22 +171,14 @@ def test_truth_unavailable_reconciliation_is_startup_periodic_and_off_only():
     reconciliation = _automation("v8_6b_truth_unavailable_cooling_reconciliation")
     triggers = reconciliation["trigger"]
 
-    assert {trigger["platform"] for trigger in triggers} == {
-        "homeassistant",
-        "time_pattern",
-    }
+    assert {trigger["platform"] for trigger in triggers} == {"homeassistant", "time_pattern"}
     assert any(trigger.get("event") == "start" for trigger in triggers)
     assert any(trigger.get("minutes") == "/5" for trigger in triggers)
-    assert (
-        reconciliation["action"][0]["choose"][0]["sequence"][0]["delay"] == "00:03:00"
-    )
+    assert reconciliation["action"][0]["choose"][0]["sequence"][0]["delay"] == "00:03:00"
 
     repeat = reconciliation["action"][1]["repeat"]
     pairs = {(item["truth"], item["climate"]) for item in repeat["for_each"]}
-    assert pairs == {
-        (truth, f"climate.{trigger_id}")
-        for trigger_id, truth in TRUTH_TO_CLIMATE.items()
-    }
+    assert pairs == {(truth, f"climate.{trigger_id}") for trigger_id, truth in TRUTH_TO_CLIMATE.items()}
 
     repeat_text = str(repeat)
     assert "states[truth_entity] if truth_entity in states else none" in repeat_text
@@ -203,19 +194,9 @@ def test_truth_unavailable_reconciliation_is_startup_periodic_and_off_only():
 def test_packet_a_does_not_modify_excluded_configuration_or_packet_b_surfaces():
     assert Path("configuration.yaml").exists()
     assert "v8_6_truth_unavailable_cooling_failsafe" in AUTOMATIONS_TEXT
-    assert (
-        "cooldown"
-        not in AUTOMATIONS_TEXT.lower()[
-            AUTOMATIONS_TEXT.index(
-                "v8_6_truth_unavailable_cooling_failsafe"
-            ) : AUTOMATIONS_TEXT.index("v9_sleep_priority_interlock")
-        ]
-    )
-    assert (
-        "input_boolean"
-        not in AUTOMATIONS_TEXT[
-            AUTOMATIONS_TEXT.index(
-                "v8_6_truth_unavailable_cooling_failsafe"
-            ) : AUTOMATIONS_TEXT.index("v9_sleep_priority_interlock")
-        ]
-    )
+    assert "cooldown" not in AUTOMATIONS_TEXT.lower()[
+        AUTOMATIONS_TEXT.index("v8_6_truth_unavailable_cooling_failsafe") : AUTOMATIONS_TEXT.index("v9_sleep_priority_interlock")
+    ]
+    assert "input_boolean" not in AUTOMATIONS_TEXT[
+        AUTOMATIONS_TEXT.index("v8_6_truth_unavailable_cooling_failsafe") : AUTOMATIONS_TEXT.index("v9_sleep_priority_interlock")
+    ]

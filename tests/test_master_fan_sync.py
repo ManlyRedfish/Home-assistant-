@@ -18,7 +18,10 @@ import os
 
 import pytest
 import yaml
+
+
 from tests.yaml_loader import MooseAutomationLoader
+
 
 FAN_ENTITY = "fan.master_bedroom_switch_fan"
 CLIMATE_ENTITY = "climate.master_bedroom_air"
@@ -81,19 +84,16 @@ def _fan_calls(auto):
 # Section 17 — edge-driven sync
 # ---------------------------------------------------------------------------
 
-
 def test_section17_fan_sync_present(automations_data):
     auto = _by_id(automations_data, "master_bedroom_fan_sync")
     assert auto is not None, "Section 17 master_bedroom_fan_sync automation is missing."
     assert auto.get("mode") == "single"
 
     # Triggers must watch the AC mode transitions, not the fan.
-    watched = {
-        t.get("entity_id") for t in _triggers(auto) if t.get("platform") == "state"
-    }
-    assert watched == {
-        CLIMATE_ENTITY
-    }, "Section 17 should trigger only on climate.master_bedroom_air mode transitions."
+    watched = {t.get("entity_id") for t in _triggers(auto) if t.get("platform") == "state"}
+    assert watched == {CLIMATE_ENTITY}, (
+        "Section 17 should trigger only on climate.master_bedroom_air mode transitions."
+    )
 
 
 def test_section17_on_state_is_full_speed(automations_data):
@@ -104,21 +104,18 @@ def test_section17_on_state_is_full_speed(automations_data):
     assert on_calls, "Section 17 must turn the fan on when the AC runs."
     for _service, entity, data in on_calls:
         assert entity == FAN_ENTITY
-        assert (
-            data.get("percentage") == 100
-        ), "Section 17 must command 100%, the only on-state."
+        assert data.get("percentage") == 100, "Section 17 must command 100%, the only on-state."
 
 
 # ---------------------------------------------------------------------------
 # Section 18 — self-healing reconcile
 # ---------------------------------------------------------------------------
 
-
 def test_section18_reconcile_present(automations_data):
     auto = _by_id(automations_data, "master_bedroom_fan_reconcile")
-    assert (
-        auto is not None
-    ), "Section 18 master_bedroom_fan_reconcile self-heal automation is missing."
+    assert auto is not None, (
+        "Section 18 master_bedroom_fan_reconcile self-heal automation is missing."
+    )
     assert auto.get("mode") == "single"
 
 
@@ -129,15 +126,12 @@ def test_section18_reconcile_triggers_on_fan_and_time_pattern(automations_data):
     triggers = _triggers(auto)
 
     has_fan_state = any(
-        t.get("platform") == "state" and t.get("entity_id") == FAN_ENTITY
-        for t in triggers
+        t.get("platform") == "state" and t.get("entity_id") == FAN_ENTITY for t in triggers
     )
     has_time_pattern = any(t.get("platform") == "time_pattern" for t in triggers)
 
     assert has_fan_state, "Reconcile must trigger on the fan's own state changes."
-    assert (
-        has_time_pattern
-    ), "Reconcile must trigger on a time pattern to catch stuck state."
+    assert has_time_pattern, "Reconcile must trigger on a time pattern to catch stuck state."
 
 
 def test_section18_reconcile_reasserts_both_directions(automations_data):
@@ -146,16 +140,12 @@ def test_section18_reconcile_reasserts_both_directions(automations_data):
     calls = _fan_calls(auto)
     services = {c[0] for c in calls}
 
-    assert (
-        "fan.turn_off" in services
-    ), "Reconcile must re-issue turn_off when the AC is off."
+    assert "fan.turn_off" in services, "Reconcile must re-issue turn_off when the AC is off."
     on_calls = [c for c in calls if c[0] == "fan.turn_on"]
     assert on_calls, "Reconcile must re-issue turn_on when the AC is running."
     for _service, entity, data in on_calls:
         assert entity == FAN_ENTITY
-        assert (
-            data.get("percentage") == 100
-        ), "Reconcile on-state must match Section 17 (100%)."
+        assert data.get("percentage") == 100, "Reconcile on-state must match Section 17 (100%)."
 
 
 def test_section18_reconcile_only_touches_the_fan(automations_data):
@@ -165,4 +155,6 @@ def test_section18_reconcile_only_touches_the_fan(automations_data):
     for action in _flatten_actions(auto.get("action", [])):
         service = action.get("action") or action.get("service")
         if service and service.startswith("climate."):
-            pytest.fail(f"Reconcile must not command climate state; found '{service}'.")
+            pytest.fail(
+                f"Reconcile must not command climate state; found '{service}'."
+            )

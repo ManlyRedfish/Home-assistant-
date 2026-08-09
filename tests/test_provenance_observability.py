@@ -26,7 +26,10 @@ import re
 
 import yaml
 import pytest
+
+
 from tests.yaml_loader import MooseAutomationLoader
+
 
 PROVENANCE_ID = "v8_5_hvac_provenance_logger"
 PROVENANCE_WORKSHEET = "hvac_provenance_log"
@@ -176,6 +179,8 @@ def test_provenance_logger_uses_google_sheets_secret(provenance_logger):
     )
 
 
+
+
 def test_provenance_logger_includes_bedroom_climate_triggers(provenance_logger):
     """Section 15 fan-out: bedroom climate state + setpoint trigger ids exist."""
     triggers = provenance_logger.get("trigger") or []
@@ -192,7 +197,8 @@ def test_provenance_logger_includes_bedroom_climate_triggers(provenance_logger):
 
     missing = sorted(expected - trigger_ids)
     assert not missing, (
-        "Provenance logger is missing bedroom fan-out trigger ids: " f"{missing}"
+        "Provenance logger is missing bedroom fan-out trigger ids: "
+        f"{missing}"
     )
 
 
@@ -206,9 +212,9 @@ def test_temperature_attribute_triggers_use_temperature_provenance(
 
     for key in ("attribute_name", "old_raw", "new_raw"):
         assert key in templates, f"Expected provenance variable template: {key}"
-    assert (
-        "temperature_attr_trigger_ids" in variables
-    ), "Expected provenance variable: temperature_attr_trigger_ids"
+    assert "temperature_attr_trigger_ids" in variables, (
+        "Expected provenance variable: temperature_attr_trigger_ids"
+    )
 
     ids_template = variables["temperature_attr_trigger_ids"]
     for trigger_id in (
@@ -217,19 +223,19 @@ def test_temperature_attribute_triggers_use_temperature_provenance(
         "lincoln_temp_attr",
         "lilly_temp_attr",
     ):
-        assert (
-            trigger_id in ids_template
-        ), f"{trigger_id} must be included in temperature_attr_trigger_ids."
+        assert trigger_id in ids_template, (
+            f"{trigger_id} must be included in temperature_attr_trigger_ids."
+        )
 
-    assert (
-        "trigger.id in temperature_attr_trigger_ids" in templates["old_raw"]
-    ), "old_raw must branch on temperature_attr_trigger_ids."
-    assert (
-        "trigger.id in temperature_attr_trigger_ids" in templates["new_raw"]
-    ), "new_raw must branch on temperature_attr_trigger_ids."
-    assert (
-        "trigger.id in temperature_attr_trigger_ids" in templates["attribute_name"]
-    ), "attribute_name must branch on temperature_attr_trigger_ids."
+    assert "trigger.id in temperature_attr_trigger_ids" in templates["old_raw"], (
+        "old_raw must branch on temperature_attr_trigger_ids."
+    )
+    assert "trigger.id in temperature_attr_trigger_ids" in templates["new_raw"], (
+        "new_raw must branch on temperature_attr_trigger_ids."
+    )
+    assert "trigger.id in temperature_attr_trigger_ids" in templates["attribute_name"], (
+        "attribute_name must branch on temperature_attr_trigger_ids."
+    )
     assert "attributes.get('temperature')" in templates["old_raw"], (
         "old_raw must use trigger.from_state.attributes.temperature for "
         "temperature-attribute triggers."
@@ -264,17 +270,17 @@ def test_skip_identical_uses_temperature_attribute_for_all_climate_setpoint_trig
         "lincoln_temp_attr",
         "lilly_temp_attr",
     ):
-        assert (
-            trigger_id in dedupe
-        ), f"Dedupe template must include {trigger_id} in temperature-attr branch."
+        assert trigger_id in dedupe, (
+            f"Dedupe template must include {trigger_id} in temperature-attr branch."
+        )
 
     assert "attributes.get('temperature')" in dedupe, (
         "Dedupe template must compare trigger.*.attributes.temperature for "
         "climate setpoint attr triggers."
     )
-    assert (
-        "from_state.state" in dedupe and "to_state.state" in dedupe
-    ), "Dedupe template must retain state fallback for non-attribute triggers."
+    assert "from_state.state" in dedupe and "to_state.state" in dedupe, (
+        "Dedupe template must retain state fallback for non-attribute triggers."
+    )
 
 
 def test_provenance_logger_observes_spi_last_triggered(provenance_logger):
@@ -328,7 +334,9 @@ def test_provenance_classifier_includes_spi(provenance_logger):
 
     spi_label = "v9_sleep_priority_interlock"
     spi_trigger_id = "spi_last_triggered"
-    assert any(spi_label in t and spi_trigger_id in t for t in classifier_templates), (
+    assert any(
+        spi_label in t and spi_trigger_id in t for t in classifier_templates
+    ), (
         "automation_candidate_v classifier must label `spi_last_triggered` "
         f"trigger fires as `{spi_label}` (issue #88). Found templates: "
         f"{classifier_templates}"

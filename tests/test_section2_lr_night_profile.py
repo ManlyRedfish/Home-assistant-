@@ -32,6 +32,7 @@ import pytest
 import yaml
 from tests.yaml_loader import MooseAutomationLoader
 
+
 SUPERVISOR_ID = "v7_5_main_supervisor"
 
 LR_CLIMATE = "climate.living_room_air"
@@ -58,9 +59,7 @@ def supervisor_actions():
         (a for a in data if isinstance(a, dict) and a.get("id") == SUPERVISOR_ID),
         None,
     )
-    assert (
-        supervisor is not None
-    ), f"Main supervisor automation {SUPERVISOR_ID} not found"
+    assert supervisor is not None, f"Main supervisor automation {SUPERVISOR_ID} not found"
 
     actions = supervisor.get("action", [])
     assert isinstance(actions, list), "Main supervisor actions must be a list"
@@ -108,9 +107,7 @@ def _lr_command_step(cooling_sequence):
         entities = entity if isinstance(entity, list) else [entity]
         if LR_CLIMATE in entities:
             return node
-    pytest.fail(
-        f"climate.set_temperature step for {LR_CLIMATE} not found in cooling branch"
-    )
+    pytest.fail(f"climate.set_temperature step for {LR_CLIMATE} not found in cooling branch")
 
 
 def _lr_threshold_variables(cooling_sequence):
@@ -119,14 +116,9 @@ def _lr_threshold_variables(cooling_sequence):
         if not isinstance(node, dict):
             continue
         variables = node.get("variables")
-        if (
-            isinstance(variables, dict)
-            and {"lr_off_at", "lr_on_at"} <= variables.keys()
-        ):
+        if isinstance(variables, dict) and {"lr_off_at", "lr_on_at"} <= variables.keys():
             return variables
-    pytest.fail(
-        "LR threshold variables block (lr_off_at / lr_on_at) not found in cooling branch"
-    )
+    pytest.fail("LR threshold variables block (lr_off_at / lr_on_at) not found in cooling branch")
 
 
 def _entities_targeted(step: dict):
@@ -156,15 +148,15 @@ def test_lr_night_profile_thresholds_and_command(supervisor_actions):
         "lr_conservation must be `away or lr_night_primary` so P1 and P4 can "
         "each activate conservation on its own. See Packet B §1.2/§1.3."
     )
-    assert (
-        variables["lr_off_at"] == "{{ 74 if lr_conservation else 68 }}"
-    ), "LR release threshold must be 74 °F under conservation (P1/P4), else 68 °F (P5)."
-    assert (
-        variables["lr_on_at"] == "{{ 76 if lr_conservation else 72 }}"
-    ), "LR engage threshold must be 76 °F under conservation (P1/P4), else 72 °F (P5)."
-    assert (
-        variables["lr_setpoint"] == "{{ 61 }}"
-    ), "LR cooling command setpoint is the 61 °F shove (PR #126 doctrine, unchanged)."
+    assert variables["lr_off_at"] == "{{ 74 if lr_conservation else 68 }}", (
+        "LR release threshold must be 74 °F under conservation (P1/P4), else 68 °F (P5)."
+    )
+    assert variables["lr_on_at"] == "{{ 76 if lr_conservation else 72 }}", (
+        "LR engage threshold must be 76 °F under conservation (P1/P4), else 72 °F (P5)."
+    )
+    assert variables["lr_setpoint"] == "{{ 61 }}", (
+        "LR cooling command setpoint is the 61 °F shove (PR #126 doctrine, unchanged)."
+    )
 
     lr_step = _lr_command_step(cooling_sequence)
     data = lr_step.get("data") or {}
@@ -181,9 +173,9 @@ def test_lr_night_profile_thresholds_and_command(supervisor_actions):
             f"LR hvac_mode template missing `{fragment}` — hysteresis contract "
             "requires engage/release/hold, in that order."
         )
-    assert (
-        data.get("temperature") == "{{ lr_setpoint }}"
-    ), "LR cooling command temperature must be templated from lr_setpoint (61 °F shove)."
+    assert data.get("temperature") == "{{ lr_setpoint }}", (
+        "LR cooling command temperature must be templated from lr_setpoint (61 °F shove)."
+    )
     # CHANGE-2 (turbo on every cooling call) is explicitly deferred; the LR
     # cooling call must not silently ship a fan mode ahead of that CHANGE.
     assert "fan_mode" not in data, (
@@ -205,12 +197,12 @@ def test_lr_daytime_p5_fallback(supervisor_actions):
 
     # `lr_conservation = away or lr_night_primary` is false iff both are off,
     # so the `else` branch of these ternaries defines the daytime P5 numbers.
-    assert variables["lr_off_at"].endswith(
-        "else 68 }}"
-    ), "Daytime P5 release must be ≤ 68 °F (fallback branch of lr_off_at)."
-    assert variables["lr_on_at"].endswith(
-        "else 72 }}"
-    ), "Daytime P5 engage must be > 72 °F (fallback branch of lr_on_at)."
+    assert variables["lr_off_at"].endswith("else 68 }}"), (
+        "Daytime P5 release must be ≤ 68 °F (fallback branch of lr_off_at)."
+    )
+    assert variables["lr_on_at"].endswith("else 72 }}"), (
+        "Daytime P5 engage must be > 72 °F (fallback branch of lr_on_at)."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -228,9 +220,9 @@ def test_away_activates_conservation_independently_of_night_helper(supervisor_ac
     # conservation branch regardless of the helper. Both terms must be present
     # as independent operands of a disjunction.
     conservation = variables["lr_conservation"]
-    assert (
-        "away" in conservation and "lr_night_primary" in conservation
-    ), "lr_conservation must reference both `away` and `lr_night_primary`."
+    assert "away" in conservation and "lr_night_primary" in conservation, (
+        "lr_conservation must reference both `away` and `lr_night_primary`."
+    )
     assert " or " in conservation, (
         "lr_conservation must be a disjunction so P1 (away) can activate "
         "conservation without needing `night_mode_lr_primary`."

@@ -21,6 +21,7 @@ import pytest
 import yaml
 from tests.yaml_loader import MooseAutomationLoader
 
+
 SUPERVISOR_ID = "v7_5_main_supervisor"
 
 
@@ -55,10 +56,7 @@ def _bedtime_if_step(supervisor):
             if not isinstance(cond, dict):
                 continue
             template = cond.get("value_template", "")
-            if (
-                "kids_bedtime" in template
-                and "season in ['cooling', 'shoulder']" in template
-            ):
+            if "kids_bedtime" in template and "season in ['cooling', 'shoulder']" in template:
                 return step
     pytest.fail(
         "Could not find the kids' bedtime `- if:` step in v7_5_main_supervisor.action"
@@ -70,7 +68,8 @@ def test_kids_bedtime_variable_present(supervisor):
         variables = node.get("variables") if isinstance(node, dict) else None
         if isinstance(variables, dict) and "kids_bedtime" in variables:
             assert (
-                variables["kids_bedtime"] == "{{ now().hour >= 18 or now().hour < 7 }}"
+                variables["kids_bedtime"]
+                == "{{ now().hour >= 18 or now().hour < 7 }}"
             ), f"kids_bedtime template unexpected: {variables['kids_bedtime']!r}"
             return
     pytest.fail("kids_bedtime variable missing from supervisor variables block")
@@ -81,7 +80,8 @@ def test_bedtime_block_gates_on_kids_bedtime_and_cooling_or_shoulder(supervisor)
     # Ensure the gate is a single condition (no extra silent conditions).
     conditions = step.get("if") or []
     assert len(conditions) == 1, (
-        "Bedtime block should gate on exactly one condition; got: " f"{conditions!r}"
+        "Bedtime block should gate on exactly one condition; got: "
+        f"{conditions!r}"
     )
     template = conditions[0].get("value_template", "")
     assert "kids_bedtime" in template
@@ -134,14 +134,12 @@ def test_bedtime_room_has_cool_and_off_branches(supervisor, entity, temp_var):
 
     # Then: exactly one set_temperature (cool@61) and one set_fan_mode (turbo).
     set_temperature_hits = [
-        s
-        for s in then_steps
+        s for s in then_steps
         if (s.get("action") or s.get("service")) == "climate.set_temperature"
         and s.get("target", {}).get("entity_id") == entity
     ]
     set_fan_mode_hits = [
-        s
-        for s in then_steps
+        s for s in then_steps
         if (s.get("action") or s.get("service")) == "climate.set_fan_mode"
         and s.get("target", {}).get("entity_id") == entity
     ]
@@ -159,8 +157,7 @@ def test_bedtime_room_has_cool_and_off_branches(supervisor, entity, temp_var):
 
     # Else: exactly one set_hvac_mode off. No turbo written on the off path.
     set_hvac_off = [
-        s
-        for s in else_steps
+        s for s in else_steps
         if (s.get("action") or s.get("service")) == "climate.set_hvac_mode"
         and s.get("target", {}).get("entity_id") == entity
         and s.get("data", {}).get("hvac_mode") == "off"
@@ -170,8 +167,7 @@ def test_bedtime_room_has_cool_and_off_branches(supervisor, entity, temp_var):
         f"got {len(set_hvac_off)}"
     )
     turbo_on_off_path = [
-        s
-        for s in else_steps
+        s for s in else_steps
         if (s.get("action") or s.get("service")) == "climate.set_fan_mode"
     ]
     assert not turbo_on_off_path, (
@@ -186,39 +182,35 @@ def test_bedtime_hysteresis_variables_encode_66_70_deadband(supervisor):
     2026-07-09 operator decision)."""
     outer = _bedtime_if_step(supervisor)
     variables_step = next(
-        (
-            s
-            for s in outer.get("then") or []
-            if isinstance(s, dict) and "variables" in s
-        ),
+        (s for s in outer.get("then") or [] if isinstance(s, dict) and "variables" in s),
         None,
     )
-    assert (
-        variables_step
-    ), "Bedtime block must define kb_lincoln_cool / kb_lilly_cool variables"
+    assert variables_step, "Bedtime block must define kb_lincoln_cool / kb_lilly_cool variables"
     variables = variables_step["variables"]
 
     # Lincoln — 66/70 deadband (unchanged)
     ln_template = variables["kb_lincoln_cool"]
-    assert (
-        "lincoln_temp >= 70" in ln_template
-    ), "Lincoln must engage at lincoln_temp >= 70"
-    assert (
-        "lincoln_temp > 66" in ln_template
-    ), "Lincoln must continue only while lincoln_temp > 66"
-    assert (
-        "== 'cool'" in ln_template
-    ), "Lincoln continue-branch must consult current head state"
+    assert "lincoln_temp >= 70" in ln_template, (
+        "Lincoln must engage at lincoln_temp >= 70"
+    )
+    assert "lincoln_temp > 66" in ln_template, (
+        "Lincoln must continue only while lincoln_temp > 66"
+    )
+    assert "== 'cool'" in ln_template, (
+        "Lincoln continue-branch must consult current head state"
+    )
 
     # Lilly — 68/72 deadband (permanent, per 2026-07-09 operator decision)
     ly_template = variables["kb_lilly_cool"]
-    assert "lilly_temp >= 72" in ly_template, "Lilly must engage at lilly_temp >= 72"
-    assert (
-        "lilly_temp > 68" in ly_template
-    ), "Lilly must continue only while lilly_temp > 68"
-    assert (
-        "== 'cool'" in ly_template
-    ), "Lilly continue-branch must consult current head state"
+    assert "lilly_temp >= 72" in ly_template, (
+        "Lilly must engage at lilly_temp >= 72"
+    )
+    assert "lilly_temp > 68" in ly_template, (
+        "Lilly must continue only while lilly_temp > 68"
+    )
+    assert "== 'cool'" in ly_template, (
+        "Lilly continue-branch must consult current head state"
+    )
 
 
 def test_bedtime_lincoln_and_lilly_are_independent(supervisor):
@@ -226,7 +218,8 @@ def test_bedtime_lincoln_and_lilly_are_independent(supervisor):
     state never gates the other."""
     outer = _bedtime_if_step(supervisor)
     inner_ifs = [
-        s for s in outer.get("then") or [] if isinstance(s, dict) and "if" in s
+        s for s in outer.get("then") or []
+        if isinstance(s, dict) and "if" in s
     ]
     # We expect exactly two per-room `- if:` steps (Lincoln, Lilly).
     assert len(inner_ifs) == 2, (
@@ -237,11 +230,7 @@ def test_bedtime_lincoln_and_lilly_are_independent(supervisor):
     for inner in inner_ifs:
         for branch_key in ("then", "else"):
             for act in inner.get(branch_key) or []:
-                target = (
-                    act.get("target", {}).get("entity_id")
-                    if isinstance(act, dict)
-                    else None
-                )
+                target = act.get("target", {}).get("entity_id") if isinstance(act, dict) else None
                 if target in ("climate.lincoln_air", "climate.lilly_air"):
                     entities_seen.add(target)
     assert entities_seen == {"climate.lincoln_air", "climate.lilly_air"}, (

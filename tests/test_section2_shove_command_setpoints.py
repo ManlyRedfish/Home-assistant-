@@ -14,6 +14,7 @@ import re
 import yaml
 from tests.yaml_loader import MooseAutomationLoader
 
+
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 AUTOMATIONS = os.path.join(REPO_ROOT, "automations.yaml")
 CONFIGURATION = os.path.join(REPO_ROOT, "configuration.yaml")
@@ -83,13 +84,9 @@ def _temperature_value(command, variables):
         var = re.fullmatch(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", raw)
         if var:
             name = var.group(1)
-            assert (
-                name in variables
-            ), f"Command temperature references unknown variable {name!r}"
+            assert name in variables, f"Command temperature references unknown variable {name!r}"
             resolved = variables[name]
-            assert (
-                len(resolved) == 1
-            ), f"Variable {name!r} has ambiguous command values: {resolved!r}"
+            assert len(resolved) == 1, f"Variable {name!r} has ambiguous command values: {resolved!r}"
             value = next(iter(resolved))
             if isinstance(value, int):
                 return value
@@ -97,9 +94,7 @@ def _temperature_value(command, variables):
                 direct_var = re.fullmatch(r"\{\{\s*(\d+)\s*\}\}", value)
                 if direct_var:
                     return int(direct_var.group(1))
-            raise AssertionError(
-                f"Variable {name!r} does not resolve to a shove setpoint: {value!r}"
-            )
+            raise AssertionError(f"Variable {name!r} does not resolve to a shove setpoint: {value!r}")
     raise AssertionError(f"Unsupported command temperature payload: {raw!r}")
 
 
@@ -118,11 +113,7 @@ def test_section2_cooling_actuator_commands_use_61_separate_from_thresholds():
     for command in commands:
         entity = command.get("target", {}).get("entity_id")
         hvac_template = str(command.get("data", {}).get("hvac_mode", ""))
-        if (
-            entity in MINI_SPLITS
-            and "cool" in hvac_template
-            and "heat" not in hvac_template
-        ):
+        if entity in MINI_SPLITS and "cool" in hvac_template and "heat" not in hvac_template:
             cooling_commands.append(command)
             assert _temperature_value(command, variables) == 61
 
@@ -130,24 +121,22 @@ def test_section2_cooling_actuator_commands_use_61_separate_from_thresholds():
     # LR), 3 in the shoulder-day warm block (Master, Lincoln, Lilly), 1 in the
     # shoulder-night Master escape, and 2 in the kids' bedtime block (Lincoln
     # and Lilly, added by the 2026-06-07 operator decision).
-    assert (
-        len(cooling_commands) == 10
-    ), "Expected the ten mini-split cooling command paths."
+    assert len(cooling_commands) == 10, "Expected the ten mini-split cooling command paths."
 
     text = _section2_text()
     # Cooling comparisons / stop thresholds remain exactly as before; command
     # payloads are tested separately above.
-    assert 'm_off_at: "{{ 74 if away else (62 if is_master_sleep else 68) }}"' in text
-    assert 'm_on_at: "{{ 76 if away else (66 if is_master_sleep else 72) }}"' in text
-    assert 'l_off_at: "{{ 74 if away else 68 }}"' in text
-    assert 'l_on_at: "{{ 76 if away else 72 }}"' in text
-    assert 'ly_off_at: "{{ 74 if away else 68 }}"' in text
-    assert 'ly_on_at: "{{ 76 if away else 72 }}"' in text
-    assert 'lr_conservation: "{{ away or lr_night_primary }}"' in text
-    assert 'lr_off_at: "{{ 74 if lr_conservation else 68 }}"' in text
-    assert 'lr_on_at: "{{ 76 if lr_conservation else 72 }}"' in text
-    assert 'm_sleep_on_at: "{{ 76 if away else 66 }}"' in text
-    assert 'm_sleep_off_at: "{{ 74 if away else 62 }}"' in text
+    assert "m_off_at: \"{{ 74 if away else (62 if is_master_sleep else 68) }}\"" in text
+    assert "m_on_at: \"{{ 76 if away else (66 if is_master_sleep else 72) }}\"" in text
+    assert "l_off_at: \"{{ 74 if away else 68 }}\"" in text
+    assert "l_on_at: \"{{ 76 if away else 72 }}\"" in text
+    assert "ly_off_at: \"{{ 74 if away else 68 }}\"" in text
+    assert "ly_on_at: \"{{ 76 if away else 72 }}\"" in text
+    assert "lr_conservation: \"{{ away or lr_night_primary }}\"" in text
+    assert "lr_off_at: \"{{ 74 if lr_conservation else 68 }}\"" in text
+    assert "lr_on_at: \"{{ 76 if lr_conservation else 72 }}\"" in text
+    assert "m_sleep_on_at: \"{{ 76 if away else 66 }}\"" in text
+    assert "m_sleep_off_at: \"{{ 74 if away else 62 }}\"" in text
     assert "master_temp > 70" in text
     assert "lincoln_temp > 70" in text
     assert "lilly_temp > 70" in text
@@ -159,17 +148,11 @@ def test_section2_heating_actuator_commands_use_79_separate_from_thresholds():
     for command in commands:
         entity = command.get("target", {}).get("entity_id")
         hvac_template = str(command.get("data", {}).get("hvac_mode", ""))
-        if (
-            entity in MINI_SPLITS
-            and "heat" in hvac_template
-            and "cool" not in hvac_template
-        ):
+        if entity in MINI_SPLITS and "heat" in hvac_template and "cool" not in hvac_template:
             heating_commands.append(command)
             assert _temperature_value(command, variables) == 79
 
-    assert (
-        len(heating_commands) == 12
-    ), "Expected the existing twelve mini-split heating command paths."
+    assert len(heating_commands) == 12, "Expected the existing twelve mini-split heating command paths."
 
     text = _section2_text()
     # Heating thresholds remain exactly where they were; target_lr remains an
@@ -222,16 +205,7 @@ def test_shove_pr_does_not_introduce_arbitration_or_comfort_profiles():
 
 def test_shove_pr_does_not_promote_msr_or_apollo_into_supervisor_control():
     supervisor_text = str(_supervisor()).lower()
-    for forbidden in (
-        "msr",
-        "apollo",
-        "dps310",
-        "mmwave",
-        "ld2410",
-        "scd40",
-        "radar_zone",
-        "co2",
-    ):
+    for forbidden in ("msr", "apollo", "dps310", "mmwave", "ld2410", "scd40", "radar_zone", "co2"):
         assert forbidden not in supervisor_text
 
 
