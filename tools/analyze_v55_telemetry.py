@@ -35,17 +35,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
-
 # ---------------------------------------------------------------------------
 # Doctrine constants. These mirror the live thresholds, not analyzer policy:
 # changes here are documentation drift, not control changes.
 # ---------------------------------------------------------------------------
 COMFORT_LOW_F = 68.0
 COMFORT_HIGH_F = 72.0
-LR_RUNAWAY_FLOOR_F = 60.0          # Section 3 LR runaway cooling cutoff
-LR_CEILING_F = 76.0                # Section 3 all-season ceiling
-TRUTH_CAP_F = 67.0                 # Section 14 truth cap
-COLD_ENGAGE_F = 64.0               # Section 14 cold engage threshold
+LR_RUNAWAY_FLOOR_F = 60.0  # Section 3 LR runaway cooling cutoff
+LR_CEILING_F = 76.0  # Section 3 all-season ceiling
+TRUTH_CAP_F = 67.0  # Section 14 truth cap
+COLD_ENGAGE_F = 64.0  # Section 14 cold engage threshold
 MIN_VALIDATION_DAYS = 14
 
 
@@ -92,7 +91,15 @@ EXPECTED_MSR_OBSERVABILITY_COLS = (
 # Synonym map: canonical name -> tuple of acceptable header strings.
 # Tolerant lookup so minor header drift between exports does not crash the run.
 CANONICAL_SYNONYMS = {
-    "Timestamp": ("Timestamp", "timestamp", "Time", "time", "Datetime", "DateTime", "Date_Time"),
+    "Timestamp": (
+        "Timestamp",
+        "timestamp",
+        "Time",
+        "time",
+        "Datetime",
+        "DateTime",
+        "Date_Time",
+    ),
     "Season_Mode": ("Season_Mode",),
     "Away_Mode": ("Away_Mode",),
     "LR_Temp_Truth": (
@@ -279,7 +286,9 @@ def detect_boost_cycles(rows: Sequence[dict], normalized: dict) -> List[BoostCyc
                     truncated_at_start=(not seen_off_first),
                 )
                 if engage_reason_col:
-                    current.engage_reason = (row.get(engage_reason_col, "") or "").strip()
+                    current.engage_reason = (
+                        row.get(engage_reason_col, "") or ""
+                    ).strip()
                 if timer_rem_col:
                     rem = parse_float(row.get(timer_rem_col, ""))
                     current.timer_remaining_at_engage_seconds = (
@@ -289,8 +298,12 @@ def detect_boost_cycles(rows: Sequence[dict], normalized: dict) -> List[BoostCyc
                 if current.lr_start is None:
                     current.lr_start = lr
                 current.lr_end = lr
-                current.lr_min = lr if current.lr_min is None else min(current.lr_min, lr)
-                current.lr_max = lr if current.lr_max is None else max(current.lr_max, lr)
+                current.lr_min = (
+                    lr if current.lr_min is None else min(current.lr_min, lr)
+                )
+                current.lr_max = (
+                    lr if current.lr_max is None else max(current.lr_max, lr)
+                )
             if waf_col and parse_bool(row.get(waf_col, "")) is True:
                 current.waf_active_during = True
             if truth_avail_col and parse_bool(row.get(truth_avail_col, "")) is False:
@@ -302,7 +315,9 @@ def detect_boost_cycles(rows: Sequence[dict], normalized: dict) -> List[BoostCyc
                 current.end_ts = ts
                 current.end_row = idx
                 if release_reason_col:
-                    current.release_reason = (row.get(release_reason_col, "") or "").strip()
+                    current.release_reason = (
+                        row.get(release_reason_col, "") or ""
+                    ).strip()
                 if timer_state_col:
                     current.timer_state_at_release = (
                         row.get(timer_state_col, "") or ""
@@ -523,14 +538,17 @@ def _fmt_duration(d: Optional[timedelta]) -> str:
     return f"{seconds}s"
 
 
-def render_report(
-    input_path: Path,
-    loaded: LoadedCsv,
-    normalized: dict,
-    cycles: Sequence[BoostCycle],
-    verdict: Verdict,
-    lincoln: dict,
-) -> str:
+@dataclass
+class ReportContext:
+    input_path: Path
+    loaded: LoadedCsv
+    normalized: dict
+    cycles: Sequence[BoostCycle]
+    verdict: Verdict
+    lincoln: dict
+
+
+def render_report(context: ReportContext) -> str:
     lines: List[str] = []
     lines.append("# V5.5 Telemetry Evidence Review")
     lines.append("")
@@ -547,40 +565,53 @@ def render_report(
         "- Source: a local CSV export of the Google Sheet `Home Assistant` → "
         "tab `5.5` (`VTherm_Launch_Data_v5_5`)."
     )
-    lines.append("- This script only **reads** the CSV. It does not connect to "
-                 "Home Assistant, ESPHome, Google Sheets, or any device.")
-    lines.append("- It does not write back to Google Sheets and requires no "
-                 "credentials.")
-    lines.append("- It cannot change automations, helpers, thermostat behavior, "
-                 "Section 2 / Section 3 / Section 14 logic, or safety gates.")
-    lines.append("- This report supersedes nothing. It is forensic evidence; "
-                 "doctrine still lives in `docs/`.")
+    lines.append(
+        "- This script only **reads** the CSV. It does not connect to "
+        "Home Assistant, ESPHome, Google Sheets, or any device."
+    )
+    lines.append(
+        "- It does not write back to Google Sheets and requires no " "credentials."
+    )
+    lines.append(
+        "- It cannot change automations, helpers, thermostat behavior, "
+        "Section 2 / Section 3 / Section 14 logic, or safety gates."
+    )
+    lines.append(
+        "- This report supersedes nothing. It is forensic evidence; "
+        "doctrine still lives in `docs/`."
+    )
     lines.append("")
 
     lines.append("## Input File")
     lines.append("")
-    lines.append(f"- Path: `{input_path}`")
-    lines.append(f"- Header column count: {len(loaded.header)}")
-    lines.append(f"- Data row count: {len(loaded.rows)}")
-    parsed_ts = [t for t in loaded.timestamps if t is not None]
+    lines.append(f"- Path: `{context.input_path}`")
+    lines.append(f"- Header column count: {len(context.loaded.header)}")
+    lines.append(f"- Data row count: {len(context.loaded.rows)}")
+    parsed_ts = [t for t in context.loaded.timestamps if t is not None]
     if parsed_ts:
         lines.append(f"- First timestamp: {_fmt_ts(min(parsed_ts))}")
         lines.append(f"- Last timestamp:  {_fmt_ts(max(parsed_ts))}")
-        if loaded.span_days is not None:
-            lines.append(f"- Span: {loaded.span_days:.2f} day(s)")
+        if context.loaded.span_days is not None:
+            lines.append(f"- Span: {context.loaded.span_days:.2f} day(s)")
     else:
         lines.append("- Timestamps could not be parsed from this export.")
     lines.append("")
 
     lines.append("## Column Coverage")
     lines.append("")
-    found = [k for k, v in normalized.items() if v is not None]
-    missing = [k for k, v in normalized.items() if v is None]
-    lines.append(f"- Found canonical columns ({len(found)}): "
-                 + (", ".join(f"`{c}`" for c in found) or "_none_"))
-    lines.append(f"- Missing canonical columns ({len(missing)}): "
-                 + (", ".join(f"`{c}`" for c in missing) or "_none_"))
-    missing_required = [c for c in REQUIRED_SECTION14_COLS if normalized.get(c) is None]
+    found = [k for k, v in context.normalized.items() if v is not None]
+    missing = [k for k, v in context.normalized.items() if v is None]
+    lines.append(
+        f"- Found canonical columns ({len(found)}): "
+        + (", ".join(f"`{c}`" for c in found) or "_none_")
+    )
+    lines.append(
+        f"- Missing canonical columns ({len(missing)}): "
+        + (", ".join(f"`{c}`" for c in missing) or "_none_")
+    )
+    missing_required = [
+        c for c in REQUIRED_SECTION14_COLS if context.normalized.get(c) is None
+    ]
     if missing_required:
         lines.append("")
         lines.append("**Required Section 14 columns missing — verdict gated.**")
@@ -590,7 +621,7 @@ def render_report(
 
     lines.append("## Section 14 Boost Cycles")
     lines.append("")
-    if not cycles:
+    if not context.cycles:
         lines.append("_No boost cycles detected in this dataset._")
     else:
         lines.append(
@@ -599,14 +630,11 @@ def render_report(
             "LR start °F | LR end °F | LR min °F | LR max °F | "
             "Comfort band (release / throughout) | Classification |"
         )
-        lines.append(
-            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
-        )
-        for idx, c in enumerate(cycles, 1):
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+        for idx, c in enumerate(context.cycles, 1):
             lines.append(
                 "| {n} | {s} | {e} | {dur} | {er} | {rr} | {to} | {waf} | {tu} | "
-                "{lrs} | {lre} | {lrmn} | {lrmx} | {bandr} / {bandt} | {cls} |"
-                .format(
+                "{lrs} | {lre} | {lrmn} | {lrmx} | {bandr} / {bandt} | {cls} |".format(
                     n=idx,
                     s=_fmt_ts(c.start_ts),
                     e=_fmt_ts(c.end_ts),
@@ -629,8 +657,8 @@ def render_report(
 
     lines.append("## V8.4 Boost Effectiveness Verdict")
     lines.append("")
-    lines.append(f"- **Verdict:** `{verdict.label}`")
-    for reason in verdict.reasons:
+    lines.append(f"- **Verdict:** `{context.verdict.label}`")
+    for reason in context.verdict.reasons:
         lines.append(f"  - {reason}")
     lines.append("")
     lines.append(
@@ -650,7 +678,7 @@ def render_report(
         "row-summary of the MSR-derived columns; no control claim is made."
     )
     lines.append("")
-    presence = lincoln.get("Lincoln_Presence_MSR", {"present": False})
+    presence = context.lincoln.get("Lincoln_Presence_MSR", {"present": False})
     if presence.get("present"):
         lines.append(
             f"- `Lincoln_Presence_MSR` distribution: "
@@ -666,7 +694,7 @@ def render_report(
         ("Lincoln_Pressure_Diag_MSR", "Lincoln MSR DPS310 pressure"),
         ("Lincoln_ESPTemp_Diag_MSR", "Lincoln MSR ESP32 internal temperature"),
     ):
-        info = lincoln.get(canonical, {"present": False})
+        info = context.lincoln.get(canonical, {"present": False})
         if info.get("present"):
             lines.append(
                 f"- `{canonical}` ({label}): min={_fmt_float(info['min'])}, "
@@ -685,22 +713,25 @@ def render_report(
 
     lines.append("## Data Quality Notes")
     lines.append("")
-    lines.append(f"- Timestamp gaps (> 30 min): {loaded.timestamp_gaps_count}")
-    if loaded.timestamps and not all(t is not None for t in loaded.timestamps):
-        unparseable = sum(1 for t in loaded.timestamps if t is None)
+    lines.append(f"- Timestamp gaps (> 30 min): {context.loaded.timestamp_gaps_count}")
+    if context.loaded.timestamps and not all(
+        t is not None for t in context.loaded.timestamps
+    ):
+        unparseable = sum(1 for t in context.loaded.timestamps if t is None)
         lines.append(f"- Unparseable timestamp rows: {unparseable}")
     if missing_required:
-        lines.append(f"- Required Section 14 columns missing: {sorted(missing_required)}")
-    lr_col = normalized.get("LR_Temp_Truth")
+        lines.append(
+            f"- Required Section 14 columns missing: {sorted(missing_required)}"
+        )
+    lr_col = context.normalized.get("LR_Temp_Truth")
     if lr_col is None:
         lines.append("- `LR_Temp_Truth` (or synonym) not present.")
     else:
         lr_blank = sum(
-            1 for r in loaded.rows
-            if not str(r.get(lr_col, "") or "").strip()
+            1 for r in context.loaded.rows if not str(r.get(lr_col, "") or "").strip()
         )
         lines.append(
-            f"- `LR_Temp_Truth` blank/unavailable rows: {lr_blank} of {len(loaded.rows)}"
+            f"- `LR_Temp_Truth` blank/unavailable rows: {lr_blank} of {len(context.loaded.rows)}"
         )
     lines.append("")
 
@@ -766,7 +797,15 @@ def analyze(input_path: Path) -> AnalysisResult:
         loaded.timestamp_gaps_count,
     )
     lincoln = lincoln_msr_summary(loaded.rows, normalized)
-    report = render_report(input_path, loaded, normalized, cycles, verdict, lincoln)
+    context = ReportContext(
+        input_path=input_path,
+        loaded=loaded,
+        normalized=normalized,
+        cycles=cycles,
+        verdict=verdict,
+        lincoln=lincoln,
+    )
+    report = render_report(context)
     return AnalysisResult(
         loaded=loaded,
         normalized=normalized,
@@ -795,7 +834,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("reports/v55_telemetry_evidence_review.md"),
         help="Markdown report output path "
-             "(default: reports/v55_telemetry_evidence_review.md)",
+        "(default: reports/v55_telemetry_evidence_review.md)",
     )
     parser.add_argument(
         "--no-write",
