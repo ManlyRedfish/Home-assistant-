@@ -31,6 +31,32 @@ This doctrine is recorded identically as `docs/CONSTITUTION.md` item 23 in
 `ManlyRedfish/manlyredfish-ai-country`, which carries the program's candidate
 register in `docs/ADOPT_BEFORE_BUILD.md`.
 
+### 2026-08-10 — Integration-first delivery
+
+This repository also follows the AI Country program delivery policy:
+
+`ManlyRedfish/manlyredfish-ai-country/docs/governance/INTEGRATION_FIRST_DELIVERY.md`
+
+Policy ID: `POLICY-INTEGRATION-FIRST-v1`.
+
+Core invariant:
+
+> **The project must not become better at producing work than at absorbing work.**
+
+Before creating a new implementation branch, issue, or PR:
+
+1. inspect existing open work relevant to the goal;
+2. prefer merge, repair, port, rebase, or close over creating competing work;
+3. classify active PRs as `MERGE_READY`, `REPAIR_REQUIRED`, `BLOCKED_ON_<NAMED_DEPENDENCY>`, `SUPERSEDED_CLOSE`, or `EXPERIMENT_RETAIN_DO_NOT_MERGE`;
+4. when reviewed-but-unlanded work is accumulating, enter `INTEGRATION_MODE` and reduce WIP before starting broad new implementation;
+5. architecture work is not a substitute for landing already-accepted implementation;
+6. known flaky required gates are real reliability debt and may not be hidden with unexplained retries or timeout increases.
+
+This supplements Adopt Before Build: search/adapt/build still governs what should
+exist; Integration First governs whether the next action should create more work
+at all. Merge authority remains separate from Home Assistant runtime mutation or
+other protected live-system authority.
+
 ---
 
 ## Current Operator Decisions (HIGHEST PRIORITY — read first)
