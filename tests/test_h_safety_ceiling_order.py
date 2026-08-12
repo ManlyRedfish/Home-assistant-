@@ -43,9 +43,14 @@ def test_cooling_safety_off_precedes_fallible_setup_and_preserves_timing():
     assert cooling[3]["data"] == {"hvac_mode": "off"}
 
 
-def test_non_cooling_fan_only_sequence_remains_exact():
+def test_non_cooling_safety_off_precedes_fan_only_and_preserves_timing():
     ceiling = _automation("v7_5_safety_ceiling_gates")
     assert ceiling["action"][1]["default"] == [
+        {
+            "action": "climate.set_hvac_mode",
+            "target": {"entity_id": "{{ trigger.id }}"},
+            "data": {"hvac_mode": "off"},
+        },
         {
             "action": "climate.set_hvac_mode",
             "target": {"entity_id": "{{ trigger.id }}"},
