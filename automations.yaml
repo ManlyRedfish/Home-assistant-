@@ -1416,7 +1416,9 @@
         lincoln_delta: "{{ lincoln_temp - lr_temp }}"
         lilly_delta: "{{ lilly_temp - lr_temp }}"
 
-    - choose:
+    - alias: "Room boundary: Master fan destratification"
+      continue_on_error: true
+      choose:
         - conditions:
             - condition: template
               value_template: >
@@ -1446,7 +1448,9 @@
               target: { entity_id: climate.master_bedroom_air }
               data: { hvac_mode: "off" }
 
-    - choose:
+    - alias: "Room boundary: Lincoln fan destratification"
+      continue_on_error: true
+      choose:
         - conditions:
             - condition: template
               value_template: >
@@ -1476,7 +1480,9 @@
               target: { entity_id: climate.lincoln_air }
               data: { hvac_mode: "off" }
 
-    - choose:
+    - alias: "Room boundary: Lilly fan destratification"
+      continue_on_error: true
+      choose:
         - conditions:
             - condition: template
               value_template: >
