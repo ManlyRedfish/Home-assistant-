@@ -1,6 +1,24 @@
 # Unwired Section 2 extraction boundary for climate.lilly_air.
 # Each action is copied verbatim from the source_path in automations.yaml.
 # The parent supervisor remains authoritative until a later integration change.
+#
+# Explicit dependency contract (all dependencies are parent-supplied):
+# - Variables: kb_lilly_cool, lilly_truth_ok, kids_bedtime, lilly_temp,
+#   ly_on_at, ly_off_at, ly_current, and ly_setpoint.
+# - Entity/action context: climate.lilly_air must exist and support the climate
+#   set_temperature, set_fan_mode (including turbo), and set_hvac_mode services.
+# - Evaluation context: Home Assistant supplies Jinja evaluation and sequential,
+#   fail-stop action semantics; the parent supplies the source-path branch gates,
+#   variable scope, and action ordering in which these fragments execute.
+# - Parent provenance: lilly_temp/lilly_truth_ok derive from Lilly room truth;
+#   ly_current and kb_lilly_cool incorporate climate.lilly_air state; ly_on_at and
+#   ly_off_at incorporate the parent's away profile; kids_bedtime uses HA local
+#   time; and the parent owns season/manual-override eligibility outside here.
+#
+# This artifact preserves the currently loaded automations.yaml source semantics,
+# including its 18:00-07:00 kids_bedtime definition. Separate doctrine proposes
+# a Lilly-specific 19:00-07:00 window. That timing conflict remains unresolved
+# and MUST NOT be silently resolved in this unwired extraction artifact.
 - source_path: [action, 1, then, 2]
   action:
     if:

@@ -35,6 +35,29 @@ def test_lilly_unit_is_an_exact_unwired_extraction():
     assert "supervisor_zones/lilly.yaml" not in AUTOMATIONS.read_text(encoding="utf-8")
 
 
+def test_lilly_unit_declares_parent_dependencies_and_unresolved_timing_conflict():
+    text = LILLY_UNIT.read_text(encoding="utf-8")
+
+    for dependency in (
+        "kb_lilly_cool",
+        "lilly_truth_ok",
+        "kids_bedtime",
+        "lilly_temp",
+        "ly_on_at",
+        "ly_off_at",
+        "ly_current",
+        "ly_setpoint",
+        "climate.lilly_air",
+    ):
+        assert dependency in text
+
+    assert "currently loaded automations.yaml source semantics" in text
+    assert "18:00-07:00" in text
+    assert "19:00-07:00" in text
+    assert "timing conflict remains unresolved" in text
+    assert "MUST NOT be silently resolved" in text
+
+
 def test_lilly_unit_is_single_zone_and_preserves_off_actions():
     unit = yaml.safe_load(LILLY_UNIT.read_text(encoding="utf-8"))
     steps = list(_walk(unit))
