@@ -181,7 +181,7 @@ EXPECTED_SECTION_HASHES = {
         "# SECTION 4:",
         # Re-pinned: manually_hvac_override references removed from Section 3
         # comment. Section 3 safety floors and thresholds are unchanged.
-        "62a310067a128793cbeb1431dc0143adeab5088e505b18eba572c247a31c7685",
+        "06c6f723c929ff74affd72d6db68335782eae8cc84508d797f444bf69ea6135d",
     ),
     "section14_lr_boost": (
         "# SECTION 14: V8.4 LR HEATING RECOVERY BOOST PILOT",
