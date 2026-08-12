@@ -1269,6 +1269,11 @@
             - condition: template
               value_template: "{{ season == 'cooling' }}"
           sequence:
+            # Safety OFF is deliberately first: if the following Samsung
+            # cooling setup fails, this protective command has already landed.
+            - action: climate.set_hvac_mode
+              target: { entity_id: "{{ trigger.id }}" }
+              data: { hvac_mode: "off" }
             - action: climate.set_temperature
               target: { entity_id: "{{ trigger.id }}" }
               data: { hvac_mode: "cool", temperature: 68 }
