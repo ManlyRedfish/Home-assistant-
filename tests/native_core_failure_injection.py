@@ -21,20 +21,24 @@ from homeassistant.helpers import config_validation as cv, script, trace
 ZONES = ("master", "lincoln", "lilly", "living_room")
 
 
-def boundary(zone: str, action: str = "set_temperature") -> dict[str, Any]:
+def boundary(zone: str, *, off_via_else: bool = False) -> dict[str, Any]:
     """Build the F1-shaped isolation boundary for one synthetic zone."""
     service_action: dict[str, Any] = {
         "alias": f"{zone}: climate action",
-        "action": f"climate.{action}",
+        "action": "climate.set_temperature",
         "target": {"entity_id": f"climate.{zone}_air"},
+        "data": {"temperature": 61},
     }
-    if action == "set_temperature":
-        service_action["data"] = {"temperature": 61}
 
-    return {
+    zone_boundary: dict[str, Any] = {
         "alias": f"{zone}: isolated boundary",
         "continue_on_error": True,
-        "if": [{"condition": "template", "value_template": "{{ true }}"}],
+        "if": [
+            {
+                "condition": "template",
+                "value_template": "{{ false }}" if off_via_else else "{{ true }}",
+            }
+        ],
         "then": [
             service_action,
             {
@@ -43,6 +47,16 @@ def boundary(zone: str, action: str = "set_temperature") -> dict[str, Any]:
             },
         ],
     }
+    if off_via_else:
+        zone_boundary["else"] = [
+            {
+                "alias": f"{zone}: off action",
+                "action": "climate.set_hvac_mode",
+                "target": {"entity_id": f"climate.{zone}_air"},
+                "data": {"hvac_mode": "off"},
+            }
+        ]
+    return zone_boundary
 
 
 def sequence(lilly_off: bool = False) -> list[dict[str, Any]]:
@@ -55,7 +69,7 @@ def sequence(lilly_off: bool = False) -> list[dict[str, Any]]:
                     "event": "g_native_boundary_entered",
                     "event_data": {"zone": zone},
                 },
-                boundary(zone, "turn_off" if lilly_off and zone == "lilly" else "set_temperature"),
+                boundary(zone, off_via_else=lilly_off and zone == "lilly"),
             )
         )
     return actions
@@ -90,6 +104,7 @@ async def run_case(
     """Execute and assert one failure-injection case through script.Script."""
     failures = set(failed_zones)
     attempted: list[tuple[str, str]] = []
+    hvac_modes: list[tuple[str, str]] = []
     entered: list[str] = []
     fans: list[str] = []
 
@@ -97,6 +112,8 @@ async def run_case(
     def climate_service(call: ServiceCall) -> None:
         zone = entity_zone(call)
         attempted.append((zone, call.service))
+        if call.service == "set_hvac_mode":
+            hvac_modes.append((zone, call.data["hvac_mode"]))
         if zone in failures:
             raise HomeAssistantError(f"injected {zone} set_temperature failure")
 
@@ -109,7 +126,7 @@ async def run_case(
         fans.append(event.data["zone"])
 
     hass.services.async_register("climate", "set_temperature", climate_service)
-    hass.services.async_register("climate", "turn_off", climate_service)
+    hass.services.async_register("climate", "set_hvac_mode", climate_service)
     remove_entered = hass.bus.async_listen("g_native_boundary_entered", capture_entered)
     remove_fan = hass.bus.async_listen("g_native_fan_action", capture_fan)
 
@@ -122,15 +139,19 @@ async def run_case(
     remove_entered()
     remove_fan()
     hass.services.async_remove("climate", "set_temperature")
-    hass.services.async_remove("climate", "turn_off")
+    hass.services.async_remove("climate", "set_hvac_mode")
 
     assert entered == list(ZONES), (name, entered)
     assert [zone for zone, _ in attempted] == list(ZONES), (name, attempted)
-    assert fans == [zone for zone in ZONES if zone not in failures], (name, fans)
+    expected_fans = [
+        zone for zone in ZONES if zone not in failures and not (lilly_off and zone == "lilly")
+    ]
+    assert fans == expected_fans, (name, fans)
 
     if lilly_off:
-        assert ("lilly", "turn_off") in attempted, (name, attempted)
-        assert "lilly" in fans, (name, fans)
+        assert ("lilly", "set_hvac_mode") in attempted, (name, attempted)
+        assert ("lilly", "off") in hvac_modes, (name, hvac_modes)
+        assert "lilly" not in fans, (name, fans)
 
     paths, errors = trace_snapshot()
     for zone in failures:
@@ -141,10 +162,14 @@ async def run_case(
     }, (name, errors)
     for index, zone in enumerate(ZONES):
         parent_path = str(index * 2 + 1)
-        climate_path = f"{parent_path}/then/0"
+        false_else = lilly_off and zone == "lilly"
+        climate_path = f"{parent_path}/else/0" if false_else else f"{parent_path}/then/0"
         fan_path = f"{parent_path}/then/1"
         assert climate_path in paths, (name, zone, paths)
-        assert (fan_path in paths) is (zone not in failures), (name, zone, paths)
+        assert (fan_path in paths) is (zone not in failures and not false_else), (name, zone, paths)
+        if false_else:
+            assert f"{parent_path}/if/condition/0" in paths, (name, zone, paths)
+            assert f"{parent_path}/then/0" not in paths, (name, zone, paths)
 
     print(f"PASS {name}: failures={sorted(failures)} entered={entered} fans={fans}")
 
