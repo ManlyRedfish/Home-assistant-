@@ -1,0 +1,81 @@
+# Unwired Section 2 extraction boundary for climate.lilly_air.
+# Each action is copied verbatim from the source_path in automations.yaml.
+# The parent supervisor remains authoritative until a later integration change.
+- source_path: [action, 1, then, 2]
+  action:
+    if:
+      - condition: template
+        value_template: "{{ kb_lilly_cool }}"
+    then:
+      - action: climate.set_temperature
+        target: { entity_id: climate.lilly_air }
+        data: { hvac_mode: "cool", temperature: 61 }
+      - action: climate.set_fan_mode
+        target: { entity_id: climate.lilly_air }
+        data: { fan_mode: "turbo" }
+    else:
+      - action: climate.set_hvac_mode
+        target: { entity_id: climate.lilly_air }
+        data: { hvac_mode: "off" }
+
+- source_path: [action, 2, choose, 0, sequence, 6]
+  action:
+    if:
+      - condition: template
+        value_template: "{{ lilly_truth_ok }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ not kids_bedtime }}"
+        then:
+          - action: climate.set_temperature
+            target: { entity_id: climate.lilly_air }
+            data:
+              hvac_mode: >-
+                {% if lilly_temp >= ly_on_at %}cool
+                {% elif lilly_temp <= ly_off_at %}off
+                {% elif ly_current == 'cool' %}cool
+                {% else %}off{% endif %}
+              temperature: "{{ ly_setpoint }}"
+          - action: climate.set_fan_mode
+            target: { entity_id: climate.lilly_air }
+            data: { fan_mode: "turbo" }
+    else:
+      - if:
+          - condition: template
+            value_template: "{{ not kids_bedtime }}"
+        then:
+          - action: climate.set_hvac_mode
+            target: { entity_id: climate.lilly_air }
+            data: { hvac_mode: "off" }
+
+- source_path: [action, 2, choose, 1, sequence, 0, default, 0, default, 5]
+  action:
+    if:
+      - condition: template
+        value_template: "{{ lilly_truth_ok }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ not kids_bedtime }}"
+        then:
+          - action: climate.set_temperature
+            target: { entity_id: climate.lilly_air }
+            data:
+              hvac_mode: >-
+                {% if lilly_temp >= ly_on_at %}cool
+                {% elif lilly_temp <= ly_off_at %}off
+                {% elif ly_current == 'cool' %}cool
+                {% else %}off{% endif %}
+              temperature: "{{ ly_setpoint }}"
+          - action: climate.set_fan_mode
+            target: { entity_id: climate.lilly_air }
+            data: { fan_mode: "turbo" }
+    else:
+      - if:
+          - condition: template
+            value_template: "{{ not kids_bedtime }}"
+        then:
+          - action: climate.set_hvac_mode
+            target: { entity_id: climate.lilly_air }
+            data: { hvac_mode: "off" }
