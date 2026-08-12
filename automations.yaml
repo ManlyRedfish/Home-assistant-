@@ -469,7 +469,9 @@
               {{ lilly_temp >= 72
                  or (lilly_temp > 68 and kb_lilly_current == 'cool') }}
         # Lincoln (independent) — 66/70 deadband
-        - if:
+        - alias: "Zone boundary: Lincoln bedtime cooling"
+          continue_on_error: true
+          if:
             - condition: template
               value_template: "{{ kb_lincoln_cool }}"
           then:
@@ -484,7 +486,9 @@
               target: { entity_id: climate.lincoln_air }
               data: { hvac_mode: "off" }
         # Lilly (independent) — 68/72 deadband
-        - if:
+        - alias: "Zone boundary: Lilly bedtime cooling"
+          continue_on_error: true
+          if:
             - condition: template
               value_template: "{{ kb_lilly_cool }}"
           then:
@@ -541,7 +545,9 @@
                 m_off_at: "{{ 74 if away else (62 if is_master_sleep else 68) }}"
                 m_on_at: "{{ 76 if away else (66 if is_master_sleep else 72) }}"
                 m_current: "{{ states('climate.master_bedroom_air') }}"
-            - if:
+            - alias: "Zone boundary: Master cooling"
+              continue_on_error: true
+              if:
                 - condition: template
                   value_template: "{{ master_truth_ok }}"
               then:
@@ -577,7 +583,9 @@
                 l_off_at: "{{ 74 if away else 68 }}"
                 l_on_at: "{{ 76 if away else 72 }}"
                 l_current: "{{ states('climate.lincoln_air') }}"
-            - if:
+            - alias: "Zone boundary: Lincoln cooling"
+              continue_on_error: true
+              if:
                 - condition: template
                   value_template: "{{ lincoln_truth_ok }}"
               then:
@@ -619,7 +627,9 @@
                 ly_off_at: "{{ 74 if away else 68 }}"
                 ly_on_at: "{{ 76 if away else 72 }}"
                 ly_current: "{{ states('climate.lilly_air') }}"
-            - if:
+            - alias: "Zone boundary: Lilly cooling"
+              continue_on_error: true
+              if:
                 - condition: template
                   value_template: "{{ lilly_truth_ok }}"
               then:
@@ -660,7 +670,9 @@
                 lr_off_at: "{{ 74 if lr_conservation else 68 }}"
                 lr_on_at: "{{ 76 if lr_conservation else 72 }}"
                 lr_current: "{{ states('climate.living_room_air') }}"
-            - if:
+            - alias: "Zone boundary: Living Room cooling"
+              continue_on_error: true
+              if:
                 - condition: template
                   value_template: "{{ lr_truth_ok }}"
               then:
@@ -764,7 +776,9 @@
                         m_off_at: "{{ 74 if away else (62 if is_master_sleep else 68) }}"
                         m_on_at: "{{ 76 if away else (66 if is_master_sleep else 72) }}"
                         m_current: "{{ states('climate.master_bedroom_air') }}"
-                    - if:
+                    - alias: "Zone boundary: Master shoulder cooling"
+                      continue_on_error: true
+                      if:
                         - condition: template
                           value_template: "{{ master_truth_ok }}"
                       then:
@@ -789,7 +803,9 @@
                         l_off_at: "{{ 74 if away else 68 }}"
                         l_on_at: "{{ 76 if away else 72 }}"
                         l_current: "{{ states('climate.lincoln_air') }}"
-                    - if:
+                    - alias: "Zone boundary: Lincoln shoulder cooling"
+                      continue_on_error: true
+                      if:
                         - condition: template
                           value_template: "{{ lincoln_truth_ok }}"
                       then:
@@ -822,7 +838,9 @@
                         ly_off_at: "{{ 74 if away else 68 }}"
                         ly_on_at: "{{ 76 if away else 72 }}"
                         ly_current: "{{ states('climate.lilly_air') }}"
-                    - if:
+                    - alias: "Zone boundary: Lilly shoulder cooling"
+                      continue_on_error: true
+                      if:
                         - condition: template
                           value_template: "{{ lilly_truth_ok }}"
                       then:
@@ -856,7 +874,9 @@
                         lr_off_at: "{{ 74 if lr_conservation else 68 }}"
                         lr_on_at: "{{ 76 if lr_conservation else 72 }}"
                         lr_current: "{{ states('climate.living_room_air') }}"
-                    - if:
+                    - alias: "Zone boundary: Living Room shoulder cooling"
+                      continue_on_error: true
+                      if:
                         - condition: template
                           value_template: "{{ lr_truth_ok }}"
                       then:

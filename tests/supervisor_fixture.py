@@ -42,6 +42,8 @@ class ZoneActionGroup:
     entity_id: str
     path: tuple[str | int, ...]
     action: dict[str, Any]
+    alias: str | None
+    continue_on_error: bool
 
 
 def load_supervisor(path: Path) -> dict[str, Any]:
@@ -73,7 +75,21 @@ def _walk_action_boundaries(
         is_action_group = any(key in value for key in ("if", "choose", "repeat", "parallel"))
         if is_action_group and len(targets) == 1:
             entity_id = next(iter(targets))
-            yield ZoneActionGroup(entity_id, path, value)
+            # The reviewed artifact is the zone policy subtree. Parent-only
+            # orchestration metadata is intentionally kept alongside, rather
+            # than folded into, that extracted policy contract.
+            action = {
+                key: child
+                for key, child in value.items()
+                if key not in ("alias", "continue_on_error")
+            }
+            yield ZoneActionGroup(
+                entity_id,
+                path,
+                action,
+                value.get("alias"),
+                value.get("continue_on_error") is True,
+            )
             return
         for key, child in value.items():
             yield from _walk_action_boundaries(child, path + (key,))
