@@ -195,6 +195,15 @@ The archive explicitly warns that attempting to isolate rooms mathematically whi
 * **Reopen Only If:** Provenance covers every climate entity, every safety surface, and every season-mode change for at least one full season; V10 diagnosis has produced a labeled forensic archive; Eric's deadband contract is preserved; and a separately-documented case for control authority beyond V9 deadbands exists. None of these conditions hold today.
 * **Source Lineage:** [`hvac_provenance_logger_design.md`](hvac_provenance_logger_design.md); [`v9_v10_goals.md`](v9_v10_goals.md) §4–§6; doctrine alignment with §4.13, §4.15, §4.18.
 
+### 4.20 Season Branches That Bypass Room Deadbands
+* **Retired Approach:** Using outdoor or season thresholds to select a single `cool/off` boundary, or bulk-commanding comfort-controlled heads OFF, instead of evaluating each room's active engage/release/hold contract.
+* **Why It Looked Promising:** Shoulder weather appears mild enough for a simplified escape path, and one outdoor threshold seems easier than evaluating every room profile.
+* **Why It Failed in Moose House:** On 2026-07-12 the shoulder warm branch forced Living Room OFF at 72.37 °F even though its daytime 68/72 profile and active pull-down required hysteresis continuity. The same structure used zero-width bedroom decisions and could interrupt cooling-to-shoulder pull-downs.
+* **Observed or Structural Failure Mode:** A comfort room appears in a multi-entity OFF target; a season path contains only one temperature threshold; or outdoor/season logic outranks the room's engage, release, and current-mode hold state.
+* **What Replaced It:** Section 2 evaluates the active room profile year-round. Shoulder selects strategy only; each valid room gets a zone-local deadband decision, invalid truth gets zone-local OFF, and Dining remains separately controllable. Section 3 safety remains independent.
+* **Reopen Only If:** Never as comfort policy. A safety equipment limit belongs in Section 3 with explicit evidence, scope, and rollback—not as a Section 2 seasonal shortcut.
+* **Source Lineage:** 2026-07-12 operator decision; `automations.yaml` Section 2; [`5_runtime_layer.md`](5_runtime_layer.md) §7.11; §4.10 and §4.16 above.
+
 ## 5. Meta-Guardrails
 
 The following guardrails apply across all proposals, even when a specific retired approach is not directly named:

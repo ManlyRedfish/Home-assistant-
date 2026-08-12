@@ -143,20 +143,30 @@ NEW_FIELDS = {
 #     Section 14 _temperature_truth → _temperature_control, > → >= on cooling
 #     engage thresholds, transition logger defensive attrs.get() fix.
 #     configuration.yaml is byte-for-byte unchanged.
+#   - configuration re-pinned for heat-wave override per-head isolation:
+#     each complete head command unit now has boundary-level continuation so
+#     one failed head cannot suppress later valid heads; guards and commands
+#     are unchanged.
+#   - section3 re-pinned for the accepted-live Lincoln/Lilly low-temperature
+#     watchdog synchronization: two independent OFF-only gates stop a cooling
+#     head after valid room truth remains below 64°F for two minutes. The first
+#     action is the protective OFF; only logbook/notification follow-ups have
+#     continuation. No setpoint or fan-mode action was added. Sections 2/14 and
+#     configuration.yaml are unchanged.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
         "# SECTION 3:",
-        # Re-pinned for timer removal + smoothed truth: timer gate removed,
-        # _temperature_truth → _temperature_control, > → >= on cooling engage.
-        "2adef484f783c2625a235137849b8afdaf9acce35ada7eebf1ecc1dfb1ece5ce",
+        # Re-pinned for F1 parent orchestration: complete-zone action boundaries
+        # isolate failures without changing the reviewed policy subtrees.
+        "08994793c9ee9f29dd849699bb0efc3bca9cb08cb5a68d5b48549c816e395b21",
     ),
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
         "# SECTION 4:",
-        # Re-pinned: manually_hvac_override references removed from Section 3
-        # comment. Section 3 safety floors and thresholds are unchanged.
-        "b4081f516033ceea1c888b91a89e0f83f7b96d5f8556317672707350310269f2",
+        # Re-pinned for the intentional accepted-live Lincoln/Lilly OFF-only
+        # low-temperature watchdog addition; existing gates are unchanged.
+        "f82157a25aa54b969368096c506346e9ceca8210445910c46bc5f3cc97098e49",
     ),
     "section14_lr_boost": (
         "# SECTION 14: V8.4 LR HEATING RECOVERY BOOST PILOT",
@@ -164,10 +174,10 @@ EXPECTED_SECTION_HASHES = {
         # Re-pinned: WAF_Active hardcoded false, Engage_Eligible override var
         # removed, timer.gating removed from boost_release, observability
         # fields removed.
-        "184ea751ed94859366df953f09b85a0d32f66d1369adfd74fa2e3d76231db081",
+        "baa19c917e4231fd6c0ddc40aacab82d9a8d218af1c8e7690ab4cecc3bf6da3b",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "62b4d8f94dd3d0291b69d12438fbf60135c7e1f278b32c91c872aadf55026ac1"
+EXPECTED_CONFIGURATION_HASH = "383c9e5e9c46d2af18c16c169a26d744efe8a0bc8d5dbf0b99c787f7a037ba4d"
 
 
 @pytest.fixture(scope="module")

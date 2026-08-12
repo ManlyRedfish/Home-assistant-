@@ -108,6 +108,23 @@ rule as a reason to ignore or "correct" the decision.
 - **2026-06-07 entry above remains valid for Lincoln** (66/70). This entry
   supersedes it for Lilly only.
 
+### 2026-07-12 — Year-round room deadband authority
+
+- **Deadbands are year-round comfort contracts.** Seasonal routing may select
+  heating versus cooling strategy, but it may not replace a room profile with a
+  single threshold, bypass hysteresis, or bulk-force a comfort-controlled room
+  off.
+- **Shoulder season uses each active room profile's engage, release, and
+  hold-current-mode semantics.** Existing daytime, away, Master sleep, kids
+  bedtime, and Living Room conservation profiles retain their scoped thresholds.
+- **Section 2 remains the sole comfort-policy writer.** Section 3 safety remains
+  independently authoritative and may override comfort. Manual and heat-wave
+  override precedence, truth-validity handling, `cool/61`, `heat/79`, and turbo
+  doctrine remain unchanged.
+- This decision directly repairs shoulder-season control. It does not silently
+  authorize a heating-season redesign; any heating-season envelope gap requires
+  a separate reviewed change.
+
 ---
 
 You are being given a production automations.yaml file.

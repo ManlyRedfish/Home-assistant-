@@ -366,6 +366,26 @@ shoulder-night and shoulder-day mild/cold branches bulk-force the kids off.
   kids behavior unchanged; Section 2 remains the sole comfort writer; manual
   override and Section 3 safety unchanged; no new controller or helpers.
 
+### 7.11 Shoulder-Season Year-Round Deadband Authority (2026-07-12)
+
+The 2026-07-12 operator decision supersedes earlier runtime descriptions that
+allowed shoulder-day warm shortcuts or mild/cold bulk-off of comfort heads.
+Shoulder season selects an equipment strategy; it does not replace room comfort
+policy.
+
+For each shoulder cooling-eligible room, Section 2 now evaluates the active
+profile's engage and release boundaries and uses the current HVAC mode as
+hysteresis memory. A room inside its band continues cooling only when it was
+already cooling; otherwise it remains off. Invalid truth produces a zone-local
+OFF command. Living Room has its own 68/72 daytime or 74/76
+away/conservation path and is never bundled with Dining's shoulder OFF command.
+Lincoln and Lilly remain exclusively owned by the bedtime block during their
+bedtime window. All cooling calls retain `cool/61/turbo`.
+
+This change does not alter Section 3 safety, manual/heat-wave precedence,
+truth/control sensors, heating actuator doctrine, or approved room thresholds.
+Heating-season envelope behavior remains a separate audit boundary.
+
 ## 8. Runtime Change Rules
 
 Update this layer only when live implementation changes.

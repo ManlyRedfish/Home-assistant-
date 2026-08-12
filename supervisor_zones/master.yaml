@@ -1,0 +1,68 @@
+# Unwired Section 2 extraction boundary for climate.master_bedroom_air.
+# Each action is copied verbatim from the source_path in automations.yaml.
+# The parent supervisor remains authoritative until a later integration change.
+#
+# Explicit dependency contract (all dependencies are parent-supplied):
+# - Variables: master_truth_ok, master_temp, m_on_at, m_off_at, m_current,
+#   and m_setpoint.
+# - Entity/action context: climate.master_bedroom_air must exist and support the
+#   climate set_temperature, set_fan_mode (including turbo), and set_hvac_mode
+#   services.
+# - Evaluation context: Home Assistant supplies Jinja evaluation and sequential,
+#   fail-stop action semantics; the parent supplies the source-path branch gates,
+#   variable scope, and action ordering in which these fragments execute.
+# - Parent provenance: master_temp/master_truth_ok derive from Master room truth;
+#   m_current incorporates climate.master_bedroom_air state; m_on_at, m_off_at,
+#   and m_setpoint incorporate the parent's Master sleep, daytime, and away
+#   policy; and the parent owns season/manual-override/heat-wave eligibility
+#   outside here.
+#
+# This artifact preserves the currently loaded automations.yaml source semantics.
+# The live source remains authoritative. Any unrelated pre-cool, timing, or
+# policy conflict remains unresolved and MUST NOT be silently resolved in this
+# unwired artifact.
+- source_path: [action, 2, choose, 0, sequence, 2]
+  action:
+    if:
+      - condition: template
+        value_template: "{{ master_truth_ok }}"
+    then:
+      - action: climate.set_temperature
+        target: { entity_id: climate.master_bedroom_air }
+        data:
+          hvac_mode: >-
+            {% if master_temp >= m_on_at %}cool
+            {% elif master_temp <= m_off_at %}off
+            {% elif m_current == 'cool' %}cool
+            {% else %}off{% endif %}
+          temperature: "{{ m_setpoint }}"
+      - action: climate.set_fan_mode
+        target: { entity_id: climate.master_bedroom_air }
+        data: { fan_mode: "turbo" }
+    else:
+      - action: climate.set_hvac_mode
+        target: { entity_id: climate.master_bedroom_air }
+        data: { hvac_mode: "off" }
+
+- source_path: [action, 2, choose, 1, sequence, 0, default, 0, default, 1]
+  action:
+    if:
+      - condition: template
+        value_template: "{{ master_truth_ok }}"
+    then:
+      - action: climate.set_temperature
+        target: { entity_id: climate.master_bedroom_air }
+        data:
+          hvac_mode: >-
+            {% if master_temp > m_on_at %}cool
+            {% elif master_temp <= m_off_at %}off
+            {% elif m_current == 'cool' %}cool
+            {% else %}off{% endif %}
+          temperature: "{{ m_setpoint }}"
+      - action: climate.set_fan_mode
+        target: { entity_id: climate.master_bedroom_air }
+        data: { fan_mode: "turbo" }
+    else:
+      - action: climate.set_hvac_mode
+        target: { entity_id: climate.master_bedroom_air }
+        data: { hvac_mode: "off" }

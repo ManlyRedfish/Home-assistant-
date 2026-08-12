@@ -117,11 +117,11 @@ def test_section2_cooling_actuator_commands_use_61_separate_from_thresholds():
             cooling_commands.append(command)
             assert _temperature_value(command, variables) == 61
 
-    # Ten cooling command paths: 4 in the cooling branch (Master, Lincoln, Lilly,
-    # LR), 3 in the shoulder-day warm block (Master, Lincoln, Lilly), 1 in the
-    # shoulder-night Master escape, and 2 in the kids' bedtime block (Lincoln
-    # and Lilly, added by the 2026-06-07 operator decision).
-    assert len(cooling_commands) == 10, "Expected the ten mini-split cooling command paths."
+    # Eleven cooling command paths: 4 in the cooling branch (Master, Lincoln,
+    # Lilly, LR), 4 in the shoulder warm block (Master, Lincoln, Lilly, and the
+    # dedicated LR deadband path), 1 in the shoulder-night Master escape, and 2
+    # in the kids' bedtime block (Lincoln and Lilly).
+    assert len(cooling_commands) == 11, "Expected the eleven mini-split cooling command paths."
 
     text = _section2_text()
     # Cooling comparisons / stop thresholds remain exactly as before; command
@@ -137,9 +137,11 @@ def test_section2_cooling_actuator_commands_use_61_separate_from_thresholds():
     assert "lr_on_at: \"{{ 76 if lr_conservation else 72 }}\"" in text
     assert "m_sleep_on_at: \"{{ 76 if away else 66 }}\"" in text
     assert "m_sleep_off_at: \"{{ 74 if away else 62 }}\"" in text
-    assert "master_temp > 70" in text
-    assert "lincoln_temp > 70" in text
-    assert "lilly_temp > 70" in text
+    # Retired shoulder zero-width thresholds must not return; shoulder now uses
+    # the profile variables above for engage/release/hold semantics.
+    assert "master_temp > 70" not in text
+    assert "lincoln_temp > 70" not in text
+    assert "lilly_temp > 70" not in text
 
 
 def test_section2_heating_actuator_commands_use_79_separate_from_thresholds():

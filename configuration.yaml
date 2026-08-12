@@ -1444,7 +1444,9 @@ script:
           lincoln_truth: "{{ states('sensor.lincoln_s_room_temperature_truth') | float(none) }}"
           lilly_truth: "{{ states('sensor.lilly_s_room_temperature_truth') | float(none) }}"
       # ----- LIVING ROOM: command only if truth valid AND > 60°F -----
-      - choose:
+      - alias: "Head boundary: Heat Wave Override Living Room"
+        continue_on_error: true
+        choose:
           - conditions:
               - condition: template
                 value_template: >-
@@ -1463,7 +1465,9 @@ script:
                 target: { entity_id: climate.living_room_air }
                 data: { fan_mode: "turbo" }
       # ----- MASTER: command only if truth valid AND > 58°F -----
-      - choose:
+      - alias: "Head boundary: Heat Wave Override Master"
+        continue_on_error: true
+        choose:
           - conditions:
               - condition: template
                 value_template: >-
@@ -1482,7 +1486,9 @@ script:
                 target: { entity_id: climate.master_bedroom_air }
                 data: { fan_mode: "turbo" }
       # ----- LINCOLN: command only if truth valid (no invented low floor) -----
-      - choose:
+      - alias: "Head boundary: Heat Wave Override Lincoln"
+        continue_on_error: true
+        choose:
           - conditions:
               - condition: template
                 value_template: >-
@@ -1501,7 +1507,9 @@ script:
                 target: { entity_id: climate.lincoln_air }
                 data: { fan_mode: "turbo" }
       # ----- LILLY: command only if truth valid (no invented low floor) -----
-      - choose:
+      - alias: "Head boundary: Heat Wave Override Lilly"
+        continue_on_error: true
+        choose:
           - conditions:
               - condition: template
                 value_template: >-
