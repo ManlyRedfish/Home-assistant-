@@ -168,6 +168,10 @@ NEW_FIELDS = {
 #     Section 14 _temperature_truth → _temperature_control, > → >= on cooling
 #     engage thresholds, transition logger defensive attrs.get() fix.
 #     configuration.yaml is byte-for-byte unchanged.
+#   - configuration re-pinned for heat-wave override per-head isolation:
+#     each complete head command unit now has boundary-level continuation so
+#     one failed head cannot suppress later valid heads; guards and commands
+#     are unchanged.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
@@ -192,7 +196,7 @@ EXPECTED_SECTION_HASHES = {
         "baa19c917e4231fd6c0ddc40aacab82d9a8d218af1c8e7690ab4cecc3bf6da3b",
     ),
 }
-EXPECTED_CONFIGURATION_HASH = "62b4d8f94dd3d0291b69d12438fbf60135c7e1f278b32c91c872aadf55026ac1"
+EXPECTED_CONFIGURATION_HASH = "383c9e5e9c46d2af18c16c169a26d744efe8a0bc8d5dbf0b99c787f7a037ba4d"
 
 
 @pytest.fixture(scope="module")
