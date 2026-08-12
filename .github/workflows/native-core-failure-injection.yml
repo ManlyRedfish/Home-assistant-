@@ -1,0 +1,25 @@
+name: native Core failure injection
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/native-core-failure-injection.yml"
+      - "scripts/run_native_core_failure_injection.sh"
+      - "tests/native_core_failure_injection.py"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/native-core-failure-injection.yml"
+      - "scripts/run_native_core_failure_injection.sh"
+      - "tests/native_core_failure_injection.py"
+
+jobs:
+  native-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run proof in pinned Home Assistant Core 2026.8.1
+        run: scripts/run_native_core_failure_injection.sh
