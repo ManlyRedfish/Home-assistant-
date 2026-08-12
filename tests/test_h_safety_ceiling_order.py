@@ -33,9 +33,10 @@ def test_cooling_safety_off_precedes_fallible_setup_and_preserves_timing():
     assert cooling[0]["target"]["entity_id"] == "{{ trigger.id }}"
     assert cooling[0]["data"] == {"hvac_mode": "off"}
 
-    # Native Core stops a sequence when an action raises. Because OFF is first,
-    # failure of this later setup cannot suppress or undo that protective OFF.
+    # Samsung may partially apply cool before this action raises. The targeted
+    # containment keeps Core moving to the delayed cleanup OFF in that case.
     assert _service(cooling[1]) == "climate.set_temperature"
+    assert cooling[1]["continue_on_error"] is True
     assert cooling[1]["target"]["entity_id"] == "{{ trigger.id }}"
     assert cooling[1]["data"] == {"hvac_mode": "cool", "temperature": 68}
     assert cooling[2] == {"delay": "00:45:00"}
@@ -53,6 +54,7 @@ def test_non_cooling_safety_off_precedes_fan_only_and_preserves_timing():
         },
         {
             "action": "climate.set_hvac_mode",
+            "continue_on_error": True,
             "target": {"entity_id": "{{ trigger.id }}"},
             "data": {"hvac_mode": "fan_only"},
         },
@@ -65,7 +67,7 @@ def test_non_cooling_safety_off_precedes_fan_only_and_preserves_timing():
     ]
 
 
-def test_ceiling_has_no_blind_climate_continue_on_error():
+def test_ceiling_contains_errors_only_at_fallible_setup_actions():
     ceiling = _automation("v7_5_safety_ceiling_gates")
 
     def walk(value):
@@ -82,7 +84,19 @@ def test_ceiling_has_no_blind_climate_continue_on_error():
         if str(_service(node) or "").startswith("climate.")
     ]
     assert climate_calls
-    assert all("continue_on_error" not in call for call in climate_calls)
+    contained_calls = [
+        call for call in climate_calls if call.get("continue_on_error") is True
+    ]
+    assert contained_calls == [
+        ceiling["action"][1]["choose"][0]["sequence"][1],
+        ceiling["action"][1]["default"][1],
+    ]
+
+    off_calls = [
+        call for call in climate_calls if call.get("data") == {"hvac_mode": "off"}
+    ]
+    assert len(off_calls) == 4
+    assert all("continue_on_error" not in call for call in off_calls)
 
 
 def test_adjacent_watchdogs_keep_their_ids_and_protective_thresholds():

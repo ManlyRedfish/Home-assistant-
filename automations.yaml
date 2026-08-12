@@ -1275,6 +1275,7 @@
               target: { entity_id: "{{ trigger.id }}" }
               data: { hvac_mode: "off" }
             - action: climate.set_temperature
+              continue_on_error: true
               target: { entity_id: "{{ trigger.id }}" }
               data: { hvac_mode: "cool", temperature: 68 }
             - delay: "00:45:00"
@@ -1286,6 +1287,7 @@
           target: { entity_id: "{{ trigger.id }}" }
           data: { hvac_mode: "off" }
         - action: climate.set_hvac_mode
+          continue_on_error: true
           target: { entity_id: "{{ trigger.id }}" }
           data: { hvac_mode: "fan_only" }
         - delay: "00:45:00"
