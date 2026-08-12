@@ -50,6 +50,71 @@ Comfort bands, not thermostat targets: Moose House controls with comfort bands /
 Samsung setpoints are actuator commands: The Samsung / mini-split setpoint is an actuator demand, not comfort truth. The comfort target is the band, not the Samsung setpoint, and Samsung's preferred 72–75°F range is not treated as comfort truth for this house.
 Comfort bands are preferences; safety gates are physical protection: Comfort bands are tunable household preference. Section 3 safety gates (60°F LR runaway, 58°F Master floor) are absolute physical/equipment protection and remain separate. A comfort band must never be defined as, or weakened into, a safety gate, and a comfort threshold must never alias a safety floor.
 Planned comfort profiles (doctrine, not yet runtime): Future comfort control is organized into named profiles, starting with a single global selector (per-room profiles deferred). The planned profiles are `eric_cold` (meat-locker, coldest), `family_normal`, `sleep_cold`, `away_relaxed` (house protection / energy, not comfort optimization), and `safety_only` (comfort bands disabled; only emergency cutoffs and structural protection remain). Draft band numbers are non-binding; a band-number change is a separate evidence-gated conversation per Doc / V9 / V10 Goals §10. See Doc / Comfort Band & Truth-Confidence Plan (`comfort_band_and_truth_confidence_plan.md`) for the full model.
+### 5.1.1 Year-Round Cooling and Heat/Cool Arbitration
+
+**Owner canon update — 2026-08-12.** This section records the intended Lane B policy. It is a documentation decision only; it does not claim that the current automation implementation already conforms.
+
+#### Cooling is year-round
+
+The established owner-approved cooling engage/release deadbands are active year-round. Cooling, shoulder, and heating season classifications do **not** revoke normal cooling eligibility. A room that becomes too warm may require cooling regardless of calendar season or outdoor-temperature classification. Existing cooling thresholds and deadband boundaries are preserved unchanged unless Eric separately authorizes a threshold change.
+
+The seasonal label must not be interpreted as `shoulder/heating → normal cooling disabled`. In particular, shoulder-season classification alone is not a sufficient reason to force a cooling head off. A cooling head may be turned off only by its normal cooling release condition, an independently applicable safety rule, or an explicitly documented interlock.
+
+#### Season primarily governs heating eligibility
+
+Seasonal logic primarily determines whether and how heating may become eligible. Conceptually:
+
+- **Cooling season:** heating generally prohibited.
+- **Shoulder season:** heating may become eligible when genuinely needed.
+- **Heating season:** heating policy available.
+
+None of these states inherently revokes normal cooling deadband control.
+
+#### House-level heat/cool arbitration
+
+Moose House must not intentionally command heating and cooling simultaneously across the house. This is a house-level arbitration requirement, not merely a per-room rule. A valid heating request in one room must not start while another protected zone is actively cooling or still owns an uncleared cooling cycle.
+
+Cooling retains priority during an active cooling cycle when any protected cooling zone:
+
+- has active cooling demand;
+- remains on the cooling side of its hysteresis/deadband cycle; or
+- has not satisfied its cooling release condition.
+
+“Cooling active” is therefore not equivalent to “a climate entity currently reports `cool`.” A head may have just turned off while the control state still owns the cooling cycle. Future implementation must use control-state/deadband semantics and cooling-release evidence, not instantaneous actuator mode alone.
+
+Shoulder-season heating becomes eligible only after all protected cooling zones have cleared cooling demand, their cooling release conditions are satisfied, the applicable heating threshold is independently satisfied, and normal heat safety/interlock conditions permit it. The intended handoff is:
+
+```text
+Bedroom still needs cooling → HEAT INHIBITED
+All cooling cleared + Living Room genuinely cold → HEAT MAY BECOME ELIGIBLE
+```
+
+#### Hysteresis and handoff requirement
+
+Future Lane B implementation must provide deliberate house-level handoff state, hysteresis, lockout, or equivalent semantics sufficient to prevent heat/cool ping-pong. The design must not allow a cycle of cooling clears → heat starts → room warms slightly → cooling starts → heat starts again. The specific mechanism is intentionally an open design item and is **not** selected or implemented by this documentation change.
+
+#### Energy doctrine and scope boundary
+
+Preserve the owner’s empirical evidence: the existing deliberate cooling deadband/OFF-cycling strategy was tested in Moose House and produced approximately `$200+ per month` in electricity savings compared with allowing the Samsung heads to continuously hold ordinary thermostat targets. This is owner-specific empirical evidence, not a universal HVAC claim.
+
+Therefore:
+
+- **Cooling deadband / OFF cycling:** preserve.
+- **Native continuous target holding:** not the default desired architecture.
+- **61°F + turbo shove:** a separately reviewable implementation detail, not the deadband doctrine. Whether it remains the best engage command is a future bounded Lane B question.
+
+Preserving the deadband does not require preserving every current setpoint or fan tactic.
+
+#### Implementation status
+
+```text
+CANON POLICY: UPDATED
+CURRENT AUTOMATION IMPLEMENTATION: MAY NOT YET CONFORM
+LANE_B_IMPLEMENTATION: PENDING
+```
+
+The existing season-gated supervisor behavior and any shoulder-season bulk-off behavior remain implementation technical debt/policy mismatch to be assessed in a future Lane B workflow. This section must not be read as authorization to change runtime automations, helpers, thresholds, schedules, setpoints, fan modes, or safety logic.
+
 5.2 Safety Doctrine
 Safety logic operates independently of comfort optimization.
 Floor/ceiling protections: 58°F Master emergency cooling floor.
