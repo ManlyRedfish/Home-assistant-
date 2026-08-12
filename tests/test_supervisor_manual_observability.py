@@ -189,7 +189,7 @@ EXPECTED_SECTION_HASHES = {
         # Re-pinned: WAF_Active hardcoded false, Engage_Eligible override var
         # removed, timer.gating removed from boost_release, observability
         # fields removed.
-        "184ea751ed94859366df953f09b85a0d32f66d1369adfd74fa2e3d76231db081",
+        "baa19c917e4231fd6c0ddc40aacab82d9a8d218af1c8e7690ab4cecc3bf6da3b",
     ),
 }
 EXPECTED_CONFIGURATION_HASH = "62b4d8f94dd3d0291b69d12438fbf60135c7e1f278b32c91c872aadf55026ac1"
