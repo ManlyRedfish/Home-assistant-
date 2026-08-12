@@ -177,14 +177,14 @@ The archive explicitly warns that attempting to isolate rooms mathematically whi
 * **Reopen Only If:** Section 14 verdict closes (issue #49) with the current collision model, and the next pilot does not depend on overwrite-free runs.
 * **Source Lineage:** [`v8_4_heating_recovery_boost_plan.md`](v8_4_heating_recovery_boost_plan.md) §7.4; [`5_runtime_layer.md`](5_runtime_layer.md) §7.4; [`analysis/v8_4_lr_boost_v5_evidence_review.md`](analysis/v8_4_lr_boost_v5_evidence_review.md); [`telemetry_confounders.md`](telemetry_confounders.md) §5.
 
-### 4.18 Adding Arbitration Before Telemetry Proves the Need
-* **Retired Approach:** Introducing new explicit arbiters or interlocks (cross-mode, cross-room, manual-vs-policy, season-vs-override) before telemetry shows the conflict they arbitrate is actually a recurring problem.
-* **Why It Looked Promising:** Two paths can collide, so adding a referee feels like principled engineering. This is materially the same trap as §4.5 ("Over-Architected Arbitration Before Measured Need"), specialized to the newer surfaces (manual-vs-policy, cross-mode interlocks).
-* **Why It Is Not Helping:** A referee added before telemetry proves the conflict frequency just adds another collision surface. `v9_sleep_priority_interlock` is the live example: it forces LR off whenever Master enters cool while LR is at heat, with no telemetry on real conflict frequency vs. transient supervisor mode-flip noise, and no manual-override gate. Whether SPI is helping is currently unmeasured.
-* **Observed or Structural Failure Mode:** New interlocks fire on transient states during legitimate supervisor decisions, generating LR-off events that look indistinguishable from real cross-mode conflicts in low-resolution telemetry.
-* **What Replaced It:** Provenance fan-out first (per [`v9_v10_goals.md`](v9_v10_goals.md) §2.5): instrument the suspected conflict in `hvac_provenance_log` and V5.5 telemetry. Arbitration second, scoped to documented frequency, and only after the forensic workflow names the recurring contract failure.
-* **Reopen Only If:** Provenance + telemetry show repeated cross-mode contention (or whichever class of conflict the arbiter targets) that is not explained by the supervisor's own mode-flip cadence, and a doctrine clarification of the arbiter's authority over manual intent is in place per [`5_runtime_layer.md`](5_runtime_layer.md) Manual Override Contract section.
-* **Source Lineage:** Materially extends §4.5 to manual-vs-policy and cross-mode interlocks; `automations.yaml` Section 3 `v9_sleep_priority_interlock`; [`v9_v10_goals.md`](v9_v10_goals.md) §7 Manual Override Doctrine.
+### 4.18 Arbitration Before Ownership and Handoff Semantics Are Defined
+* **Retired Approach:** Treating arbitration itself as the regression, or implementing arbitration before its authority and handoff semantics are defined.
+* **Why It Looked Promising:** Two paths can collide, so adding a referee feels like principled engineering. The earlier doctrine overgeneralized the warning by requiring telemetry to prove recurring conflict before arbitration could be justified.
+* **Why It Is Not Helping:** Arbitration may be required by a hard system constraint even before recurring conflict frequency is measured. Moose House has such a constraint: intentional simultaneous heating and cooling is prohibited. The failed pattern is implementing a complex or narrow arbiter before defining what it owns or proving that its specific extra complexity is necessary. `v9_sleep_priority_interlock` is the live example: it forces LR off whenever Master enters cool while LR is at heat, without a complete ownership model, pending-demand handoff, settle semantics, or manual-override rule.
+* **Observed or Structural Failure Mode:** An interlock fires on a transient state during a legitimate supervisor decision, releases one mode before the other mode's logical cycle has cleared, or creates a new collision surface because its authority is undefined.
+* **What Replaced It:** Future arbitration must explicitly define what owns cooling; what constitutes cooling demand; what constitutes cooling release; when heating becomes eligible; how pending demand survives a handoff; how manual override is treated; and how heat/cool ping-pong is prevented. The owner-canon requirement for arbitration is not itself retired. Unnecessary or over-complex capacity arbitration still requires evidence of genuine starvation or contention; simultaneous calls alone do not prove that need.
+* **Reopen Only If:** The proposed arbiter has explicit ownership and handoff semantics, a doctrine decision defines its authority over manual intent, and the implementation is bounded to the hard constraint or evidence-backed conflict it addresses. New capacity arbitration additionally requires telemetry demonstrating genuine starvation or contention.
+* **Source Lineage:** Owner canon [`1_startup_canon.md`](1_startup_canon.md) §5.1.1; existing `automations.yaml` Section 3 `v9_sleep_priority_interlock`; [`5_runtime_layer.md`](5_runtime_layer.md) §7.8; prior §4.5 and the former §4.18 doctrine.
 
 ### 4.19 Algorithmic Control Before Algorithmic Diagnosis
 * **Retired Approach:** Building ML, autonomous comfort AI, predictive setpoint control, or any algorithmic control authority before the equivalent algorithmic diagnosis surfaces exist and have produced a labeled archive of forensic notes.
@@ -195,9 +195,34 @@ The archive explicitly warns that attempting to isolate rooms mathematically whi
 * **Reopen Only If:** Provenance covers every climate entity, every safety surface, and every season-mode change for at least one full season; V10 diagnosis has produced a labeled forensic archive; Eric's deadband contract is preserved; and a separately-documented case for control authority beyond V9 deadbands exists. None of these conditions hold today.
 * **Source Lineage:** [`hvac_provenance_logger_design.md`](hvac_provenance_logger_design.md); [`v9_v10_goals.md`](v9_v10_goals.md) §4–§6; doctrine alignment with §4.13, §4.15, §4.18.
 
-## 5. Meta-Guardrails
+### 4.20 Season Branches That Bypass Room Deadbands
+* **Retired Approach:** Using outdoor or season thresholds to select a single `cool/off` boundary, or bulk-commanding comfort-controlled heads OFF, instead of evaluating each room's active engage/release/hold contract.
+* **Why It Looked Promising:** Shoulder weather appears mild enough for a simplified escape path, and one outdoor threshold seems easier than evaluating every room profile.
+* **Why It Failed in Moose House:** On 2026-07-12 the shoulder warm branch forced Living Room OFF at 72.37°F even though its daytime 68/72 profile and active pull-down required hysteresis continuity. The same structure used zero-width bedroom decisions and could interrupt cooling-to-shoulder pull-downs.
+* **Observed or Structural Failure Mode:** A comfort room appears in a multi-entity OFF target; a season path contains only one temperature threshold; or outdoor/season logic outranks the room's engage, release, and current-mode hold state. Zero-width or single-threshold seasonal decisions can interrupt a legitimate cooling cycle. Bulk seasonal OFF commands can violate room-level cooling authority.
+* **What Replaced It:** Room cooling deadbands determine cooling eligibility year-round. Season selects heating strategy and heat/cool arbitration; it is not mutually exclusive equipment authority. `season == heating` does not inherently forbid cooling, and `season == shoulder` does not inherently justify forcing cooling heads OFF. The room deadband decides cooling eligibility. Current canon is updated, but the current runtime may not yet conform; Lane B implementation remains pending. Section 3 safety remains independent.
+* **Reopen Only If:** Never as a comfort-policy shortcut. A safety equipment limit belongs in Section 3 with explicit evidence, scope, and rollback—not as a Section 2 seasonal shortcut.
+* **Source Lineage:** `fbf760c` historical regression entry; 2026-07-12 operator decision; `automations.yaml` Section 2; [`1_startup_canon.md`](1_startup_canon.md) §5.1.1; [`5_runtime_layer.md`](5_runtime_layer.md) §7.11; §4.10 and §4.16 above.
 
-The following guardrails apply across all proposals, even when a specific retired approach is not directly named:
+### 4.21 Instantaneous HVAC Mode Used as Cooling-Cycle Clearance
+* **Retired Assumption / Anti-Pattern:** Treating the instantaneous climate entity mode as sufficient proof that the logical cooling cycle or cooling ownership has cleared.
+* **Why It Looked Promising:** `climate == off` is easy to observe and often does correspond to a room satisfying its cooling release threshold.
+* **Why It Is Dangerous:** Actuator OFF alone is insufficient evidence that the logical cooling cycle has cleared. OFF caused by a manual action, watchdog or safety intervention, failed command, integration disruption, seasonal bulk-off, restart, or unrelated automation does not prove that the room cleared cooling ownership. Releasing heating solely because every climate entity currently reports OFF can release heat in the middle of cooling hysteresis.
+* **Observed or Structural Failure Mode:** Arbitration reads only instantaneous HVAC modes, misses the reason for OFF, and admits heat before room position, release conditions, or pending cooling demand establish that cooling has actually cleared.
+* **What Replaced It:** Arbitration must consider logical control state and room position relative to engage/release boundaries, including as applicable: room temperature, hysteresis side / cooling ownership, the cooling release condition, pending cooling demand, and house-level handoff or lockout state. If the controller deliberately turned a head OFF because the room satisfied its release threshold, OFF may correctly correspond to cooling clearance; the mode alone cannot establish that fact.
+* **Reopen Only If:** A future design can prove the reason for OFF and preserve the distinction between actuator observation and logical cooling-state clearance without prescribing an unverified state-machine implementation.
+* **Source Lineage:** Owner canon [`1_startup_canon.md`](1_startup_canon.md) §5.1.1; [`5_runtime_layer.md`](5_runtime_layer.md) §7.1; the restored §4.20 seasonal-bulk-off regression.
+
+### 4.22 Conflating Cooling Deadband Policy with 61°F/Turbo Actuation
+* **Classification:** **Regression Guardrail / Category Error.** This is not claimed as a separately proven runtime failure.
+* **Policy:** The owner-approved doctrine is deliberate cooling deadband + OFF cycling.
+* **Actuator Tactic:** `61°F + turbo` while cooling is engaged.
+* **Why This Distinction Matters:** Eric's empirical Moose House evidence shows that the deadband/OFF-cycling strategy saves approximately $200+/month compared with continuous native Samsung target holding. That supports preserving the deadband architecture, but does not prove `61°F + turbo` is the only or optimal engage command. Questioning `61°F + turbo` does not authorize replacing the deadband; preserving the deadband does not prove the actuator tactic is optimal.
+* **What Replaced It:** Keep the deadband/OFF-cycling doctrine as the owner-approved policy surface. Evaluate future actuator tactics as separate bounded Lane B questions, and preserve the established comfort/deadband contract unless Eric separately authorizes a policy change.
+* **Reopen Only If:** An actuator-tactic experiment is separately scoped, preserves or explicitly seeks authorization to change the deadband contract, and reports Moose House evidence without presenting the owner-specific savings result as a universal HVAC claim.
+* **Source Lineage:** Owner canon [`1_startup_canon.md`](1_startup_canon.md) §5.1.1; Lane A SmartThings integration repair; Moose House owner empirical energy evidence.
+
+## 5. Meta-Guardrails
 
 * **Structure beats neat theory:** Moose House must be reasoned about as a real building with gravity, mass, and flow, not as a clean software abstraction.
 * **Live YAML outranks prose for runtime truth:** Narrative docs explain; runtime files (Doc 5) decide actual behavior.
@@ -206,6 +231,7 @@ The following guardrails apply across all proposals, even when a specific retire
 * **Complexity requires evidence:** More logic is not better unless measured outcomes prove it necessary.
 * **Presence is a modifier, not a sovereign:** Occupancy can shape control but should not be assumed to be the master explanation for comfort in a high-inertia house.
 * **More sensors are not automatically more truth:** Quality, auditability, and graceful degradation matter more than raw count.
+* **Integration correctness does not validate control policy:** A repaired integration contract proves that Home Assistant can correctly represent and command equipment; it does not establish the correct comfort thresholds, setpoints, fan mode, deadband, cadence, or seasonal policy. The SmartThings Lane A repair is the reference boundary: the 61–86°F representation and service command path were fixed and verified, but that did not decide whether 61°F is optimal, whether turbo is optimal, or whether current Lane B control is correct. Prove each layer against its own contract.
 
 ## 6. Reopen Conditions
 
