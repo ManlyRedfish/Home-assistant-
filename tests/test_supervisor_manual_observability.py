@@ -172,6 +172,12 @@ NEW_FIELDS = {
 #     each complete head command unit now has boundary-level continuation so
 #     one failed head cannot suppress later valid heads; guards and commands
 #     are unchanged.
+#   - section3 re-pinned for the accepted-live Lincoln/Lilly low-temperature
+#     watchdog synchronization: two independent OFF-only gates stop a cooling
+#     head after valid room truth remains below 64°F for two minutes. The first
+#     action is the protective OFF; only logbook/notification follow-ups have
+#     continuation. No setpoint or fan-mode action was added. Sections 2/14 and
+#     configuration.yaml are unchanged.
 EXPECTED_SECTION_HASHES = {
     "section2_main_supervisor": (
         "# SECTION 2: MAIN SUPERVISOR",
@@ -183,9 +189,9 @@ EXPECTED_SECTION_HASHES = {
     "section3_safety_gates": (
         "# SECTION 3: SAFETY GATES",
         "# SECTION 4:",
-        # Re-pinned: manually_hvac_override references removed from Section 3
-        # comment. Section 3 safety floors and thresholds are unchanged.
-        "201fd18974d505673c3446e4913359a9624a76e58740b87c5b7b644ad2402921",
+        # Re-pinned for the intentional accepted-live Lincoln/Lilly OFF-only
+        # low-temperature watchdog addition; existing gates are unchanged.
+        "f82157a25aa54b969368096c506346e9ceca8210445910c46bc5f3cc97098e49",
     ),
     "section14_lr_boost": (
         "# SECTION 14: V8.4 LR HEATING RECOVERY BOOST PILOT",

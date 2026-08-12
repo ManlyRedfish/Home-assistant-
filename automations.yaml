@@ -1123,6 +1123,85 @@
                   hvac_mode: "off"
 
 # -----------------------------------------------------------------------------
+# LIVE LOW-TEMPERATURE COOLING WATCHDOGS (LINCOLN / LILLY)
+# -----------------------------------------------------------------------------
+# These accepted-live watchdogs are independent OFF-only safety backstops. A
+# valid room truth below 64°F for two minutes while the corresponding head is
+# cooling is stopped before any best-effort observability action runs.
+# -----------------------------------------------------------------------------
+- id: repair_lilly_low_temperature_off_watchdog
+  alias: "Repair: Lilly Low-Temperature OFF Watchdog"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.lilly_s_room_temperature_truth
+      below: 64
+      for: "00:02:00"
+  condition:
+    - condition: state
+      entity_id: climate.lilly_air
+      state: "cool"
+    - condition: template
+      value_template: >-
+        {% set x = states('sensor.lilly_s_room_temperature_truth') | float(none) %}
+        {{ x is not none and x == x and x > -90 and x < 200 }}
+  action:
+    - action: climate.set_hvac_mode
+      target: { entity_id: climate.lilly_air }
+      data: { hvac_mode: "off" }
+    - action: logbook.log
+      continue_on_error: true
+      data:
+        name: "Lilly Low-Temperature Watchdog"
+        message: >-
+          Forced Lilly air OFF after room truth remained below 64°F for two
+          minutes while cooling.
+        entity_id: climate.lilly_air
+    - action: notify.notify
+      continue_on_error: true
+      data:
+        title: "🧊 Lilly Low-Temperature Watchdog Fired"
+        message: >-
+          Lilly room truth remained below 64°F for two minutes while cooling.
+          Forced climate.lilly_air off.
+
+- id: repair_lincoln_low_temperature_off_watchdog
+  alias: "Repair: Lincoln Low-Temperature OFF Watchdog"
+  mode: single
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.lincoln_s_room_temperature_truth
+      below: 64
+      for: "00:02:00"
+  condition:
+    - condition: state
+      entity_id: climate.lincoln_air
+      state: "cool"
+    - condition: template
+      value_template: >-
+        {% set x = states('sensor.lincoln_s_room_temperature_truth') | float(none) %}
+        {{ x is not none and x == x and x > -90 and x < 200 }}
+  action:
+    - action: climate.set_hvac_mode
+      target: { entity_id: climate.lincoln_air }
+      data: { hvac_mode: "off" }
+    - action: logbook.log
+      continue_on_error: true
+      data:
+        name: "Lincoln Low-Temperature Watchdog"
+        message: >-
+          Forced Lincoln air OFF after room truth remained below 64°F for two
+          minutes while cooling.
+        entity_id: climate.lincoln_air
+    - action: notify.notify
+      continue_on_error: true
+      data:
+        title: "🧊 Lincoln Low-Temperature Watchdog Fired"
+        message: >-
+          Lincoln room truth remained below 64°F for two minutes while cooling.
+          Forced climate.lincoln_air off.
+
+# -----------------------------------------------------------------------------
 # V9 SLEEP PRIORITY INTERLOCK
 # -----------------------------------------------------------------------------
 # Solves cross-mode contention lockout during shoulder seasons. If the Master
