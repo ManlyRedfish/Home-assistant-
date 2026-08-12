@@ -1100,28 +1100,27 @@
           - truth: sensor.lilly_s_room_temperature_truth
             climate: climate.lilly_air
         sequence:
-          - variables:
-              truth_entity: "{{ repeat.item.truth }}"
-              climate_entity: "{{ repeat.item.climate }}"
-              truth_invalid: >-
-                {% set x = states(truth_entity) | float(none) %}
-                {{ x is none or x != x or x < -90 or x > 200 }}
-              invalid_age_seconds: >-
-                {% set st = states[truth_entity] if truth_entity in states else none %}
-                {{ 0 if st is none else (as_timestamp(now()) - as_timestamp(st.last_changed, 0)) }}
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: >-
-                      {{ states(climate_entity) == 'cool'
-                         and (truth_invalid | bool)
-                         and (invalid_age_seconds | float(0)) >= 120 }}
-                sequence:
-                  - action: climate.set_hvac_mode
-                    target:
-                      entity_id: "{{ climate_entity }}"
-                    data:
-                      hvac_mode: "off"
+          - alias: "Zone boundary: truth-unavailable cooling reconciliation"
+            continue_on_error: true
+            if:
+              - condition: template
+                value_template: >-
+                  {% set truth_entity = repeat.item.truth %}
+                  {% set climate_entity = repeat.item.climate %}
+                  {% set x = states(truth_entity) | float(none) %}
+                  {% set truth_invalid = x is none or x != x or x < -90 or x > 200 %}
+                  {% set st = states[truth_entity] if truth_entity in states else none %}
+                  {% set invalid_age_seconds = 0 if st is none else
+                     (as_timestamp(now()) - as_timestamp(st.last_changed, 0)) %}
+                  {{ states(climate_entity) == 'cool'
+                     and truth_invalid
+                     and (invalid_age_seconds | float(0)) >= 120 }}
+            then:
+              - action: climate.set_hvac_mode
+                target:
+                  entity_id: "{{ repeat.item.climate }}"
+                data:
+                  hvac_mode: "off"
 
 # -----------------------------------------------------------------------------
 # V9 SLEEP PRIORITY INTERLOCK
